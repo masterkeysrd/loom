@@ -29,7 +29,8 @@ type Checkpointer interface {
 type Checkpoint struct {
 	Location  Location        `json:"location"`
 	Parent    *Location       `json:"parent,omitempty"`
-	State     json.RawMessage `json:"state"`
+	State     any             `json:"state"`
 	Next      []string        `json:"next"`
 	Timestamp time.Time       `json:"timestamp"`
+	Metadata  json.RawMessage `json:"metadata,omitempty"`
 }

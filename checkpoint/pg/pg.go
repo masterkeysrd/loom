@@ -2,9 +2,13 @@ package pg
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"strings"
 	"time"
 
 	"github.com/masterkeysrd/loom/graph"
@@ -12,35 +16,61 @@ import (
 
 const (
 	saveCheckpointQuery = `
-INSERT INTO checkpoints (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, state, next, timestamp)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO checkpoints (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, checkpoint, metadata)
+VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (thread_id, checkpoint_ns, checkpoint_id) DO UPDATE
 SET parent_checkpoint_id = EXCLUDED.parent_checkpoint_id,
-	state = EXCLUDED.state,
-	next = EXCLUDED.next,
-	timestamp = EXCLUDED.timestamp
+	checkpoint = EXCLUDED.checkpoint,
+	metadata = EXCLUDED.metadata
+`
+
+	saveBlobQuery = `
+INSERT INTO checkpoint_blobs (thread_id, checkpoint_ns, blob_id, value)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (thread_id, checkpoint_ns, blob_id) DO NOTHING
+`
+
+	saveWriteQuery = `
+INSERT INTO checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, channel, blob_id)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (thread_id, checkpoint_ns, checkpoint_id, channel) DO UPDATE
+SET blob_id = EXCLUDED.blob_id
 `
 
 	loadCheckpointQuery = `
-SELECT thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, state, next, timestamp
+SELECT thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, checkpoint, metadata
 FROM checkpoints
 WHERE thread_id = $1 AND checkpoint_ns = $2
 %s
 ORDER BY checkpoint_id DESC
 LIMIT 1
 `
+
+	loadWritesQuery = `
+WITH RECURSIVE path(id, parent) AS (
+    SELECT checkpoint_id, parent_checkpoint_id FROM checkpoints 
+    WHERE thread_id = $1 AND checkpoint_ns = $2 AND checkpoint_id = $3
+    UNION ALL
+    SELECT c.checkpoint_id, c.parent_checkpoint_id FROM checkpoints c
+    JOIN path p ON c.checkpoint_id = p.parent
+    WHERE c.thread_id = $4 AND c.checkpoint_ns = $5
+)
+SELECT w.channel, w.blob_id, b.value
+FROM checkpoint_writes w
+JOIN checkpoint_blobs b ON w.thread_id = b.thread_id AND w.checkpoint_ns = b.checkpoint_ns AND w.blob_id = b.blob_id
+WHERE w.thread_id = $6 AND w.checkpoint_ns = $7 AND w.checkpoint_id IN (SELECT id FROM path)
+ORDER BY w.checkpoint_id ASC
+`
 )
 
-// Checkpointer persists graph checkpoints in a PostgreSQL database.
-// It implements [graph.Checkpointer] using a single checkpoints table that
-// is created (if absent) by [NewCheckpointer] via the embedded migration runner.
+// Checkpointer persists graph checkpoints in a PostgreSQL database using a
+// three-table schema (checkpoints, blobs, writes) for storage efficiency.
 type Checkpointer struct {
 	db *sql.DB
 }
 
 // NewCheckpointer opens a connection to db, runs any pending schema migrations,
-// and returns a ready-to-use [Checkpointer]. The caller retains ownership of db
-// and is responsible for closing it.
+// and returns a ready-to-use [Checkpointer].
 func NewCheckpointer(db *sql.DB) (*Checkpointer, error) {
 	if err := Migrate(db); err != nil {
 		return nil, err
@@ -49,49 +79,80 @@ func NewCheckpointer(db *sql.DB) (*Checkpointer, error) {
 	return &Checkpointer{db: db}, nil
 }
 
-// Record persists checkpoint to the checkpoints table. If a checkpoint with
-// the same (thread_id, checkpoint_ns, checkpoint_id) already exists, its
-// state, parent, next, and timestamp fields are overwritten.
+// Record decomposes the checkpoint state into fields (channels) using reflection,
+// deduplicates values via content-addressable storage (blobs), and records
+// the pointers in the writes table.
 func (c *Checkpointer) Record(ctx context.Context, checkpoint graph.Checkpoint) error {
-	record := CheckpointRecord{
-		ThreadID:     checkpoint.Location.ThreadID,
-		CheckpointNS: checkpoint.Location.CheckpointNS,
-		CheckpointID: checkpoint.Location.CheckpointID,
-		State:        checkpoint.State,
-		Timestamp:    checkpoint.Timestamp,
+	tx, err := c.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// 1. Decompose state into channels
+	channels, err := decomposeState(checkpoint.State)
+	if err != nil {
+		return fmt.Errorf("decompose state: %w", err)
 	}
 
-	if checkpoint.Parent != nil && checkpoint.Parent.CheckpointID != "" {
-		record.ParentCheckpointID = &checkpoint.Parent.CheckpointID
+	// 2. Save blobs and writes
+	for channel, value := range channels {
+		blobID := hashValue(value)
+
+		if _, err := tx.ExecContext(ctx, saveBlobQuery,
+			checkpoint.Location.ThreadID,
+			checkpoint.Location.CheckpointNS,
+			blobID,
+			value,
+		); err != nil {
+			return fmt.Errorf("save blob for channel %q: %w", channel, err)
+		}
+
+		if _, err := tx.ExecContext(ctx, saveWriteQuery,
+			checkpoint.Location.ThreadID,
+			checkpoint.Location.CheckpointNS,
+			checkpoint.Location.CheckpointID,
+			channel,
+			blobID,
+		); err != nil {
+			return fmt.Errorf("save write for channel %q: %w", channel, err)
+		}
 	}
 
-	var err error
-	record.Next, err = json.Marshal(checkpoint.Next)
+	// 3. Save checkpoint metadata
+	meta := checkpointMetadata{
+		Next:      checkpoint.Next,
+		Timestamp: checkpoint.Timestamp,
+	}
+	metaBytes, err := json.Marshal(meta)
 	if err != nil {
 		return err
 	}
 
-	if _, err := c.db.ExecContext(ctx,
-		saveCheckpointQuery,
-		record.ThreadID,
-		record.CheckpointNS,
-		record.CheckpointID,
-		record.ParentCheckpointID,
-		record.State,
-		record.Next,
-		record.Timestamp,
-	); err != nil {
-		return err
+	parentID := sql.NullString{}
+	if checkpoint.Parent != nil && checkpoint.Parent.CheckpointID != "" {
+		parentID.String = checkpoint.Parent.CheckpointID
+		parentID.Valid = true
 	}
 
-	return nil
+	if _, err := tx.ExecContext(ctx, saveCheckpointQuery,
+		checkpoint.Location.ThreadID,
+		checkpoint.Location.CheckpointNS,
+		checkpoint.Location.CheckpointID,
+		parentID,
+		metaBytes,
+		checkpoint.Metadata,
+	); err != nil {
+		return fmt.Errorf("save checkpoint: %w", err)
+	}
+
+	return tx.Commit()
 }
 
-// Load retrieves the most-recent checkpoint for the given location.
-// When location.CheckpointID is non-empty, only that exact checkpoint is
-// returned; otherwise the latest checkpoint in the thread/namespace is used.
-// Returns nil, nil when no matching row exists.
+// Load reconstructs the state by collecting the latest version of each channel
+// from the thread's history.
 func (c *Checkpointer) Load(ctx context.Context, location graph.Location) (*graph.Checkpoint, error) {
+	// 1. Find the target checkpoint
 	args := []any{location.ThreadID, location.CheckpointNS}
 	cond := ""
 	if location.CheckpointID != "" {
@@ -101,18 +162,17 @@ func (c *Checkpointer) Load(ctx context.Context, location graph.Location) (*grap
 
 	query := fmt.Sprintf(loadCheckpointQuery, cond)
 
-	var record CheckpointRecord
-	err := c.db.QueryRowContext(ctx,
-		query,
-		args...,
-	).Scan(
-		&record.ThreadID,
-		&record.CheckpointNS,
-		&record.CheckpointID,
-		&record.ParentCheckpointID,
-		&record.State,
-		&record.Next,
-		&record.Timestamp,
+	var threadID, checkpointNS, checkpointID string
+	var parentCheckpointID sql.NullString
+	var metaBytes, metadataBytes []byte
+
+	err := c.db.QueryRowContext(ctx, query, args...).Scan(
+		&threadID,
+		&checkpointNS,
+		&checkpointID,
+		&parentCheckpointID,
+		&metaBytes,
+		&metadataBytes,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -121,42 +181,112 @@ func (c *Checkpointer) Load(ctx context.Context, location graph.Location) (*grap
 		return nil, err
 	}
 
-	var next []string
-	if err := json.Unmarshal(record.Next, &next); err != nil {
+	var meta checkpointMetadata
+	if err := json.Unmarshal(metaBytes, &meta); err != nil {
+		return nil, err
+	}
+
+	// 2. Reconstruct state from writes history
+	rows, err := c.db.QueryContext(ctx, loadWritesQuery,
+		threadID, checkpointNS, checkpointID,
+		threadID, checkpointNS,
+		threadID, checkpointNS,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("load writes: %w", err)
+	}
+	defer rows.Close()
+
+	stateMap := make(map[string]json.RawMessage)
+	for rows.Next() {
+		var channel, blobID string
+		var value []byte
+		if err := rows.Scan(&channel, &blobID, &value); err != nil {
+			return nil, err
+		}
+		stateMap[channel] = json.RawMessage(value)
+	}
+
+	// 3. Marshal the state map back to JSON
+	finalState, err := json.Marshal(stateMap)
+	if err != nil {
 		return nil, err
 	}
 
 	checkpoint := &graph.Checkpoint{
 		Location: graph.Location{
-			ThreadID:     record.ThreadID,
-			CheckpointNS: record.CheckpointNS,
-			CheckpointID: record.CheckpointID,
+			ThreadID:     threadID,
+			CheckpointNS: checkpointNS,
+			CheckpointID: checkpointID,
 		},
-		State:     record.State,
-		Next:      next,
-		Timestamp: record.Timestamp,
+		State:     json.RawMessage(finalState),
+		Next:      meta.Next,
+		Timestamp: meta.Timestamp,
+		Metadata:  metadataBytes,
 	}
 
-	if record.ParentCheckpointID != nil {
+	if parentCheckpointID.Valid {
 		checkpoint.Parent = &graph.Location{
-			ThreadID:     record.ThreadID,
-			CheckpointNS: record.CheckpointNS,
-			CheckpointID: *record.ParentCheckpointID,
+			ThreadID:     threadID,
+			CheckpointNS: checkpointNS,
+			CheckpointID: parentCheckpointID.String,
 		}
 	}
 
 	return checkpoint, nil
 }
 
-// CheckpointRecord is the database row representation used by [Checkpointer].
-// State and Next are kept as raw JSON to avoid loading the full message/state
-// type hierarchy inside the persistence layer.
-type CheckpointRecord struct {
-	ThreadID           string          `db:"thread_id"`
-	CheckpointNS       string          `db:"checkpoint_ns"`
-	CheckpointID       string          `db:"checkpoint_id"`
-	ParentCheckpointID *string         `db:"parent_checkpoint_id"`
-	State              json.RawMessage `db:"state"`
-	Next               json.RawMessage `db:"next"`
-	Timestamp          time.Time       `db:"timestamp"`
+func decomposeState(state any) (map[string][]byte, error) {
+	if state == nil {
+		return nil, nil
+	}
+
+	v := reflect.ValueOf(state)
+	for v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+
+	if v.Kind() != reflect.Struct {
+		data, err := json.Marshal(state)
+		if err != nil {
+			return nil, err
+		}
+		return map[string][]byte{"__root__": data}, nil
+	}
+
+	channels := make(map[string][]byte)
+	t := v.Type()
+	for i := 0; i < v.NumField(); i++ {
+		field := t.Field(i)
+		if field.PkgPath != "" {
+			continue
+		}
+
+		name := field.Name
+		if tag := field.Tag.Get("json"); tag != "" && tag != "-" {
+			parts := strings.Split(tag, ",")
+			if parts[0] != "" {
+				name = parts[0]
+			}
+		}
+
+		val := v.Field(i).Interface()
+		data, err := json.Marshal(val)
+		if err != nil {
+			return nil, fmt.Errorf("marshal field %q: %w", field.Name, err)
+		}
+		channels[name] = data
+	}
+
+	return channels, nil
+}
+
+func hashValue(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+type checkpointMetadata struct {
+	Next      []string  `json:"next"`
+	Timestamp time.Time `json:"timestamp"`
 }

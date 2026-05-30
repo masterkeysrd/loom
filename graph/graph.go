@@ -169,8 +169,27 @@ func (g *Graph[State]) Load(ctx context.Context, loc Location) (*Snapshot[State]
 	}
 
 	var state State
-	if err := json.Unmarshal(checkpoint.State, &state); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal checkpoint state: %w", err)
+	switch v := checkpoint.State.(type) {
+	case State:
+		state = v
+	case []byte:
+		if err := json.Unmarshal(v, &state); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal checkpoint state: %w", err)
+		}
+	case json.RawMessage:
+		if err := json.Unmarshal(v, &state); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal checkpoint state: %w", err)
+		}
+	default:
+		// Try to marshal whatever we got back to JSON and then unmarshal it into the state struct.
+		// This handles cases where the checkpointer might return a map[string]any or another intermediate form.
+		data, err := json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal unknown checkpoint state type %T: %w", v, err)
+		}
+		if err := json.Unmarshal(data, &state); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal checkpoint state from JSON: %w", err)
+		}
 	}
 
 	return &Snapshot[State]{
@@ -280,14 +299,9 @@ func (g *Graph[State]) recordCheckpoint(ctx context.Context, snapshot Snapshot[S
 	checkpoint := Checkpoint{
 		Location:  snapshot.Location,
 		Parent:    snapshot.Parent,
+		State:     snapshot.State,
 		Next:      snapshot.Next,
 		Timestamp: snapshot.CreateTime,
-	}
-
-	var err error
-	checkpoint.State, err = json.Marshal(snapshot.State)
-	if err != nil {
-		return fmt.Errorf("failed to marshal state for checkpoint: %w", err)
 	}
 
 	if err := g.checkpointer.Record(ctx, checkpoint); err != nil {

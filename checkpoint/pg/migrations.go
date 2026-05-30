@@ -8,18 +8,30 @@ var migrations = []string{
 		applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	);
 	`,
-	`
-	CREATE TABLE IF NOT EXISTS checkpoints (
+	`CREATE TABLE IF NOT EXISTS checkpoints (
 		thread_id TEXT NOT NULL,
-		checkpoint_ns TEXT NOT NULL,
+		checkpoint_ns TEXT NOT NULL DEFAULT '',
 		checkpoint_id TEXT NOT NULL,
 		parent_checkpoint_id TEXT,
-		state JSONB NOT NULL,
-		next JSONB NOT NULL,
-		timestamp TIMESTAMPTZ NOT NULL,
+		checkpoint JSONB,
+		metadata JSONB,
 		PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id)
-	);
-	`,
+	);`,
+	`CREATE TABLE IF NOT EXISTS checkpoint_blobs (
+		thread_id TEXT NOT NULL,
+		checkpoint_ns TEXT NOT NULL DEFAULT '',
+		blob_id TEXT NOT NULL,
+		value BYTEA,
+		PRIMARY KEY (thread_id, checkpoint_ns, blob_id)
+	);`,
+	`CREATE TABLE IF NOT EXISTS checkpoint_writes (
+		thread_id TEXT NOT NULL,
+		checkpoint_ns TEXT NOT NULL DEFAULT '',
+		checkpoint_id TEXT NOT NULL,
+		channel TEXT NOT NULL,
+		blob_id TEXT NOT NULL,
+		PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, channel)
+	);`,
 }
 
 // Migrate applies all pending schema migrations to db.

@@ -7,15 +7,30 @@ var migrations = []string{
 		version INTEGER PRIMARY KEY,
 		applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 	);`,
+	`PRAGMA journal_mode=WAL;`,
 	`CREATE TABLE IF NOT EXISTS checkpoints (
 		thread_id TEXT NOT NULL,
-		checkpoint_ns TEXT NOT NULL,
+		checkpoint_ns TEXT NOT NULL DEFAULT '',
 		checkpoint_id TEXT NOT NULL,
 		parent_checkpoint_id TEXT,
-		state TEXT NOT NULL,
-		next TEXT NOT NULL,
-		timestamp TEXT NOT NULL,
+		checkpoint BLOB,
+		metadata BLOB,
 		PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id)
+	);`,
+	`CREATE TABLE IF NOT EXISTS checkpoint_blobs (
+		thread_id TEXT NOT NULL,
+		checkpoint_ns TEXT NOT NULL DEFAULT '',
+		blob_id TEXT NOT NULL,
+		value BLOB,
+		PRIMARY KEY (thread_id, checkpoint_ns, blob_id)
+	);`,
+	`CREATE TABLE IF NOT EXISTS checkpoint_writes (
+		thread_id TEXT NOT NULL,
+		checkpoint_ns TEXT NOT NULL DEFAULT '',
+		checkpoint_id TEXT NOT NULL,
+		channel TEXT NOT NULL,
+		blob_id TEXT NOT NULL,
+		PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, channel)
 	);`,
 }
 

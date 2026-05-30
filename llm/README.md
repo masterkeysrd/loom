@@ -83,8 +83,12 @@ Use the `Registry` to dynamically select providers based on configuration.
 
 ```go
 registry := llm.NewRegistry()
-registry.Register("openai", openaiProvider)
-registry.Register("ollama", ollamaProvider)
+registry.Register("openai", func() (llm.Provider, error) {
+    return openai.NewProvider(config), nil
+})
+registry.Register("ollama", func() (llm.Provider, error) {
+    return ollama.NewProvider(config), nil
+})
 
 // Later in your application...
 p, _ := registry.Get("openai")

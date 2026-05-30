@@ -17,7 +17,7 @@ import (
 var _ llm.Provider = (*Provider)(nil)
 
 // Provider represents the Anthropic backend client for
-// handling chat requests for the TaskSmith application.
+// handling chat requests for the Loom application.
 //
 //go:generate loom-gen llm-profiles -provider=anthropic -out=profiles.gen.go -pkg=loomanthropic
 type Provider struct {

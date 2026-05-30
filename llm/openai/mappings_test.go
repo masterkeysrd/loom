@@ -13,7 +13,7 @@ func TestToAssistantMessageParamToolCallsUseNullContent(t *testing.T) {
 			&message.ToolCall{
 				ID:   "call_123",
 				Name: "lookup",
-				Args: map[string]any{"query": "tasksmith"},
+				Args: map[string]any{"query": "loom"},
 			},
 		},
 	}
@@ -49,7 +49,7 @@ func TestToAssistantMessageParamPreservesTextWithToolCalls(t *testing.T) {
 			&message.ToolCall{
 				ID:   "call_123",
 				Name: "lookup",
-				Args: map[string]any{"query": "tasksmith"},
+				Args: map[string]any{"query": "loom"},
 			},
 		},
 	}

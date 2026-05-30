@@ -17,7 +17,7 @@ import (
 var _ llm.Provider = (*Provider)(nil)
 
 // Provider represents the OpenAI backend client for
-// handling chat requests for the TaskSmith application.
+// handling chat requests for the Loom application.
 type Provider struct {
 	client    *openai.Client
 	overrides sync.Map

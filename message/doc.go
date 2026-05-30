@@ -4,7 +4,7 @@ conversation history within the Loom framework.
 
 At its heart, this package solves the "Polymorphic Problem" in Go—allowing
 diverse roles (User, Assistant, System, Tool) and varied content types
-(Text, and eventually Images or Tool Calls) to exist in a single,
+(Text, Tool Calls, and Thinking blocks) to exist in a single,
 strongly-typed list that serializes perfectly to JSON.
 
 # Architecture Overview

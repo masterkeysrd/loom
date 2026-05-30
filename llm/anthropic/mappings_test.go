@@ -18,7 +18,7 @@ func TestToMessageNewParamsAssistantToolCallsHaveToolUseBlocks(t *testing.T) {
 					&message.ToolCall{
 						ID:   "toolu_123",
 						Name: "lookup",
-						Args: map[string]any{"query": "tasksmith"},
+						Args: map[string]any{"query": "loom"},
 					},
 				},
 			},

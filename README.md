@@ -1,178 +1,30 @@
-# loom
+# loom 🧵
 
-`loom` is the AI workflow engine at the heart of TaskSmith. It lets you define multi-step agent workflows as directed graphs, connect them to any large language model, and persist execution state so interrupted runs can be resumed exactly where they left off.
+`loom` is a high-performance, graph-based AI workflow engine for Go. It allows you to build complex agentic systems by defining multi-step workflows as directed graphs, seamlessly connecting them to any large language model, and persisting execution state for long-running or interrupted tasks.
 
----
+Unlike linear chains, `loom` provides a robust, state-first architecture inspired by state machines, making it easy to build agents that can loop, branch, and resume exactly where they left off.
 
-## Packages
+## Key Features
 
-| Package | Description |
-|---|---|
-| [`graph`](graph/) | Workflow engine — nodes, edges, checkpointing, streaming |
-| [`llm`](llm/) | Provider-agnostic LLM abstraction (model, registry, streaming) |
-| [`llm/ollama`](llm/ollama/) | Ollama backend implementation of `llm.Provider` |
-| [`message`](message/) | Conversation history primitives (roles, content blocks, JSON serialization) |
-| [`checkpoint/pg`](checkpoint/pg/) | PostgreSQL-backed `graph.Checkpointer` implementation |
+- **🕸️ Graph-based Workflows**: Define agents as directed graphs with nodes and conditional edges.
+- **💾 State Persistence**: Built-in checkpointing with support for PostgreSQL and SQLite.
+- **📺 Real-time Streaming**: First-class support for token-level streaming and event-based updates.
+- **🧠 Advanced Memory Management**:
+    - **Automatic Summarization**: Intelligently condense long conversations when token limits are reached.
+    - **Precise Trimming**: Flexible message trimming strategies (e.g., sliding window) to fit context windows.
+- **🔌 Provider Agnostic**: One interface for OpenAI, Anthropic, Ollama, and Google Gemini.
+- **🛠️ Tool Integration**: Native support for tool calling and tool-use loops.
+- **🛡️ Type Safe**: Built from the ground up with Go generics for maximum developer productivity and safety.
 
----
+## Installation
 
-## Concepts
-
-### Graph
-
-A `graph.Graph[State]` is a directed network of **nodes** wired together by **edges**. Each node receives the current `State`, performs its work (an LLM call, a tool invocation, a branching decision, etc.), and returns a `Command` describing how the state should change before the next node runs.
-
-```
-START ──► think ──► act ──► END
-               │
-               └──► END   (conditional)
+```bash
+go get github.com/masterkeysrd/loom
 ```
 
-Graphs are built with a fluent `Builder`:
+## Quick Start
 
-```go
-g, err := graph.New[MyState]().
-    WithName("planner").
-    WithCheckpointer(cp).
-    AddNode("think", thinkNode).
-    AddNode("act", actNode).
-    AddEdge(graph.START, "think").
-    AddConditionalEdge("think", "act",  func(s MyState) bool { return s.ShouldAct }).
-    AddConditionalEdge("think", graph.END, func(s MyState) bool { return !s.ShouldAct }).
-    AddEdge("act", graph.END).
-    Build()
-```
-
-### Nodes
-
-A `Node[State]` is any type that implements `Execute`:
-
-```go
-type Node[State any] interface {
-    Execute(context.Context, State) (Command[State], error)
-}
-```
-
-Use `graph.NodeFunc` to define lightweight inline nodes without a named type:
-
-```go
-builder.AddNode("llm", graph.NodeFunc(func(ctx context.Context, s MyState) (graph.Command[MyState], error) {
-    resp, err := model.Invoke(ctx, s.Messages)
-    if err != nil {
-        return nil, err
-    }
-    return graph.Update[MyState](func(s MyState) MyState {
-        s.Messages = append(s.Messages, resp)
-        return s
-    }), nil
-}))
-```
-
-### Commands
-
-A `Command[State]` describes a state mutation:
-
-| Type | Purpose |
-|---|---|
-| `graph.Update[State]` | Apply an arbitrary transformation to the state |
-| `graph.InterrupCmd[State]` | Pause execution and save a checkpoint for later resumption |
-
-### Checkpointing
-
-Attach a `Checkpointer` to save a snapshot after every node transition:
-
-```go
-db, _ := sql.Open("postgres", dsn)
-cp, _ := pg.NewCheckpointer(db)
-
-g, _ := graph.New[MyState]().
-    WithCheckpointer(cp).
-    // ...
-    Build()
-```
-
-Resume a paused graph by passing its `Location` back to `Execute` or `Stream`:
-
-```go
-snapshot, err := g.Execute(ctx, nil, &previousSnapshot.Location)
-```
-
-### Streaming
-
-`Graph.Stream` wraps `Execute` and produces an iterator of `StreamEvent` values. LLM token chunks are surfaced as `on_llm_chunk` events in real time:
-
-```go
-events, err := g.Stream(ctx, input, loc)
-
-for event, err := range events {
-    if err != nil { ... }
-    switch event.Event {
-    case graph.EventLLMChunk:
-        chunk := event.Data.(*message.AssistantChunk)
-        // forward to HTTP client
-    case "completed":
-        finalState := event.Data.(MyState)
-    case "interrupted":
-        // save event.Data.(MyState) location for resumption
-    }
-}
-```
-
----
-
-## LLM abstraction
-
-`llm.Model` wraps a `Provider` and a model name:
-
-```go
-provider, _ := ollama.NewDefaultProvider()
-model := llm.NewModel(provider, "qwen3-coder:30b")
-
-// Blocking
-resp, err := model.Invoke(ctx, messages)
-
-// Streaming
-stream, err := model.Stream(ctx, messages)
-for chunk, err := range stream { ... }
-```
-
-Implement `llm.Provider` to add a new backend (OpenAI, Google GenAI, etc.) and register it in an `llm.Registry`:
-
-```go
-registry := llm.NewRegistry()
-registry.Register("ollama", provider)
-
-p, err := registry.Get("ollama")
-```
-
----
-
-## Message types
-
-The `message` package provides strongly-typed conversation history compatible with standard LLM APIs:
-
-```go
-history := message.MessageList{
-    message.NewSystemText("You are a helpful assistant."),
-    message.NewUserText("What is the capital of France?"),
-}
-```
-
-Content is polymorphic — each message holds a `[]Block`. Currently `TextBlock` is supported; additional block kinds (images, tool calls) can be added without changing the message interfaces.
-
-Messages serialize to a flat JSON structure idiomatic for LLM APIs and compatible with PostgreSQL JSONB columns:
-
-```json
-[
-  {"role": "system",    "id": "...", "content": [{"kind": "text", "text": "You are a helpful assistant."}]},
-  {"role": "user",      "id": "...", "content": [{"kind": "text", "text": "What is the capital of France?"}]},
-  {"role": "assistant", "id": "...", "content": [{"kind": "text", "text": "Paris."}]}
-]
-```
-
----
-
-## Quick start
+Create a simple chat agent that loops until a specific condition is met.
 
 ```go
 package main
@@ -182,54 +34,117 @@ import (
     "fmt"
     "log"
 
-    "github.com/masterkeysrd/tasksmith/pkg/loom/graph"
-    "github.com/masterkeysrd/tasksmith/pkg/loom/llm"
-    "github.com/masterkeysrd/tasksmith/pkg/loom/llm/ollama"
-    "github.com/masterkeysrd/tasksmith/pkg/loom/message"
+    "github.com/masterkeysrd/loom/graph"
+    "github.com/masterkeysrd/loom/llm"
+    "github.com/masterkeysrd/loom/llm/openai"
+    "github.com/masterkeysrd/loom/message"
 )
 
-type State struct {
+type MyState struct {
     Messages message.MessageList
 }
 
 func main() {
     ctx := context.Background()
 
-    provider, err := ollama.NewDefaultProvider()
-    if err != nil {
-        log.Fatal(err)
-    }
-    model := llm.NewModel(provider, "qwen3-coder:30b")
+    // 1. Initialize an LLM provider
+    provider, _ := loomopenai.NewDefaultProvider()
+    model := llm.NewModel(provider, "gpt-4o")
 
-    g, err := graph.New[State]().
-        WithName("chat").
-        AddNode("llm", graph.NodeFunc(func(ctx context.Context, s State) (graph.Command[State], error) {
+    // 2. Build the workflow graph
+    builder := graph.New[MyState]().
+        WithName("chat-agent").
+        AddNode("llm", func(ctx context.Context, s MyState) (graph.Command[MyState], error) {
             resp, err := model.Invoke(ctx, s.Messages)
             if err != nil {
                 return nil, err
             }
-            return graph.Update[State](func(s State) State {
+            return graph.Update[MyState](func(s MyState) MyState {
                 s.Messages = append(s.Messages, resp)
                 return s
             }), nil
-        })).
-        AddEdge(graph.START, "llm").
-        AddEdge("llm", graph.END).
-        Build()
+        })
+
+    builder.AddEdge(graph.START, "llm")
+    builder.AddEdge("llm", graph.END)
+
+    g, _ := builder.Build()
+
+    // 3. Execute the graph
+    initialState := MyState{
+        Messages: message.MessageList{
+            message.NewUserText("What is the best way to weave a loom?"),
+        },
+    }
+
+    snapshot, err := g.Execute(ctx, graph.Update[MyState](func(s MyState) MyState {
+        return initialState
+    }), nil)
+
     if err != nil {
         log.Fatal(err)
     }
 
-    input := graph.Update[State](func(s State) State {
-        s.Messages = append(s.Messages, message.NewUserText("Hello!"))
-        return s
-    })
-
-    snapshot, err := g.Execute(ctx, input, nil)
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    fmt.Println(snapshot.State.Messages)
+    fmt.Println(snapshot.State.Messages.Last().GetContent().Text())
 }
 ```
+
+## Core Concepts
+
+### The Graph
+
+A `Graph[State]` is a network of **nodes** connected by **edges**.
+- **Nodes**: Units of work that receive the current state and return a `Command`.
+- **Edges**: Paths between nodes. They can be direct or **conditional**.
+- **Commands**: Instructions to the engine on how to update state or control flow (e.g., `Update`, `Interrupt`).
+
+### Checkpointing & Resumption
+
+Loom saves a "checkpoint" of your state after every node execution. This allows you to:
+- Resume interrupted workflows.
+- Implement "human-in-the-loop" by interrupting a graph and waiting for external input.
+- Audit the entire execution history of an agent.
+
+```go
+// Using SQLite for checkpointing
+db, _ := sql.Open("sqlite3", "loom.db")
+cp, _ := sqlite.NewCheckpointer(db)
+
+g, _ := graph.New[MyState]().
+    WithCheckpointer(cp).
+    // ...
+    Build()
+```
+
+### Advanced Memory
+
+As conversations grow, they can exceed the LLM's context window. `loom` provides automated tools to manage this:
+
+```go
+// Automatically summarize the conversation when it hits 4000 tokens
+summarizer, _ := memory.NewSummarizer(model, memory.SummarizerConfig{
+    TokenCounter: counter,
+    Triggers: []memory.SummarizerTrigger{
+        memory.TriggerSummaryOnTokenCount(4000),
+    },
+})
+
+// Or trim messages to fit a window
+trimmed, _ := message.TrimMessages(ctx, history, 4000, &message.TrimConfig{
+    Strategy:      message.TrimStrategyLast,
+    IncludeSystem: true,
+})
+```
+
+## Supported Providers
+
+| Provider | Package |
+|---|---|
+| OpenAI | `github.com/masterkeysrd/loom/llm/openai` |
+| Anthropic | `github.com/masterkeysrd/loom/llm/anthropic` |
+| Google Gemini | `github.com/masterkeysrd/loom/llm/genai` |
+| Ollama | `github.com/masterkeysrd/loom/llm/ollama` |
+
+## License
+
+MIT

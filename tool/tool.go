@@ -1,0 +1,171 @@
+package tool
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/masterkeysrd/loom/message"
+)
+
+// Definition describes a callable tool that can be offered to an LLM.
+// Schemas are inferred from Go types by [New] and must not be mutated after construction.
+type Definition struct {
+	Name         string
+	Title        string
+	Description  string
+	Annotation   Annotation
+	InputSchema  *jsonschema.Schema
+	OutputSchema *jsonschema.Schema
+}
+
+// Annotation defines the safety and execution profile of a tool.
+type Annotation struct {
+	// IsOpenWorld indicates if the tool interacts with resources outside
+	// the local machine (Internet, SaaS APIs, Remote Databases).
+	IsOpenWorld bool
+
+	// IsDangerous indicates if the tool can perform destructive actions
+	// (deleting files, dropping tables, killing system processes).
+	IsDangerous bool
+
+	// IsReadOnly indicates if the tool only retrieves data without
+	// modifying any state (local or remote).
+	IsReadOnly bool
+
+	// IsIdempotent indicates if the tool can be safely retried multiple
+	// times without unintended side effects.
+	IsIdempotent bool
+
+	// UserHint is a short description of the tool's impact to be
+	// displayed during a Human-In-The-Loop approval prompt.
+	UserHint string
+}
+
+// ToolHandler is the type-erased handler for a [Tool].
+// It receives a raw [message.ToolCall] and returns a [message.Tool] result
+// that can be appended directly to the conversation history.
+type ToolHandler func(context.Context, *message.ToolCall) (*message.Tool, error)
+
+// HandlerFunc is the typed handler variant accepted by [New].
+// The framework decodes and validates call.Args into In before invoking the
+// function. The output Out is JSON-encoded and placed in the [message.Tool]
+// content automatically so implementations never need to build message types.
+type HandlerFunc[In, Out any] func(context.Context, In) (Out, error)
+
+// TextContentProvider is an optional interface that tool output types can implement to
+// control how their result is rendered as plain text for the LLM. When Out
+// implements TextContentProvider, [AdaptHandler] calls TextContent() instead of JSON-encoding
+// the value. The structured Go value is still available via [message.Tool.Structured].
+type TextContentProvider interface {
+	TextContent() string
+}
+
+// Tool combines a [Definition] description with its executable [ToolHandler].
+// Obtain one via [New]; do not construct directly.
+type Tool struct {
+	Definition Definition
+	Annotation Annotation
+	Handler    ToolHandler
+}
+
+// Option is a functional option applied to a [Tool] after construction.
+type Option func(*Tool)
+
+// WithAnnotation sets the [Annotation] on the [Tool].
+func WithAnnotation(a Annotation) Option {
+	return func(d *Tool) {
+		d.Annotation = a
+		d.Definition.Annotation = a
+	}
+}
+
+// AdaptHandler wraps a typed [HandlerFunc] into a [ToolHandler] by:
+//   - Pre-resolving the given schema once so every call uses the cached form.
+//   - Validating call.Args against the resolved schema before invoking fn.
+//   - Decoding the validated map into In via a JSON round-trip.
+//   - JSON-encoding the Out value and placing it in the [message.Tool] content.
+func AdaptHandler[In, Out any](name string, schema *jsonschema.Resolved, fn HandlerFunc[In, Out]) ToolHandler {
+	return func(ctx context.Context, call *message.ToolCall) (*message.Tool, error) {
+		// Validate the raw argument map against the inferred JSON schema.
+		// map[string]any is the canonical "JSON value" form jsonschema expects.
+		if err := schema.Validate(call.Args); err != nil {
+			return nil, fmt.Errorf("tool %q: input validation failed: %w", name, err)
+		}
+
+		// Decode the validated args map into the strongly-typed input struct.
+		var input In
+		data, err := json.Marshal(call.Args)
+		if err != nil {
+			return nil, fmt.Errorf("tool %q: failed to marshal args: %w", name, err)
+		}
+		if err := json.Unmarshal(data, &input); err != nil {
+			return nil, fmt.Errorf("tool %q: failed to decode args into input type: %w", name, err)
+		}
+
+		out, err := fn(ctx, input)
+		if err != nil {
+			return nil, err
+		}
+
+		var text string
+		if p, ok := any(out).(TextContentProvider); ok {
+			text = p.TextContent()
+		} else {
+			outData, err := json.Marshal(out)
+			if err != nil {
+				return nil, fmt.Errorf("tool %q: failed to marshal output: %w", name, err)
+			}
+			text = string(outData)
+		}
+
+		return &message.Tool{
+			ToolCallID: call.ID,
+			Name:       call.Name,
+			Content: message.Content{&message.TextBlock{
+				Text: text,
+			}},
+			StructuredContent: out,
+		}, nil
+	}
+}
+
+// New creates a [Tool] from a typed [HandlerFunc] by:
+//   - Inferring InputSchema from In and OutputSchema from Out via reflection.
+//   - Pre-resolving the input schema at construction time for fast validation.
+//   - Adapting the typed handler into a [ToolHandler] via [AdaptHandler].
+//   - Applying any [Option] values (e.g. [WithAnnotation]) after construction.
+func New[In, Out any](name, title, description string, handler HandlerFunc[In, Out], opts ...Option) (*Tool, error) {
+	inputSchema, err := jsonschema.For[In](nil)
+	if err != nil {
+		return nil, fmt.Errorf("tool %q: failed to infer input schema: %w", name, err)
+	}
+
+	outputSchema, err := jsonschema.For[Out](nil)
+	if err != nil {
+		return nil, fmt.Errorf("tool %q: failed to infer output schema: %w", name, err)
+	}
+
+	// Resolve the input schema once at construction time so validation on every
+	// call uses the pre-resolved form without re-processing the schema.
+	resolvedInput, err := inputSchema.Resolve(nil)
+	if err != nil {
+		return nil, fmt.Errorf("tool %q: failed to resolve input schema: %w", name, err)
+	}
+
+	def := &Tool{
+		Definition: Definition{
+			Name:         name,
+			Title:        title,
+			Description:  description,
+			InputSchema:  inputSchema,
+			OutputSchema: outputSchema,
+		},
+		Handler: AdaptHandler(name, resolvedInput, handler),
+	}
+	for _, opt := range opts {
+		opt(def)
+	}
+	return def, nil
+}

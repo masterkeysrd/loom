@@ -32,6 +32,35 @@ func toChatCompletionNewParams(request *llm.Request) (openai.ChatCompletionNewPa
 		params.MaxCompletionTokens = openai.Int(int64(request.MaxTokens))
 	}
 
+	if request.Temperature != nil {
+		params.Temperature = openai.Float(float64(*request.Temperature))
+	}
+
+	if request.TopP != nil {
+		params.TopP = openai.Float(float64(*request.TopP))
+	}
+
+	if request.PresencePenalty != nil {
+		params.PresencePenalty = openai.Float(float64(*request.PresencePenalty))
+	}
+
+	if request.FrequencyPenalty != nil {
+		params.FrequencyPenalty = openai.Float(float64(*request.FrequencyPenalty))
+	}
+
+	if len(request.Stop) > 0 {
+		params.Stop = openai.ChatCompletionNewParamsStopUnion{
+			OfStringArray: request.Stop,
+		}
+	}
+
+	if request.ResponseFormat == "json_object" {
+		rf := shared.NewResponseFormatJSONObjectParam()
+		params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONObject: &rf,
+		}
+	}
+
 	for _, msg := range request.Messages {
 		switch m := msg.(type) {
 		case *message.System:

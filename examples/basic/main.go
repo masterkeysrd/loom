@@ -36,7 +36,7 @@ func main() {
 		if strings.Contains(strings.ToLower(state.Input), "math") || strings.Contains(state.Input, "+") {
 			category = "math"
 		}
-		
+
 		// Return an Update command to modify the state
 		return graph.Update[AppState](func(s AppState) AppState {
 			s.Category = category

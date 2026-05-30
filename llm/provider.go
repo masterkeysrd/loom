@@ -55,6 +55,27 @@ type Request struct {
 	// MaxTokens is an optional limit on the number of tokens in the response.
 	// Providers that do not support this parameter may ignore it.
 	MaxTokens int
+
+	// Temperature controls randomness. Higher values make the output more random.
+	Temperature *float32
+
+	// TopP controls diversity via nucleus sampling.
+	TopP *float32
+
+	// TopK limits the vocabulary to the top K tokens.
+	TopK *int
+
+	// PresencePenalty penalizes tokens based on whether they have appeared in the text so far.
+	PresencePenalty *float32
+
+	// FrequencyPenalty penalizes tokens based on their existing frequency in the text so far.
+	FrequencyPenalty *float32
+
+	// Stop is a list of sequences where the model will stop generating further tokens.
+	Stop []string
+
+	// ResponseFormat specifies the format of the output (e.g. "json_object").
+	ResponseFormat string
 }
 
 // StreamResponse is an iterator over streaming chunks from an LLM provider.

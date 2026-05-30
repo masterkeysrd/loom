@@ -19,6 +19,22 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 		MaxTokens: int64(request.MaxTokens),
 	}
 
+	if request.Temperature != nil {
+		anthropicReq.Temperature = anthropic.Float(float64(*request.Temperature))
+	}
+
+	if request.TopP != nil {
+		anthropicReq.TopP = anthropic.Float(float64(*request.TopP))
+	}
+
+	if request.TopK != nil {
+		anthropicReq.TopK = anthropic.Int(int64(*request.TopK))
+	}
+
+	if len(request.Stop) > 0 {
+		anthropicReq.StopSequences = request.Stop
+	}
+
 	// mark if the tool was completed.
 	toolUsage := make(map[string]bool)
 	registerToolUsage := func(toolCallID string, used bool) {

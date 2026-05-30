@@ -49,7 +49,9 @@ func main() {
 
     // 1. Initialize an LLM provider
     provider, _ := loomopenai.NewDefaultProvider()
-    model := llm.NewModel(provider, "gpt-4o")
+    model := llm.NewModel(provider, "gpt-4o").
+        WithTemperature(0.7).
+        WithMaxTokens(1000)
 
     // 2. Build the workflow graph
     builder := graph.New[MyState]().

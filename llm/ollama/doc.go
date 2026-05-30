@@ -16,6 +16,6 @@
 //	p, err := ollama.NewDefaultProvider()
 //	if err != nil { ... }
 //
-//	model := llm.NewModel(p, "qwen3-coder:30b")
+//	model := llm.NewModel(p, "qwen3-coder:30b", nil)
 //	resp, err := model.Invoke(ctx, messages)
 package loomollama

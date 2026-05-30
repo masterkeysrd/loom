@@ -27,6 +27,38 @@ func toGenerateContentArgs(req *llm.Request) ([]*genai.Content, *genai.GenerateC
 		},
 	}
 
+	if req.MaxTokens > 0 {
+		config.MaxOutputTokens = int32(req.MaxTokens)
+	}
+
+	if req.Temperature != nil {
+		config.Temperature = genai.Ptr(*req.Temperature)
+	}
+
+	if req.TopP != nil {
+		config.TopP = genai.Ptr(*req.TopP)
+	}
+
+	if req.TopK != nil {
+		config.TopK = genai.Ptr(float32(*req.TopK))
+	}
+
+	if req.PresencePenalty != nil {
+		config.PresencePenalty = genai.Ptr(*req.PresencePenalty)
+	}
+
+	if req.FrequencyPenalty != nil {
+		config.FrequencyPenalty = genai.Ptr(*req.FrequencyPenalty)
+	}
+
+	if len(req.Stop) > 0 {
+		config.StopSequences = req.Stop
+	}
+
+	if req.ResponseFormat == "json_object" {
+		config.ResponseMIMEType = "application/json"
+	}
+
 	var contents []*genai.Content
 
 	for i, msg := range req.Messages {

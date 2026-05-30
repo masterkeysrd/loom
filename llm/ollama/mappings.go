@@ -22,6 +22,30 @@ func toChatRequest(request *llm.Request) (*api.ChatRequest, error) {
 		options["num_ctx"] = request.MaxTokens
 	}
 
+	if request.Temperature != nil {
+		options["temperature"] = *request.Temperature
+	}
+
+	if request.TopP != nil {
+		options["top_p"] = *request.TopP
+	}
+
+	if request.TopK != nil {
+		options["top_k"] = *request.TopK
+	}
+
+	if request.PresencePenalty != nil {
+		options["presence_penalty"] = *request.PresencePenalty
+	}
+
+	if request.FrequencyPenalty != nil {
+		options["frequency_penalty"] = *request.FrequencyPenalty
+	}
+
+	if len(request.Stop) > 0 {
+		options["stop"] = request.Stop
+	}
+
 	ollamaRequest := api.ChatRequest{
 		Model:   request.Model,
 		Options: options,

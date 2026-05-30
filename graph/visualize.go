@@ -52,7 +52,7 @@ func (g *Graph[S]) ToMermaid() string {
 
 			// Use the type string to match generic types (e.g., SimpleEdge[...])
 			typeStr := v.Type().String()
-			
+
 			if strings.Contains(typeStr, "SimpleEdge") {
 				next := v.FieldByName("Next").String()
 				sb.WriteString(fmt.Sprintf("  %s --> %s\n", from, next))

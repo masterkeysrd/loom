@@ -13,6 +13,27 @@ import (
 type ModelConfig struct {
 	// MaxTokens is the maximum number of tokens that the model is allowed to use in the response, this is used for context window management and to avoid out of memory errors.
 	MaxTokens int
+
+	// Temperature controls randomness. Higher values make the output more random.
+	Temperature *float32
+
+	// TopP controls diversity via nucleus sampling.
+	TopP *float32
+
+	// TopK limits the vocabulary to the top K tokens.
+	TopK *int
+
+	// PresencePenalty penalizes tokens based on whether they have appeared in the text so far.
+	PresencePenalty *float32
+
+	// FrequencyPenalty penalizes tokens based on their existing frequency in the text so far.
+	FrequencyPenalty *float32
+
+	// Stop is a list of sequences where the model will stop generating further tokens.
+	Stop []string
+
+	// ResponseFormat specifies the format of the output (e.g. "json_object").
+	ResponseFormat string
 }
 
 // Model wraps a [Provider] and a specific model name, exposing both a
@@ -62,6 +83,73 @@ func (m *Model) BindToolDefs(defs ...tool.Definition) *Model {
 	clone := m.clone()
 	clone.tools = append(clone.tools, defs...)
 
+	return clone
+}
+
+// WithConfig returns a clone of the model with the given [ModelConfig].
+func (m *Model) WithConfig(config ModelConfig) *Model {
+	clone := m.clone()
+	clone.config = &config
+	return clone
+}
+
+// WithMaxTokens returns a clone of the model with MaxTokens set.
+func (m *Model) WithMaxTokens(max int) *Model {
+	clone := m.clone()
+	if clone.config == nil {
+		clone.config = &ModelConfig{}
+	}
+	clone.config.MaxTokens = max
+	return clone
+}
+
+// WithTemperature returns a clone of the model with Temperature set.
+func (m *Model) WithTemperature(t float32) *Model {
+	clone := m.clone()
+	if clone.config == nil {
+		clone.config = &ModelConfig{}
+	}
+	clone.config.Temperature = &t
+	return clone
+}
+
+// WithTopP returns a clone of the model with TopP set.
+func (m *Model) WithTopP(p float32) *Model {
+	clone := m.clone()
+	if clone.config == nil {
+		clone.config = &ModelConfig{}
+	}
+	clone.config.TopP = &p
+	return clone
+}
+
+// WithTopK returns a clone of the model with TopK set.
+func (m *Model) WithTopK(k int) *Model {
+	clone := m.clone()
+	if clone.config == nil {
+		clone.config = &ModelConfig{}
+	}
+	clone.config.TopK = &k
+	return clone
+}
+
+// WithStop returns a clone of the model with Stop sequences set.
+func (m *Model) WithStop(stop ...string) *Model {
+	clone := m.clone()
+	if clone.config == nil {
+		clone.config = &ModelConfig{}
+	}
+	clone.config.Stop = stop
+	return clone
+}
+
+// WithJSON returns a clone of the model with ResponseFormat set to "json_object".
+func (m *Model) WithJSON() *Model {
+	clone := m.clone()
+	if clone.config == nil {
+		clone.config = &ModelConfig{}
+	}
+	clone.config.ResponseFormat = "json_object"
 	return clone
 }
 
@@ -123,6 +211,13 @@ func (m *Model) Stream(ctx context.Context, messages []message.Message) (StreamR
 
 	if m.config != nil {
 		req.MaxTokens = m.config.MaxTokens
+		req.Temperature = m.config.Temperature
+		req.TopP = m.config.TopP
+		req.TopK = m.config.TopK
+		req.PresencePenalty = m.config.PresencePenalty
+		req.FrequencyPenalty = m.config.FrequencyPenalty
+		req.Stop = m.config.Stop
+		req.ResponseFormat = m.config.ResponseFormat
 	}
 
 	stream, err := m.provider.Stream(ctx, req)
@@ -160,6 +255,11 @@ func (m *Model) clone() *Model {
 	if len(m.tools) > 0 {
 		cp.tools = make([]tool.Definition, len(m.tools))
 		copy(cp.tools, m.tools)
+	}
+
+	if m.config != nil {
+		cfg := *m.config
+		cp.config = &cfg
 	}
 
 	return &cp

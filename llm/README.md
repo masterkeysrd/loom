@@ -60,6 +60,30 @@ import "github.com/masterkeysrd/loom/llm/ollama"
 p, _ := loomollama.NewDefaultProvider()
 ```
 
+## Configuring the Model
+
+The `Model` type supports a fluent API for fine-tuning LLM parameters. Each configuration method returns a cloned model with the new settings, making it safe to reuse base models with different parameters.
+
+```go
+model := llm.NewModel(provider, "gpt-4o").
+    WithTemperature(0.7).
+    WithMaxTokens(1000).
+    WithStop("###", "Observation:").
+    WithJSON() // Force JSON mode
+
+// Invoke with these specific settings
+resp, err := model.Invoke(ctx, messages)
+```
+
+Available configuration methods:
+- `WithTemperature(float32)`: Controls randomness (0.0 to 2.0).
+- `WithTopP(float32)`: Nucleus sampling diversity.
+- `WithTopK(int)`: Limits vocabulary to top K tokens.
+- `WithMaxTokens(int)`: Sets a limit on output length.
+- `WithStop(...string)`: Custom stop sequences.
+- `WithJSON()`: Enables JSON response format (provider-specific).
+- `WithConfig(llm.ModelConfig)`: Bulk configuration using a struct.
+
 ## Using the Model Wrapper
 
 The `Model` type provides the primary entry point for invoking LLMs.

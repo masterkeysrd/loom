@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/message"
 	"github.com/masterkeysrd/loom/tool"
 	"github.com/masterkeysrd/loom/trace"
@@ -34,6 +35,11 @@ type ModelConfig struct {
 
 	// ResponseFormat specifies the format of the output (e.g. "json_object").
 	ResponseFormat string
+
+	// ResponseSchema is an optional JSON schema that the model's response
+	// must adhere to. When set, providers that support structured outputs
+	// will enforce this schema at the API level.
+	ResponseSchema *jsonschema.Schema
 
 	// Thinking specifies the thinking/reasoning configuration for the model.
 	Thinking *ThinkingConfig
@@ -165,6 +171,18 @@ func (m *Model) WithJSON() *Model {
 	return clone
 }
 
+// WithStructuredOutput returns a clone of the model with a specific JSON schema
+// for the response. Providers that support structured outputs will use this
+// schema to constrain the LLM's output.
+func (m *Model) WithStructuredOutput(schema *jsonschema.Schema) *Model {
+	clone := m.clone()
+	if clone.config == nil {
+		clone.config = &ModelConfig{}
+	}
+	clone.config.ResponseSchema = schema
+	return clone
+}
+
 // WithThinking returns a clone of the model with thinking enabled and a specific budget.
 func (m *Model) WithThinking(budget int) *Model {
 	clone := m.clone()
@@ -269,6 +287,7 @@ func (m *Model) Stream(ctx context.Context, messages []message.Message) (StreamR
 		req.FrequencyPenalty = m.config.FrequencyPenalty
 		req.Stop = m.config.Stop
 		req.ResponseFormat = m.config.ResponseFormat
+		req.ResponseSchema = m.config.ResponseSchema
 		req.Thinking = m.config.Thinking
 	}
 

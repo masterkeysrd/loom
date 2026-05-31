@@ -122,6 +122,25 @@ func toChatCompletionNewParams(request *llm.Request) (openai.ChatCompletionNewPa
 		}
 	}
 
+	if request.ResponseSchema != nil {
+		name := request.ResponseSchema.Title
+		if name == "" {
+			name = "response"
+		}
+		// OpenAI requires name to be a-z, A-Z, 0-9, or contain underscores and dashes.
+		// For now we'll just use the name as is or a safe default.
+		params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONSchema: &shared.ResponseFormatJSONSchemaParam{
+				JSONSchema: shared.ResponseFormatJSONSchemaJSONSchemaParam{
+					Name:        name,
+					Strict:      openai.Bool(true),
+					Description: openai.String(request.ResponseSchema.Description),
+					Schema:      request.ResponseSchema,
+				},
+			},
+		}
+	}
+
 	params.StreamOptions = openai.ChatCompletionStreamOptionsParam{
 		IncludeUsage: openai.Bool(true),
 	}

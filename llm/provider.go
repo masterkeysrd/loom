@@ -4,6 +4,7 @@ import (
 	"context"
 	"iter"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/message"
 	"github.com/masterkeysrd/loom/tool"
 )
@@ -76,6 +77,10 @@ type Request struct {
 
 	// ResponseFormat specifies the format of the output (e.g. "json_object").
 	ResponseFormat string
+
+	// ResponseSchema is an optional JSON schema that the model's response
+	// must adhere to.
+	ResponseSchema *jsonschema.Schema
 
 	// Thinking specifies the thinking/reasoning configuration for the request.
 	Thinking *ThinkingConfig

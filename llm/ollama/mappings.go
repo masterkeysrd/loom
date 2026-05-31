@@ -51,6 +51,18 @@ func toChatRequest(request *llm.Request) (*api.ChatRequest, error) {
 		Options: options,
 	}
 
+	if request.ResponseFormat == "json_object" {
+		ollamaRequest.Format = json.RawMessage(`"json"`)
+	}
+
+	if request.ResponseSchema != nil {
+		schemaBytes, err := json.Marshal(request.ResponseSchema)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal response schema: %w", err)
+		}
+		ollamaRequest.Format = json.RawMessage(schemaBytes)
+	}
+
 	if request.Thinking != nil {
 		if request.Thinking.Effort != "" {
 			ollamaRequest.Think = &api.ThinkValue{Value: request.Thinking.Effort}

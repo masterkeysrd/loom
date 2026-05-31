@@ -73,6 +73,10 @@ model := llm.NewModel(provider, "gpt-4o").
     WithThinkingEffort("high").
     WithJSON() // Force JSON mode
 
+// Or use Structured Output with a schema
+schema, _ := jsonschema.For[MyStruct](nil)
+model = model.WithStructuredOutput(schema)
+
 // Invoke with these specific settings
 resp, err := model.Invoke(ctx, messages)
 ```
@@ -84,6 +88,7 @@ Available configuration methods:
 - `WithMaxTokens(int)`: Sets a limit on output length.
 - `WithStop(...string)`: Custom stop sequences.
 - `WithJSON()`: Enables JSON response format (provider-specific).
+- `WithStructuredOutput(*jsonschema.Schema)`: Enforces a specific JSON schema for the response.
 - `WithThinking(budget int)`: Enables thinking/reasoning with a specific token budget.
 - `WithThinkingEffort(effort string)`: Sets reasoning intensity (e.g., "low", "medium", "high").
 - `WithAdaptiveThinking()`: Enables adaptive reasoning mode (Anthropic).

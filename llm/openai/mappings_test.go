@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
 )
 
@@ -144,5 +146,33 @@ func TestToUserMessageParamDocument(t *testing.T) {
 	file := content[0].(map[string]any)["file"].(map[string]any)
 	if file["file_id"] != "file-123" {
 		t.Errorf("expected file_id to be file-123, got %#v", file["file_id"])
+	}
+}
+
+func TestToChatCompletionNewParamsStructuredOutput(t *testing.T) {
+	schema, _ := jsonschema.For[map[string]string](nil)
+	schema.Title = "TestSchema"
+	schema.Description = "A test schema"
+
+	req := &llm.Request{
+		Model:          "gpt-4o",
+		ResponseSchema: schema,
+	}
+
+	params, err := toChatCompletionNewParams(req)
+	if err != nil {
+		t.Fatalf("toChatCompletionNewParams failed: %v", err)
+	}
+
+	if params.ResponseFormat.OfJSONSchema == nil {
+		t.Fatal("ResponseFormat.OfJSONSchema should be set")
+	}
+
+	jsonSchema := params.ResponseFormat.OfJSONSchema.JSONSchema
+	if jsonSchema.Name != "TestSchema" {
+		t.Errorf("expected Name to be TestSchema, got %q", jsonSchema.Name)
+	}
+	if !jsonSchema.Strict.Value {
+		t.Error("expected Strict to be true")
 	}
 }

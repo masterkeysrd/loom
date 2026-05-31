@@ -59,6 +59,11 @@ func toGenerateContentArgs(req *llm.Request) ([]*genai.Content, *genai.GenerateC
 		config.ResponseMIMEType = "application/json"
 	}
 
+	if req.ResponseSchema != nil {
+		config.ResponseMIMEType = "application/json"
+		config.ResponseJsonSchema = req.ResponseSchema
+	}
+
 	if req.Thinking != nil {
 		if config.ThinkingConfig == nil {
 			config.ThinkingConfig = &genai.ThinkingConfig{}

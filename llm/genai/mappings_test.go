@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
 	"google.golang.org/genai"
 )
@@ -203,5 +205,26 @@ func TestToUserPartsMultimodal(t *testing.T) {
 	}
 	if parts[1].InlineData == nil || parts[1].InlineData.MIMEType != "image/png" {
 		t.Errorf("expected parts[1] to be inline data image/png, got %#v", parts[1].InlineData)
+	}
+}
+
+func TestToGenerateContentArgsStructuredOutput(t *testing.T) {
+	schema, _ := jsonschema.For[map[string]string](nil)
+
+	req := &llm.Request{
+		Model:          "gemini-1.5-flash",
+		ResponseSchema: schema,
+	}
+
+	_, config, err := toGenerateContentArgs(req)
+	if err != nil {
+		t.Fatalf("toGenerateContentArgs failed: %v", err)
+	}
+
+	if config.ResponseMIMEType != "application/json" {
+		t.Errorf("expected ResponseMIMEType to be application/json, got %q", config.ResponseMIMEType)
+	}
+	if config.ResponseJsonSchema != schema {
+		t.Error("ResponseJsonSchema not set correctly in config")
 	}
 }

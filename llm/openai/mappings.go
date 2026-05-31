@@ -61,6 +61,10 @@ func toChatCompletionNewParams(request *llm.Request) (openai.ChatCompletionNewPa
 		}
 	}
 
+	params.StreamOptions = openai.ChatCompletionStreamOptionsParam{
+		IncludeUsage: openai.Bool(true),
+	}
+
 	if request.Thinking != nil && request.Thinking.Effort != "" {
 		params.ReasoningEffort = shared.ReasoningEffort(request.Thinking.Effort)
 	}
@@ -217,9 +221,11 @@ func toAssistantChunk(chunk *openai.ChatCompletionChunk) (message.AssistantChunk
 
 	if chunk.Usage.TotalTokens > 0 {
 		res.Metrics = &message.TokenMetrics{
-			PromptTokens:     int(chunk.Usage.PromptTokens),
-			CompletionTokens: int(chunk.Usage.CompletionTokens),
-			TotalTokens:      int(chunk.Usage.TotalTokens),
+			PromptTokens:       int(chunk.Usage.PromptTokens),
+			CompletionTokens:   int(chunk.Usage.CompletionTokens),
+			TotalTokens:        int(chunk.Usage.TotalTokens),
+			CachedPromptTokens: int(chunk.Usage.PromptTokensDetails.CachedTokens),
+			ReasoningTokens:    int(chunk.Usage.CompletionTokensDetails.ReasoningTokens),
 		}
 	}
 

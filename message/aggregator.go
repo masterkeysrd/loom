@@ -47,6 +47,12 @@ func (a *AssistantAggregator) Add(chunk *AssistantChunk) {
 		a.metrics.PromptTokens += chunk.Metrics.PromptTokens
 		a.metrics.CompletionTokens += chunk.Metrics.CompletionTokens
 		a.metrics.TotalTokens += chunk.Metrics.TotalTokens
+		a.metrics.CachedPromptTokens += chunk.Metrics.CachedPromptTokens
+		a.metrics.CacheWriteTokens += chunk.Metrics.CacheWriteTokens
+		a.metrics.ReasoningTokens += chunk.Metrics.ReasoningTokens
+		a.metrics.TotalDuration += chunk.Metrics.TotalDuration
+		a.metrics.PromptDuration += chunk.Metrics.PromptDuration
+		a.metrics.CompletionDuration += chunk.Metrics.CompletionDuration
 	}
 }
 

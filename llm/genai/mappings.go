@@ -355,9 +355,11 @@ func toAssistantChunk(resp *genai.GenerateContentResponse) (message.AssistantChu
 
 	if resp.UsageMetadata != nil {
 		chunk.Metrics = &message.TokenMetrics{
-			PromptTokens:     int(resp.UsageMetadata.PromptTokenCount),
-			CompletionTokens: int(resp.UsageMetadata.CandidatesTokenCount),
-			TotalTokens:      int(resp.UsageMetadata.TotalTokenCount),
+			PromptTokens:       int(resp.UsageMetadata.PromptTokenCount),
+			CompletionTokens:   int(resp.UsageMetadata.CandidatesTokenCount),
+			TotalTokens:        int(resp.UsageMetadata.TotalTokenCount),
+			CachedPromptTokens: int(resp.UsageMetadata.CachedContentTokenCount),
+			ReasoningTokens:    int(resp.UsageMetadata.ThoughtsTokenCount),
 		}
 	}
 

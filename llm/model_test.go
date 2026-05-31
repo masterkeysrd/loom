@@ -71,6 +71,36 @@ func TestModel_FluentConfig(t *testing.T) {
 	}
 }
 
+func TestModel_ThinkingConfig(t *testing.T) {
+	provider := &modelMockProvider{}
+	model, _ := llm.NewModel(provider, "test-model", nil)
+
+	configuredModel := model.
+		WithThinking(2048).
+		WithThinkingEffort("high").
+		WithAdaptiveThinking()
+
+	_, _ = configuredModel.Stream(context.Background(), nil)
+
+	req := provider.lastRequest
+	if req == nil {
+		t.Fatal("expected request to be captured")
+	}
+
+	if req.Thinking == nil {
+		t.Fatal("expected Thinking config to be set")
+	}
+	if req.Thinking.Budget != 2048 {
+		t.Errorf("expected Budget 2048, got %d", req.Thinking.Budget)
+	}
+	if req.Thinking.Effort != "high" {
+		t.Errorf("expected Effort high, got %q", req.Thinking.Effort)
+	}
+	if !req.Thinking.Adaptive {
+		t.Error("expected Adaptive to be true")
+	}
+}
+
 func TestModel_CloneDeepCopiesConfig(t *testing.T) {
 	provider := &modelMockProvider{}
 	model, _ := llm.NewModel(provider, "test-model", &llm.ModelConfig{MaxTokens: 10})

@@ -59,6 +59,19 @@ func toGenerateContentArgs(req *llm.Request) ([]*genai.Content, *genai.GenerateC
 		config.ResponseMIMEType = "application/json"
 	}
 
+	if req.Thinking != nil {
+		if config.ThinkingConfig == nil {
+			config.ThinkingConfig = &genai.ThinkingConfig{}
+		}
+		if req.Thinking.Budget > 0 {
+			config.ThinkingConfig.IncludeThoughts = true
+			config.ThinkingConfig.ThinkingBudget = genai.Ptr(int32(req.Thinking.Budget))
+		}
+		if req.Thinking.Effort != "" {
+			config.ThinkingConfig.ThinkingLevel = genai.ThinkingLevel(req.Thinking.Effort)
+		}
+	}
+
 	var contents []*genai.Content
 
 	for i, msg := range req.Messages {

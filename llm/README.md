@@ -69,6 +69,8 @@ model := llm.NewModel(provider, "gpt-4o").
     WithTemperature(0.7).
     WithMaxTokens(1000).
     WithStop("###", "Observation:").
+    WithThinking(2048).
+    WithThinkingEffort("high").
     WithJSON() // Force JSON mode
 
 // Invoke with these specific settings
@@ -82,6 +84,9 @@ Available configuration methods:
 - `WithMaxTokens(int)`: Sets a limit on output length.
 - `WithStop(...string)`: Custom stop sequences.
 - `WithJSON()`: Enables JSON response format (provider-specific).
+- `WithThinking(budget int)`: Enables thinking/reasoning with a specific token budget.
+- `WithThinkingEffort(effort string)`: Sets reasoning intensity (e.g., "low", "medium", "high").
+- `WithAdaptiveThinking()`: Enables adaptive reasoning mode (Anthropic).
 - `WithConfig(llm.ModelConfig)`: Bulk configuration using a struct.
 
 ## Using the Model Wrapper

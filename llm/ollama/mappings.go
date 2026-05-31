@@ -51,6 +51,14 @@ func toChatRequest(request *llm.Request) (*api.ChatRequest, error) {
 		Options: options,
 	}
 
+	if request.Thinking != nil {
+		if request.Thinking.Effort != "" {
+			ollamaRequest.Think = &api.ThinkValue{Value: request.Thinking.Effort}
+		} else if request.Thinking.Budget > 0 || request.Thinking.Adaptive {
+			ollamaRequest.Think = &api.ThinkValue{Value: true}
+		}
+	}
+
 	ollamaRequest.Messages = make([]api.Message, len(request.Messages))
 	for i, msg := range request.Messages {
 		ollamaMsg, err := toAPIMessage(msg)

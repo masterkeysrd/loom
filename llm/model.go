@@ -34,6 +34,18 @@ type ModelConfig struct {
 
 	// ResponseFormat specifies the format of the output (e.g. "json_object").
 	ResponseFormat string
+
+	// Thinking specifies the thinking/reasoning configuration for the model.
+	Thinking *ThinkingConfig
+}
+
+type ThinkingConfig struct {
+	// Budget is the maximum number of tokens for reasoning (Anthropic, Gemini).
+	Budget int
+	// Effort sets the reasoning intensity (OpenAI: low, medium, high; Gemini: ThinkingLevel; Anthropic: OutputConfig effort).
+	Effort string
+	// Adaptive enables adaptive thinking mode (Anthropic).
+	Adaptive bool
 }
 
 // Model wraps a [Provider] and a specific model name, exposing both a
@@ -153,6 +165,45 @@ func (m *Model) WithJSON() *Model {
 	return clone
 }
 
+// WithThinking returns a clone of the model with thinking enabled and a specific budget.
+func (m *Model) WithThinking(budget int) *Model {
+	clone := m.clone()
+	if clone.config == nil {
+		clone.config = &ModelConfig{}
+	}
+	if clone.config.Thinking == nil {
+		clone.config.Thinking = &ThinkingConfig{}
+	}
+	clone.config.Thinking.Budget = budget
+	return clone
+}
+
+// WithThinkingEffort returns a clone of the model with a specific thinking effort.
+func (m *Model) WithThinkingEffort(effort string) *Model {
+	clone := m.clone()
+	if clone.config == nil {
+		clone.config = &ModelConfig{}
+	}
+	if clone.config.Thinking == nil {
+		clone.config.Thinking = &ThinkingConfig{}
+	}
+	clone.config.Thinking.Effort = effort
+	return clone
+}
+
+// WithAdaptiveThinking returns a clone of the model with adaptive thinking enabled.
+func (m *Model) WithAdaptiveThinking() *Model {
+	clone := m.clone()
+	if clone.config == nil {
+		clone.config = &ModelConfig{}
+	}
+	if clone.config.Thinking == nil {
+		clone.config.Thinking = &ThinkingConfig{}
+	}
+	clone.config.Thinking.Adaptive = true
+	return clone
+}
+
 // Invoke sends messages to the model and blocks until the full response is
 // assembled. It internally calls [Model.Stream] and aggregates all chunks into
 // a single [message.Assistant] before returning.
@@ -218,6 +269,7 @@ func (m *Model) Stream(ctx context.Context, messages []message.Message) (StreamR
 		req.FrequencyPenalty = m.config.FrequencyPenalty
 		req.Stop = m.config.Stop
 		req.ResponseFormat = m.config.ResponseFormat
+		req.Thinking = m.config.Thinking
 	}
 
 	stream, err := m.provider.Stream(ctx, req)
@@ -259,6 +311,10 @@ func (m *Model) clone() *Model {
 
 	if m.config != nil {
 		cfg := *m.config
+		if m.config.Thinking != nil {
+			th := *m.config.Thinking
+			cfg.Thinking = &th
+		}
 		cp.config = &cfg
 	}
 

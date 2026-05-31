@@ -76,6 +76,9 @@ type Request struct {
 
 	// ResponseFormat specifies the format of the output (e.g. "json_object").
 	ResponseFormat string
+
+	// Thinking specifies the thinking/reasoning configuration for the request.
+	Thinking *ThinkingConfig
 }
 
 // StreamResponse is an iterator over streaming chunks from an LLM provider.

@@ -61,6 +61,10 @@ func toChatCompletionNewParams(request *llm.Request) (openai.ChatCompletionNewPa
 		}
 	}
 
+	if request.Thinking != nil && request.Thinking.Effort != "" {
+		params.ReasoningEffort = shared.ReasoningEffort(request.Thinking.Effort)
+	}
+
 	for _, msg := range request.Messages {
 		switch m := msg.(type) {
 		case *message.System:

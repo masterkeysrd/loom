@@ -35,6 +35,24 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 		anthropicReq.StopSequences = request.Stop
 	}
 
+	if request.Thinking != nil {
+		if request.Thinking.Budget > 0 || request.Thinking.Adaptive {
+			if request.Thinking.Adaptive {
+				anthropicReq.Thinking = anthropic.ThinkingConfigParamUnion{
+					OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{},
+				}
+			} else {
+				anthropicReq.Thinking = anthropic.ThinkingConfigParamOfEnabled(int64(request.Thinking.Budget))
+			}
+		}
+
+		if request.Thinking.Effort != "" {
+			anthropicReq.OutputConfig = anthropic.OutputConfigParam{
+				Effort: anthropic.OutputConfigEffort(request.Thinking.Effort),
+			}
+		}
+	}
+
 	// mark if the tool was completed.
 	toolUsage := make(map[string]bool)
 	registerToolUsage := func(toolCallID string, used bool) {

@@ -3,11 +3,33 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/message"
 )
+
+// ErrInvalidInput is a sentinel error for any tool input validation failure.
+var ErrInvalidInput = errors.New("tool input validation failed")
+
+// ValidationError provides context for a validation failure.
+type ValidationError struct {
+	ToolName string
+	Err      error // The underlying jsonschema error
+}
+
+func (e *ValidationError) Error() string {
+	return fmt.Sprintf("tool %q: %v: %v", e.ToolName, ErrInvalidInput, e.Err)
+}
+
+func (e *ValidationError) Unwrap() error {
+	return e.Err
+}
+
+func (e *ValidationError) Is(target error) bool {
+	return target == ErrInvalidInput
+}
 
 // Definition describes a callable tool that can be offered to an LLM.
 // Schemas are inferred from Go types by [New] and must not be mutated after construction.
@@ -91,7 +113,7 @@ func AdaptHandler[In, Out any](name string, schema *jsonschema.Resolved, fn Hand
 		// Validate the raw argument map against the inferred JSON schema.
 		// map[string]any is the canonical "JSON value" form jsonschema expects.
 		if err := schema.Validate(call.Args); err != nil {
-			return nil, fmt.Errorf("tool %q: input validation failed: %w", name, err)
+			return nil, &ValidationError{ToolName: name, Err: err}
 		}
 
 		// Decode the validated args map into the strongly-typed input struct.

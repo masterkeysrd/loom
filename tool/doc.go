@@ -6,6 +6,21 @@
 // automatically infers and resolves the input and output JSON schemas via
 // reflection so callers never have to write schema boilerplate.
 //
+// # Error Handling
+//
+// The framework provides sentinel errors to help applications manage tool execution
+// failures gracefully. When a tool is called with arguments that do not match its
+// input schema, [Container.Call] returns a [ValidationError] that satisfies [ErrInvalidInput].
+// Applications can use [errors.Is] or [errors.As] to detect these failures and decide
+// how to report them back to the LLM (e.g., by providing schema feedback).
+//
+// Example:
+//
+//	resp, err := container.Call(ctx, call)
+//	if errors.Is(err, tool.ErrInvalidInput) {
+//	    // Handle validation error (e.g., tell the LLM it sent bad arguments)
+//	}
+//
 // Example:
 //
 //	type WeatherInput struct {

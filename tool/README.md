@@ -41,3 +41,29 @@ req := &llm.Request{
     Tools:    container.Definitions(),
 }
 ```
+
+## Error Handling
+
+The framework provides sentinel errors to help applications manage tool execution failures gracefully.
+
+```go
+resp, err := container.Call(ctx, toolCall)
+if err != nil {
+    if errors.Is(err, tool.ErrInvalidInput) {
+        // The LLM provided arguments that don't match the schema.
+        // You can use errors.As to get more details:
+        var valErr *tool.ValidationError
+        errors.As(err, &valErr)
+        
+        fmt.Printf("Validation failed for tool %s: %v\n", valErr.ToolName, valErr.Err)
+        
+        // Return a helpful message to the LLM so it can retry
+        return &message.Tool{
+            ToolCallID: toolCall.ID,
+            Name:       toolCall.Name,
+            Content:    message.Content{&message.TextBlock{Text: "Invalid arguments provided."}},
+        }, nil
+    }
+    return nil, err
+}
+```

@@ -46,21 +46,8 @@ func (c *Container) Definitions() []Definition {
 func (c *Container) Call(ctx context.Context, tc *message.ToolCall) (*message.Tool, error) {
 	tool, exists := c.tools.Get(tc.Name)
 	if !exists {
-		return &message.Tool{
-			ToolCallID: tc.ID,
-			Name:       tc.Name,
-			Content:    message.Content{&message.TextBlock{Text: fmt.Sprintf("tool %q not found", tc.Name)}},
-		}, nil
+		return nil, fmt.Errorf("tool %q not found", tc.Name)
 	}
 
-	resp, err := tool.Handler(ctx, tc)
-	if err != nil {
-		return &message.Tool{
-			ToolCallID: tc.ID,
-			Name:       tc.Name,
-			Content:    message.Content{&message.TextBlock{Text: fmt.Sprintf("error executing tool %q: %v", tc.Name, err)}},
-		}, nil
-	}
-
-	return resp, nil
+	return tool.Handler(ctx, tc)
 }

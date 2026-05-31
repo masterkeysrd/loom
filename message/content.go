@@ -102,6 +102,14 @@ func (c *Content) UnmarshalJSON(data []byte) error {
 			block = &ToolCall{}
 		case BlockKindThinking:
 			block = &ThinkingBlock{}
+		case BlockKindImage:
+			block = &ImageBlock{}
+		case BlockKindAudio:
+			block = &AudioBlock{}
+		case BlockKindVideo:
+			block = &VideoBlock{}
+		case BlockKindDocument:
+			block = &DocumentBlock{}
 		default:
 			return fmt.Errorf("unknown block kind: %s", header.Kind)
 		}
@@ -133,6 +141,10 @@ const (
 	BlockKindToolCall      BlockKind = "tool_call"
 	BlockKindToolCallChunk BlockKind = "tool_call_chunk"
 	BlockKindThinking      BlockKind = "thinking"
+	BlockKindImage         BlockKind = "image"
+	BlockKindAudio         BlockKind = "audio"
+	BlockKindVideo         BlockKind = "video"
+	BlockKindDocument      BlockKind = "document"
 )
 
 // TextBlock is a plain-text content block. It is the most common block type,
@@ -148,6 +160,66 @@ func (b *TextBlock) Kind() BlockKind {
 }
 
 func (b *TextBlock) isBlock() {}
+
+// ImageBlock carries image data or a URL to an image.
+type ImageBlock struct {
+	Data     []byte         `json:"data,omitempty"`
+	MIMEType string         `json:"mime_type,omitempty"`
+	URL      string         `json:"url,omitempty"`
+	Extras   map[string]any `json:"extras,omitempty"`
+}
+
+// Kind returns [BlockKindImage], identifying this block in serialised content.
+func (b *ImageBlock) Kind() BlockKind {
+	return BlockKindImage
+}
+
+func (b *ImageBlock) isBlock() {}
+
+// AudioBlock carries audio data or a URL to an audio file.
+type AudioBlock struct {
+	Data     []byte         `json:"data,omitempty"`
+	MIMEType string         `json:"mime_type,omitempty"`
+	URL      string         `json:"url,omitempty"`
+	Extras   map[string]any `json:"extras,omitempty"`
+}
+
+// Kind returns [BlockKindAudio], identifying this block in serialised content.
+func (b *AudioBlock) Kind() BlockKind {
+	return BlockKindAudio
+}
+
+func (b *AudioBlock) isBlock() {}
+
+// VideoBlock carries video data or a URL to a video file.
+type VideoBlock struct {
+	Data     []byte         `json:"data,omitempty"`
+	MIMEType string         `json:"mime_type,omitempty"`
+	URL      string         `json:"url,omitempty"`
+	Extras   map[string]any `json:"extras,omitempty"`
+}
+
+// Kind returns [BlockKindVideo], identifying this block in serialised content.
+func (b *VideoBlock) Kind() BlockKind {
+	return BlockKindVideo
+}
+
+func (b *VideoBlock) isBlock() {}
+
+// DocumentBlock carries document data (like PDF) or a URL to a document.
+type DocumentBlock struct {
+	Data     []byte         `json:"data,omitempty"`
+	MIMEType string         `json:"mime_type,omitempty"`
+	URL      string         `json:"url,omitempty"`
+	Extras   map[string]any `json:"extras,omitempty"`
+}
+
+// Kind returns [BlockKindDocument], identifying this block in serialised content.
+func (b *DocumentBlock) Kind() BlockKind {
+	return BlockKindDocument
+}
+
+func (b *DocumentBlock) isBlock() {}
 
 // ThinkingBlock carries the model's internal chain-of-thought reasoning.
 // It is produced by models that support extended thinking and is surfaced as a

@@ -4,7 +4,7 @@ The `message` package provides the fundamental data structures for conversation 
 
 ## Key Features
 
-- **Polymorphic Content**: Messages can contain multiple blocks of different types (Text, Tool Calls, Thinking/Chain-of-Thought).
+- **Polymorphic Content**: Messages can contain multiple blocks of different types (Text, Image, Audio, Video, Document, Tool Calls, Thinking/Chain-of-Thought).
 - **Flattened JSON**: Serializes to a clean, industry-standard flat structure compatible with standard LLM APIs and SQL JSONB columns.
 - **Type Safety**: Explicit types for `User`, `Assistant`, `System`, and `Tool` messages.
 - **Memory Management**: Built-in utilities for message trimming and token counting.
@@ -17,6 +17,21 @@ The `message` package provides the fundamental data structures for conversation 
 history := message.MessageList{
     message.NewSystemText("You are a helpful assistant."),
     message.NewUserText("What's the weather like?"),
+    message.NewUserImage(imageData, "image/jpeg"), // New multimodal support
+}
+```
+
+### Multimodal Blocks
+
+Loom supports multiple media types within messages.
+
+```go
+msg := &message.User{
+    Content: message.Content{
+        &message.TextBlock{Text: "Analyze this image and audio:"},
+        &message.ImageBlock{URL: "https://example.com/image.jpg"},
+        &message.AudioBlock{Data: audioData, MIMEType: "audio/mpeg"},
+    },
 }
 ```
 

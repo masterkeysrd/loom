@@ -83,7 +83,6 @@ func toChatRequest(request *llm.Request) (*api.ChatRequest, error) {
 }
 
 // toAPIMessage converts a [message.Message] to the Ollama api.Message format.
-// Only text content blocks are supported; any other block type results in an error.
 func toAPIMessage(msg message.Message) (api.Message, error) {
 	ollamaMsg := api.Message{
 		Role: toAPIRole(msg.Role()),
@@ -105,6 +104,17 @@ func toAPIMessage(msg message.Message) (api.Message, error) {
 			ollamaMsg.ToolCalls = append(ollamaMsg.ToolCalls, toAPIToolCall(v))
 		case *message.ThinkingBlock:
 			thinking.WriteString(v.Thinking)
+		case *message.ImageBlock:
+			if len(v.Data) > 0 {
+				ollamaMsg.Images = append(ollamaMsg.Images, api.ImageData(v.Data))
+			} else if v.URL != "" {
+				// Ollama does not currently support image URLs directly in the Message struct.
+				// For now, we'll only support inline data.
+				return api.Message{}, fmt.Errorf("ollama provider only supports inline image data, not URLs")
+			}
+		case *message.AudioBlock, *message.VideoBlock, *message.DocumentBlock:
+			// Ollama currently only supports images for multimodal.
+			return api.Message{}, fmt.Errorf("ollama provider does not support %T", c)
 		default:
 			return api.Message{}, fmt.Errorf("unsupported content type for message with role %s: %T", msg.Role(), c)
 		}
@@ -188,8 +198,8 @@ func toModelContent(msg api.Message) (message.Content, error) {
 	if msg.Content != "" {
 		content = append(content, &message.TextBlock{Text: msg.Content})
 	}
-	if msg.Images != nil {
-		return nil, fmt.Errorf("received images in response, but image content is not supported in the current implementation")
+	for _, img := range msg.Images {
+		content = append(content, &message.ImageBlock{Data: []byte(img)})
 	}
 	for i, tc := range msg.ToolCalls {
 		content = append(content, toToolCallBlock(i, tc))

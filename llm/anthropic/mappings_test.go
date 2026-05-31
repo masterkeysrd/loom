@@ -59,3 +59,37 @@ func TestToMessageNewParamsAssistantToolCallsHaveToolUseBlocks(t *testing.T) {
 		t.Fatalf("expected tool_use id, got %#v", got.Content[1]["id"])
 	}
 }
+
+func TestToContentBlocksParamsMultimodal(t *testing.T) {
+	content := message.Content{
+		&message.TextBlock{Text: "Analyze this image."},
+		&message.ImageBlock{
+			Data:     []byte("fake-image-data"),
+			MIMEType: "image/png",
+		},
+		&message.DocumentBlock{
+			Data:     []byte("fake-pdf-data"),
+			MIMEType: "application/pdf",
+		},
+	}
+
+	blocks := toContentBlocksParams(content)
+	if len(blocks) != 3 {
+		t.Fatalf("expected 3 blocks, got %d", len(blocks))
+	}
+
+	// Marshal to check JSON structure
+	data, _ := json.Marshal(blocks)
+	var got []map[string]any
+	json.Unmarshal(data, &got)
+
+	if got[0]["type"] != "text" {
+		t.Errorf("expected block 0 to be text, got %v", got[0]["type"])
+	}
+	if got[1]["type"] != "image" {
+		t.Errorf("expected block 1 to be image, got %v", got[1]["type"])
+	}
+	if got[2]["type"] != "document" {
+		t.Errorf("expected block 2 to be document, got %v", got[2]["type"])
+	}
+}

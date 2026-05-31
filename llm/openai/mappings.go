@@ -1,7 +1,9 @@
 package loomopenai
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/masterkeysrd/loom/llm"
@@ -10,6 +12,65 @@ import (
 	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/shared"
 )
+
+func toUserMessageParam(m *message.User) (openai.ChatCompletionMessageParamUnion, error) {
+	var parts []openai.ChatCompletionContentPartUnionParam
+	for _, block := range m.Content {
+		switch b := block.(type) {
+		case *message.TextBlock:
+			parts = append(parts, openai.TextContentPart(b.Text))
+		case *message.ImageBlock:
+			url := b.URL
+			if url == "" && len(b.Data) > 0 {
+				mimeType := b.MIMEType
+				if mimeType == "" {
+					mimeType = "image/jpeg"
+				}
+				url = fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(b.Data))
+			}
+			if url != "" {
+				parts = append(parts, openai.ImageContentPart(openai.ChatCompletionContentPartImageImageURLParam{
+					URL: url,
+				}))
+			}
+		case *message.AudioBlock:
+			if len(b.Data) > 0 {
+				format := "wav" // default
+				if strings.Contains(b.MIMEType, "mp3") {
+					format = "mp3"
+				}
+				parts = append(parts, openai.InputAudioContentPart(openai.ChatCompletionContentPartInputAudioInputAudioParam{
+					Data:   base64.StdEncoding.EncodeToString(b.Data),
+					Format: format,
+				}))
+			}
+		case *message.DocumentBlock:
+			fileParam := openai.ChatCompletionContentPartFileFileParam{}
+			if b.URL != "" {
+				fileParam.FileID = openai.String(b.URL)
+			}
+			if len(b.Data) > 0 {
+				fileParam.FileData = openai.String(base64.StdEncoding.EncodeToString(b.Data))
+			}
+			if !param.IsOmitted(fileParam.FileID) || !param.IsOmitted(fileParam.FileData) {
+				parts = append(parts, openai.FileContentPart(fileParam))
+			}
+		}
+	}
+
+	if len(parts) == 0 {
+		return openai.UserMessage(""), nil
+	}
+
+	// If it's just one text part, use the simple string version for better compatibility
+	if len(parts) == 1 {
+		if text := parts[0].GetText(); text != nil {
+			return openai.UserMessage(*text), nil
+		}
+	}
+
+	return openai.UserMessage(parts), nil
+}
 
 func toChatCompletionNewParams(request *llm.Request) (openai.ChatCompletionNewParams, error) {
 	params := openai.ChatCompletionNewParams{
@@ -76,7 +137,11 @@ func toChatCompletionNewParams(request *llm.Request) (openai.ChatCompletionNewPa
 			messages = append(messages, openai.SystemMessage(extractText(m.Content)))
 		case *message.User:
 			flushPending()
-			messages = append(messages, openai.UserMessage(extractText(m.Content)))
+			userMsg, err := toUserMessageParam(m)
+			if err != nil {
+				return openai.ChatCompletionNewParams{}, err
+			}
+			messages = append(messages, userMsg)
 		case *message.Assistant:
 			flushPending()
 			assistantMsg := toAssistantMessageParam(m)

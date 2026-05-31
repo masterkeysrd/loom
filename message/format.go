@@ -24,13 +24,23 @@ const (
 
 func FormatMessages(messages MessageList, options *FormatOptions) (string, error) {
 	if options == nil {
-		options = &FormatOptions{
-			UserPrefix:      "User",
-			AssistantPrefix: "Assistant",
-			SystemPrefix:    "System",
-			ToolPrefix:      "Tool",
-			FormatType:      FormatTypePrefix,
-		}
+		options = &FormatOptions{}
+	}
+
+	if options.UserPrefix == "" {
+		options.UserPrefix = "User"
+	}
+	if options.AssistantPrefix == "" {
+		options.AssistantPrefix = "Assistant"
+	}
+	if options.SystemPrefix == "" {
+		options.SystemPrefix = "System"
+	}
+	if options.ToolPrefix == "" {
+		options.ToolPrefix = "Tool"
+	}
+	if options.FormatType == "" {
+		options.FormatType = FormatTypePrefix
 	}
 
 	if options.FormatType != FormatTypePrefix && options.FormatType != FormatTypeXML {
@@ -58,7 +68,46 @@ func formatMessagesWithPrefix(messages MessageList, rolePrefixes map[Role]string
 		if !ok {
 			prefix = string(msg.Role())
 		}
-		fmt.Fprintf(&sb, "%s: %s\n", prefix, msg.GetContent().Text())
+		sb.WriteString(prefix)
+		sb.WriteString(": ")
+		for i, block := range msg.GetContent() {
+			if i > 0 {
+				sb.WriteString("\n")
+			}
+			switch b := block.(type) {
+			case *TextBlock:
+				sb.WriteString(b.Text)
+			case *ThinkingBlock:
+				sb.WriteString("[Thinking: ")
+				sb.WriteString(b.Thinking)
+				sb.WriteString("]")
+			case *ImageBlock:
+				if b.URL != "" {
+					fmt.Fprintf(&sb, "[Image: %s]", b.URL)
+				} else {
+					fmt.Fprintf(&sb, "[Image: %s (%d bytes)]", b.MIMEType, len(b.Data))
+				}
+			case *AudioBlock:
+				if b.URL != "" {
+					fmt.Fprintf(&sb, "[Audio: %s]", b.URL)
+				} else {
+					fmt.Fprintf(&sb, "[Audio: %s (%d bytes)]", b.MIMEType, len(b.Data))
+				}
+			case *VideoBlock:
+				if b.URL != "" {
+					fmt.Fprintf(&sb, "[Video: %s]", b.URL)
+				} else {
+					fmt.Fprintf(&sb, "[Video: %s (%d bytes)]", b.MIMEType, len(b.Data))
+				}
+			case *DocumentBlock:
+				if b.URL != "" {
+					fmt.Fprintf(&sb, "[Document: %s]", b.URL)
+				} else {
+					fmt.Fprintf(&sb, "[Document: %s (%d bytes)]", b.MIMEType, len(b.Data))
+				}
+			}
+		}
+		sb.WriteString("\n")
 		if assistant, ok := msg.(*Assistant); ok {
 			tcs := assistant.ToolCalls()
 			if len(tcs) > 0 {
@@ -116,6 +165,30 @@ func formatContentAsXML(sb *strings.Builder, content Content) {
 			sb.WriteString(html.EscapeString(b.Text))
 		case *ThinkingBlock:
 			fmt.Fprintf(sb, "<thinking>%s</thinking>", html.EscapeString(b.Thinking))
+		case *ImageBlock:
+			if b.URL != "" {
+				fmt.Fprintf(sb, "<image url=\"%s\" mime_type=\"%s\" />", html.EscapeString(b.URL), html.EscapeString(b.MIMEType))
+			} else {
+				fmt.Fprintf(sb, "<image mime_type=\"%s\" data_length=\"%d\" />", html.EscapeString(b.MIMEType), len(b.Data))
+			}
+		case *AudioBlock:
+			if b.URL != "" {
+				fmt.Fprintf(sb, "<audio url=\"%s\" mime_type=\"%s\" />", html.EscapeString(b.URL), html.EscapeString(b.MIMEType))
+			} else {
+				fmt.Fprintf(sb, "<audio mime_type=\"%s\" data_length=\"%d\" />", html.EscapeString(b.MIMEType), len(b.Data))
+			}
+		case *VideoBlock:
+			if b.URL != "" {
+				fmt.Fprintf(sb, "<video url=\"%s\" mime_type=\"%s\" />", html.EscapeString(b.URL), html.EscapeString(b.MIMEType))
+			} else {
+				fmt.Fprintf(sb, "<video mime_type=\"%s\" data_length=\"%d\" />", html.EscapeString(b.MIMEType), len(b.Data))
+			}
+		case *DocumentBlock:
+			if b.URL != "" {
+				fmt.Fprintf(sb, "<document url=\"%s\" mime_type=\"%s\" />", html.EscapeString(b.URL), html.EscapeString(b.MIMEType))
+			} else {
+				fmt.Fprintf(sb, "<document mime_type=\"%s\" data_length=\"%d\" />", html.EscapeString(b.MIMEType), len(b.Data))
+			}
 		}
 	}
 }

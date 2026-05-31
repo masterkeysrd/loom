@@ -143,6 +143,72 @@ func toUserParts(content message.Content) ([]*genai.Part, error) {
 		switch v := block.(type) {
 		case *message.TextBlock:
 			parts = append(parts, &genai.Part{Text: v.Text})
+		case *message.ImageBlock:
+			if len(v.Data) > 0 {
+				parts = append(parts, &genai.Part{
+					InlineData: &genai.Blob{
+						Data:     v.Data,
+						MIMEType: v.MIMEType,
+					},
+				})
+			} else if v.URL != "" {
+				// GenAI supports FileData for URIs (typically gs://)
+				// For generic URLs, we'd need to fetch them. For now, we'll map URIs.
+				parts = append(parts, &genai.Part{
+					FileData: &genai.FileData{
+						FileURI:  v.URL,
+						MIMEType: v.MIMEType,
+					},
+				})
+			}
+		case *message.AudioBlock:
+			if len(v.Data) > 0 {
+				parts = append(parts, &genai.Part{
+					InlineData: &genai.Blob{
+						Data:     v.Data,
+						MIMEType: v.MIMEType,
+					},
+				})
+			} else if v.URL != "" {
+				parts = append(parts, &genai.Part{
+					FileData: &genai.FileData{
+						FileURI:  v.URL,
+						MIMEType: v.MIMEType,
+					},
+				})
+			}
+		case *message.VideoBlock:
+			if len(v.Data) > 0 {
+				parts = append(parts, &genai.Part{
+					InlineData: &genai.Blob{
+						Data:     v.Data,
+						MIMEType: v.MIMEType,
+					},
+				})
+			} else if v.URL != "" {
+				parts = append(parts, &genai.Part{
+					FileData: &genai.FileData{
+						FileURI:  v.URL,
+						MIMEType: v.MIMEType,
+					},
+				})
+			}
+		case *message.DocumentBlock:
+			if len(v.Data) > 0 {
+				parts = append(parts, &genai.Part{
+					InlineData: &genai.Blob{
+						Data:     v.Data,
+						MIMEType: v.MIMEType,
+					},
+				})
+			} else if v.URL != "" {
+				parts = append(parts, &genai.Part{
+					FileData: &genai.FileData{
+						FileURI:  v.URL,
+						MIMEType: v.MIMEType,
+					},
+				})
+			}
 		case *message.ThinkingBlock:
 			// Thinking blocks are not sent to GenAI.
 		default:

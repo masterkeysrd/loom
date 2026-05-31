@@ -179,3 +179,29 @@ func TestToAssistantChunk(t *testing.T) {
 		t.Errorf("ToolCall signature mismatch: expected %q, got %q", encodedSignature, tc.Extras[ThoughtSignatureKey])
 	}
 }
+
+func TestToUserPartsMultimodal(t *testing.T) {
+	content := message.Content{
+		&message.TextBlock{Text: "Look at this image"},
+		&message.ImageBlock{
+			Data:     []byte("data"),
+			MIMEType: "image/png",
+		},
+	}
+
+	parts, err := toUserParts(content)
+	if err != nil {
+		t.Fatalf("toUserParts failed: %v", err)
+	}
+
+	if len(parts) != 2 {
+		t.Fatalf("expected 2 parts, got %d", len(parts))
+	}
+
+	if parts[0].Text != "Look at this image" {
+		t.Errorf("expected parts[0] to be text, got %q", parts[0].Text)
+	}
+	if parts[1].InlineData == nil || parts[1].InlineData.MIMEType != "image/png" {
+		t.Errorf("expected parts[1] to be inline data image/png, got %#v", parts[1].InlineData)
+	}
+}

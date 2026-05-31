@@ -33,6 +33,21 @@ func NewUserTextMeta(text string, meta map[string]any) *User {
 	}
 }
 
+// NewUserImage creates a [User] message with a single image block.
+func NewUserImage(data []byte, mimeType string) *User {
+	return NewUser(&ImageBlock{Data: data, MIMEType: mimeType})
+}
+
+// NewUserImageURL creates a [User] message with a single image URL.
+func NewUserImageURL(url string) *User {
+	return NewUser(&ImageBlock{URL: url})
+}
+
+// NewUserDocument creates a [User] message with a single document block.
+func NewUserDocument(data []byte, mimeType string) *User {
+	return NewUser(&DocumentBlock{Data: data, MIMEType: mimeType})
+}
+
 // Role returns [RoleUser].
 func (u *User) Role() Role {
 	return RoleUser

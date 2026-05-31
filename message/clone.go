@@ -30,6 +30,58 @@ func CloneBlock(block Block) Block {
 		return &TextBlock{Text: current.Text}
 	case *ThinkingBlock:
 		return &ThinkingBlock{Thinking: current.Thinking}
+	case *ImageBlock:
+		clone := &ImageBlock{
+			MIMEType: current.MIMEType,
+			URL:      current.URL,
+		}
+		if current.Data != nil {
+			clone.Data = make([]byte, len(current.Data))
+			copy(clone.Data, current.Data)
+		}
+		if current.Extras != nil {
+			clone.Extras = cloneMap(current.Extras)
+		}
+		return clone
+	case *AudioBlock:
+		clone := &AudioBlock{
+			MIMEType: current.MIMEType,
+			URL:      current.URL,
+		}
+		if current.Data != nil {
+			clone.Data = make([]byte, len(current.Data))
+			copy(clone.Data, current.Data)
+		}
+		if current.Extras != nil {
+			clone.Extras = cloneMap(current.Extras)
+		}
+		return clone
+	case *VideoBlock:
+		clone := &VideoBlock{
+			MIMEType: current.MIMEType,
+			URL:      current.URL,
+		}
+		if current.Data != nil {
+			clone.Data = make([]byte, len(current.Data))
+			copy(clone.Data, current.Data)
+		}
+		if current.Extras != nil {
+			clone.Extras = cloneMap(current.Extras)
+		}
+		return clone
+	case *DocumentBlock:
+		clone := &DocumentBlock{
+			MIMEType: current.MIMEType,
+			URL:      current.URL,
+		}
+		if current.Data != nil {
+			clone.Data = make([]byte, len(current.Data))
+			copy(clone.Data, current.Data)
+		}
+		if current.Extras != nil {
+			clone.Extras = cloneMap(current.Extras)
+		}
+		return clone
 	case *ToolCall:
 		clone := &ToolCall{
 			ID:    current.ID,

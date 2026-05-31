@@ -1,6 +1,7 @@
 package loomanthropic
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -138,6 +139,23 @@ func toContentBlocksParams(content message.Content) []anthropic.ContentBlockPara
 		switch block := block.(type) {
 		case *message.TextBlock:
 			blocks = append(blocks, anthropic.NewTextBlock(block.Text))
+		case *message.ImageBlock:
+			if len(block.Data) > 0 {
+				mimeType := block.MIMEType
+				if mimeType == "" {
+					mimeType = "image/jpeg"
+				}
+				blocks = append(blocks, anthropic.NewImageBlock(anthropic.Base64ImageSourceParam{
+					Data:      base64.StdEncoding.EncodeToString(block.Data),
+					MediaType: anthropic.Base64ImageSourceMediaType(mimeType),
+				}))
+			}
+		case *message.DocumentBlock:
+			if len(block.Data) > 0 {
+				blocks = append(blocks, anthropic.NewDocumentBlock(anthropic.Base64PDFSourceParam{
+					Data: base64.StdEncoding.EncodeToString(block.Data),
+				}))
+			}
 		case *message.ToolCall:
 			if block.Args == nil {
 				block.Args = make(map[string]any)

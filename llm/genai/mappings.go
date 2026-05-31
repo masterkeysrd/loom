@@ -2,6 +2,7 @@ package loomgenai
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -84,7 +85,7 @@ func toGenerateContentArgs(req *llm.Request) ([]*genai.Content, *genai.GenerateC
 		case *message.System:
 			// GenAI accepts a single system instruction at the config level.
 			// When multiple system messages are present, their text is concatenated.
-			text := extractText(v.GetContent())
+			text := v.Content.Text()
 			if config.SystemInstruction == nil {
 				config.SystemInstruction = &genai.Content{
 					Parts: []*genai.Part{{Text: text}},
@@ -158,7 +159,6 @@ func toUserParts(content message.Content) ([]*genai.Part, error) {
 				})
 			} else if v.URL != "" {
 				// GenAI supports FileData for URIs (typically gs://)
-				// For generic URLs, we'd need to fetch them. For now, we'll map URIs.
 				parts = append(parts, &genai.Part{
 					FileData: &genai.FileData{
 						FileURI:  v.URL,
@@ -294,29 +294,72 @@ func toModelParts(content message.Content) ([]*genai.Part, error) {
 }
 
 // toFunctionResponsePart converts a tool result message into a GenAI
-// FunctionResponse Part.
+// FunctionResponse Part, including structured content and multimodal parts.
 func toFunctionResponsePart(msg *message.Tool) (*genai.Part, error) {
-	text := extractText(msg.GetContent())
-	return &genai.Part{
-		FunctionResponse: &genai.FunctionResponse{
-			ID:   msg.ToolCallID,
-			Name: msg.Name,
-			Response: map[string]any{
-				"result": text,
-			},
-		},
-	}, nil
-}
+	response := make(map[string]any)
 
-// extractText returns the concatenated text of all TextBlock entries in content.
-func extractText(content message.Content) string {
-	var sb strings.Builder
-	for _, block := range content {
-		if t, ok := block.(*message.TextBlock); ok {
-			sb.WriteString(t.Text)
+	// Deep mapping: prioritize structured data if available
+	if msg.StructuredContent != nil {
+		// If it's already a map, use it. If not, marshal/unmarshal to get a map.
+		if m, ok := msg.StructuredContent.(map[string]any); ok {
+			for k, v := range m {
+				response[k] = v
+			}
+		} else {
+			data, _ := json.Marshal(msg.StructuredContent)
+			_ = json.Unmarshal(data, &response)
+		}
+	} else {
+		text := msg.Content.Text()
+		if msg.IsError {
+			response["error"] = text
+		} else {
+			response["output"] = text
 		}
 	}
-	return sb.String()
+
+	// Ensure error key is set if IsError is true but missing from structured content
+	if msg.IsError && response["error"] == nil {
+		response["error"] = msg.Content.Text()
+	}
+
+	fr := &genai.FunctionResponse{
+		ID:       msg.ToolCallID,
+		Name:     msg.Name,
+		Response: response,
+	}
+
+	// Comprehensive multimodal support for all types
+	for _, block := range msg.Content {
+		switch v := block.(type) {
+		case *message.ImageBlock:
+			if len(v.Data) > 0 {
+				fr.Parts = append(fr.Parts, genai.NewFunctionResponsePartFromBytes(v.Data, v.MIMEType))
+			} else if v.URL != "" {
+				fr.Parts = append(fr.Parts, genai.NewFunctionResponsePartFromURI(v.URL, v.MIMEType))
+			}
+		case *message.AudioBlock:
+			if len(v.Data) > 0 {
+				fr.Parts = append(fr.Parts, genai.NewFunctionResponsePartFromBytes(v.Data, v.MIMEType))
+			} else if v.URL != "" {
+				fr.Parts = append(fr.Parts, genai.NewFunctionResponsePartFromURI(v.URL, v.MIMEType))
+			}
+		case *message.VideoBlock:
+			if len(v.Data) > 0 {
+				fr.Parts = append(fr.Parts, genai.NewFunctionResponsePartFromBytes(v.Data, v.MIMEType))
+			} else if v.URL != "" {
+				fr.Parts = append(fr.Parts, genai.NewFunctionResponsePartFromURI(v.URL, v.MIMEType))
+			}
+		case *message.DocumentBlock:
+			if len(v.Data) > 0 {
+				fr.Parts = append(fr.Parts, genai.NewFunctionResponsePartFromBytes(v.Data, v.MIMEType))
+			} else if v.URL != "" {
+				fr.Parts = append(fr.Parts, genai.NewFunctionResponsePartFromURI(v.URL, v.MIMEType))
+			}
+		}
+	}
+
+	return &genai.Part{FunctionResponse: fr}, nil
 }
 
 // toGenaiTools converts a slice of [tool.Definition] values into a single

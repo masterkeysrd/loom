@@ -84,6 +84,29 @@ type TextContentProvider interface {
 	TextContent() string
 }
 
+// ContentProvider is an optional interface that tool output types can implement to
+// return multiple content blocks (e.g. text and images) as the tool result.
+type ContentProvider interface {
+	ToolContent() message.Content
+}
+
+// Error represents a functional error that should be reported to the LLM.
+// Returning this from a tool handler will result in a Tool message with IsError=true.
+type Error struct {
+	Content message.Content
+}
+
+func (e *Error) Error() string {
+	return e.Content.Text()
+}
+
+// NewError creates a new functional tool error from a text message.
+func NewError(text string) *Error {
+	return &Error{
+		Content: message.Content{&message.TextBlock{Text: text}},
+	}
+}
+
 // Tool combines a [Definition] description with its executable [ToolHandler].
 // Obtain one via [New]; do not construct directly.
 type Tool struct {
@@ -128,26 +151,35 @@ func AdaptHandler[In, Out any](name string, schema *jsonschema.Resolved, fn Hand
 
 		out, err := fn(ctx, input)
 		if err != nil {
+			if toolErr, ok := err.(*Error); ok {
+				return &message.Tool{
+					ToolCallID:        call.ID,
+					Name:              call.Name,
+					Content:           toolErr.Content,
+					IsError:           true,
+					StructuredContent: out,
+				}, nil
+			}
 			return nil, err
 		}
 
-		var text string
-		if p, ok := any(out).(TextContentProvider); ok {
-			text = p.TextContent()
+		var content message.Content
+		if p, ok := any(out).(ContentProvider); ok {
+			content = p.ToolContent()
+		} else if p, ok := any(out).(TextContentProvider); ok {
+			content = message.Content{&message.TextBlock{Text: p.TextContent()}}
 		} else {
 			outData, err := json.Marshal(out)
 			if err != nil {
 				return nil, fmt.Errorf("tool %q: failed to marshal output: %w", name, err)
 			}
-			text = string(outData)
+			content = message.Content{&message.TextBlock{Text: string(outData)}}
 		}
 
 		return &message.Tool{
-			ToolCallID: call.ID,
-			Name:       call.Name,
-			Content: message.Content{&message.TextBlock{
-				Text: text,
-			}},
+			ToolCallID:        call.ID,
+			Name:              call.Name,
+			Content:           content,
 			StructuredContent: out,
 		}, nil
 	}

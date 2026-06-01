@@ -16,11 +16,28 @@ Unlike linear chains, `loom` provides a robust, state-first architecture inspire
 - **🛠️ Tool Integration**: Native support for tool calling and tool-use loops.
 - **🛡️ Type Safe**: Built from the ground up with Go generics for maximum developer productivity and safety.
 
+## Documentation
+
+Detailed guides on how to use Loom's features:
+
+- [🚀 Quick Start Guide](./docs/guides/quickstart.md): Build your first graph-based agent.
+- [💬 Conversations](./docs/guides/conversations.md): Message roles, multimodal content, and history.
+- [🧠 LLM Package](./docs/guides/llm-package.md): Learn about the Model API and Registry.
+- [🔌 Providers: OpenAI](./docs/guides/providers/openai.md), [Anthropic](./docs/guides/providers/anthropic.md), [Gemini](./docs/guides/providers/google.md), [Ollama](./docs/guides/providers/ollama.md).
+- [💾 Persistence & State](./docs/guides/persistence.md): Learn about checkpointing and thread resumption.
+- [🤝 Human-in-the-Loop](./docs/guides/hitl.md): Patterns for human approval and input.
+- [🛠️ Tools & Streaming](./docs/guides/tools.md): Integrate tools and handle real-time events.
+- [🧠 Memory & Context](./docs/guides/memory.md): Manage conversation history and token limits.
+- [🔍 Observability](./docs/guides/observability.md): Graph visualization and tracing.
+- [🏗️ Custom Providers](./docs/guides/custom-providers.md): Extend Loom with new LLM backends.
+
 ## Installation
 
 ```bash
 go get github.com/masterkeysrd/loom
 ```
+
+For development and documentation setup, see the [Installation Guide](./docs/installation.md).
 
 ## Quick Start
 

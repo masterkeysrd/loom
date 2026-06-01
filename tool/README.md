@@ -41,3 +41,67 @@ req := &llm.Request{
     Tools:    container.Definitions(),
 }
 ```
+
+## Tool Streaming
+
+Loom supports tools that stream their results (e.g. for protocol-based yields like MCP) or provide real-time progress updates to the UI.
+
+```go
+type LogInput struct {
+    Lines int `json:"lines"`
+}
+
+logTool, _ := tool.NewStreaming(
+    "get_logs",
+    "Log Service",
+    "Streams recent system logs.",
+    func(ctx context.Context, in LogInput) (tool.ToolStream, error) {
+        return func(yield func(message.ToolChunk, error) bool) {
+            // 1. Send an ephemeral progress update with numerical data
+            total := float64(in.Lines)
+            yield(message.ToolChunk{
+                Progress: "Streaming lines...",
+                ProgressTotal: &total,
+            }, nil)
+            
+            // 2. Stream actual log blocks
+            for i := 0; i < in.Lines; i++ {
+                current := float64(i + 1)
+                yield(message.ToolChunk{
+                    ProgressCurrent: &current,
+                    Content: message.Content{&message.TextBlock{Text: "log line..."}},
+                }, nil)
+            }
+        }, nil
+    },
+)
+
+// The framework automatically aggregates these chunks when the LLM calls the tool.
+// If a StreamWriter is present in the context, chunks are also forwarded to the UI in real-time.
+```
+
+## Error Handling
+
+The framework provides sentinel errors to help applications manage tool execution failures gracefully.
+
+```go
+resp, err := container.Call(ctx, toolCall)
+if err != nil {
+    if errors.Is(err, tool.ErrInvalidInput) {
+        // The LLM provided arguments that don't match the schema.
+        // You can use errors.As to get more details:
+        var valErr *tool.ValidationError
+        errors.As(err, &valErr)
+        
+        fmt.Printf("Validation failed for tool %s: %v\n", valErr.ToolName, valErr.Err)
+        
+        // Return a helpful message to the LLM so it can retry
+        return &message.Tool{
+            ToolCallID: toolCall.ID,
+            Name:       toolCall.Name,
+            Content:    message.Content{&message.TextBlock{Text: "Invalid arguments provided."}},
+        }, nil
+    }
+    return nil, err
+}
+```

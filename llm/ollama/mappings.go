@@ -100,10 +100,12 @@ func toAPIMessage(msg message.Message) (api.Message, error) {
 		Role: toAPIRole(msg.Role()),
 	}
 
+	var isError bool
 	switch v := msg.(type) {
 	case *message.Tool:
 		ollamaMsg.ToolName = v.Name
 		ollamaMsg.ToolCallID = v.ToolCallID
+		isError = v.IsError
 	}
 
 	var content strings.Builder
@@ -111,7 +113,11 @@ func toAPIMessage(msg message.Message) (api.Message, error) {
 	for _, c := range msg.GetContent() {
 		switch v := c.(type) {
 		case *message.TextBlock:
-			content.WriteString(v.Text)
+			text := v.Text
+			if isError && text != "" {
+				text = "Error: " + text
+			}
+			content.WriteString(text)
 		case *message.ToolCall:
 			ollamaMsg.ToolCalls = append(ollamaMsg.ToolCalls, toAPIToolCall(v))
 		case *message.ThinkingBlock:

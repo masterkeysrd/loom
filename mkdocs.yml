@@ -1,0 +1,61 @@
+site_name: Loom 🧵
+site_description: High-performance, graph-based AI workflow engine for Go.
+site_author: Masterkeys
+site_url: https://masterkeysrd.github.io/loom/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
+  - md_in_html
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Quick Start: guides/quickstart.md
+  - Core Concepts:
+      - Conversations & Messages: guides/conversations.md
+      - LLM Package: guides/llm-package.md
+      - Persistence & State: guides/persistence.md
+      - Tools & Streaming: guides/tools.md
+  - LLM Providers:
+      - OpenAI: guides/providers/openai.md
+      - Anthropic: guides/providers/anthropic.md
+      - Google Gemini: guides/providers/google.md
+      - Ollama: guides/providers/ollama.md
+  - Advanced:
+      - Human-in-the-Loop: guides/hitl.md
+      - Memory Management: guides/memory.md
+      - Observability: guides/observability.md
+      - Custom Providers: guides/custom-providers.md

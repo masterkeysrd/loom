@@ -10,6 +10,9 @@ type Tool struct {
 	Name       string  `json:"name"`
 	Content    Content `json:"content"`
 
+	// IsError indicates if the tool execution resulted in a functional error.
+	IsError bool `json:"is_error,omitempty"`
+
 	// Structured holds the original Go value returned by the tool handler.
 	StructuredContent any `json:"structured_content,omitempty"`
 }

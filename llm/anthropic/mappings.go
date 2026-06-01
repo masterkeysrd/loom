@@ -65,9 +65,8 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 		case *message.System:
 			anthropicReq.System = toTextBlocksParams(msg.Content)
 		case *message.Assistant:
-			blocks := toContentBlocksParams(msg.Content)
 			anthropicReq.Messages = append(anthropicReq.Messages, anthropic.NewAssistantMessage(
-				blocks...,
+				toContentBlocksParams(msg.Content)...,
 			))
 
 			// Mark any tool calls in the assistant message as used, so that we know to expect results for them later.
@@ -75,20 +74,24 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 				registerToolUsage(block.ID, true)
 			}
 		case *message.User:
-			blocks := toContentBlocksParams(msg.Content)
 			anthropicReq.Messages = append(anthropicReq.Messages, anthropic.NewUserMessage(
-				blocks...,
+				toContentBlocksParams(msg.Content)...,
 			))
 		case *message.Tool:
-			var text strings.Builder
-			for _, block := range msg.Content {
-				if textBlock, ok := block.(*message.TextBlock); ok {
-					text.WriteString(textBlock.Text + "\n")
-				}
-			}
-			anthropicReq.Messages = append(anthropicReq.Messages, anthropic.NewUserMessage(
-				anthropic.NewToolResultBlock(msg.ToolCallID, text.String(), false),
-			))
+			// Consistently use ToolResultBlockParam for all tool outputs.
+			anthropicReq.Messages = append(anthropicReq.Messages, anthropic.MessageParam{
+				Role: anthropic.MessageParamRoleUser,
+				Content: []anthropic.ContentBlockParamUnion{
+					{
+						OfToolResult: &anthropic.ToolResultBlockParam{
+							ToolUseID: msg.ToolCallID,
+							Content:   toToolResultContent(msg.Content),
+							IsError:   anthropic.Bool(msg.IsError),
+						},
+					},
+				},
+			})
+
 			registerToolUsage(msg.ToolCallID, false)
 		}
 	}
@@ -227,4 +230,58 @@ func toAssistantChunk(event anthropic.MessageStreamEventUnion) (message.Assistan
 	}
 
 	return chunk, nil
+}
+
+func toToolResultContent(content message.Content) []anthropic.ToolResultBlockParamContentUnion {
+	blocks := make([]anthropic.ToolResultBlockParamContentUnion, 0, len(content))
+	for _, block := range content {
+		switch block := block.(type) {
+		case *message.TextBlock:
+			blocks = append(blocks, anthropic.ToolResultBlockParamContentUnion{
+				OfText: &anthropic.TextBlockParam{
+					Text: block.Text,
+				},
+			})
+		case *message.ImageBlock:
+			if len(block.Data) > 0 {
+				mimeType := block.MIMEType
+				if mimeType == "" {
+					mimeType = "image/jpeg"
+				}
+				blocks = append(blocks, anthropic.ToolResultBlockParamContentUnion{
+					OfImage: &anthropic.ImageBlockParam{
+						Source: anthropic.ImageBlockParamSourceUnion{
+							OfBase64: &anthropic.Base64ImageSourceParam{
+								Data:      base64.StdEncoding.EncodeToString(block.Data),
+								MediaType: anthropic.Base64ImageSourceMediaType(mimeType),
+							},
+						},
+					},
+				})
+			}
+		case *message.DocumentBlock:
+			if len(block.Data) > 0 {
+				blocks = append(blocks, anthropic.ToolResultBlockParamContentUnion{
+					OfDocument: &anthropic.DocumentBlockParam{
+						Source: anthropic.DocumentBlockParamSourceUnion{
+							OfBase64: &anthropic.Base64PDFSourceParam{
+								Data: base64.StdEncoding.EncodeToString(block.Data),
+							},
+						},
+					},
+				})
+			}
+		}
+	}
+	return blocks
+}
+
+func extractText(content message.Content) string {
+	var sb strings.Builder
+	for _, block := range content {
+		if t, ok := block.(*message.TextBlock); ok {
+			sb.WriteString(t.Text)
+		}
+	}
+	return sb.String()
 }

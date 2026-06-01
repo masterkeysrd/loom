@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/masterkeysrd/loom/llm"
+	"github.com/masterkeysrd/loom/tool"
 )
 
 // START is the reserved name for the virtual entry node of every graph.
@@ -122,9 +123,10 @@ func (g *Graph[State]) Stream(ctx context.Context, input Command[State], loc *Lo
 			eventYield: yield,
 		}
 
-		// Inject both writers
+		// Inject all writers
 		execCtx := llm.WithStreamWriter(ctx, adapter)
 		execCtx = WithStreamWriter(execCtx, adapter)
+		execCtx = tool.WithToolStreamWriter(execCtx, adapter)
 
 		snapshot, err := g.Execute(execCtx, input, loc)
 		if err != nil {

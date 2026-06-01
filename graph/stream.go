@@ -9,9 +9,11 @@ import (
 // EventLLMChunk is the event name emitted for every token chunk produced by an
 // LLM call within a node. Consumers can use this to stream output in real time.
 const (
-	EventLLMChunk    = "on_llm_chunk"
-	EventCompleted   = "completed"
-	EventInterrupted = "interrupted"
+	EventLLMChunk     = "on_llm_chunk"
+	EventToolChunk    = "on_tool_chunk"
+	EventToolProgress = "on_tool_progress"
+	EventCompleted    = "completed"
+	EventInterrupted  = "interrupted"
 )
 
 // StreamEvent is the payload type produced by [Graph.Stream].
@@ -72,9 +74,9 @@ func ExecutionCtxFromContext(ctx context.Context) (ExecutionCtx, bool) {
 	return val, ok
 }
 
-// streamAdapter implements both [StreamWriter] and [llm.StreamWriter] so that
-// a single iterator yield function can receive both generic graph events and
-// LLM token chunks without any additional bridging logic.
+// streamAdapter implements [StreamWriter], [llm.StreamWriter], and [tool.ToolStreamWriter]
+// so that a single iterator yield function can receive generic graph events,
+// LLM token chunks, and tool streaming updates without additional bridging logic.
 type streamAdapter struct {
 	eventYield func(StreamEvent, error) bool
 }
@@ -98,6 +100,24 @@ func (s *streamAdapter) WriteChunk(ctx context.Context, chunk message.AssistantC
 		Graph: execCtx.GraphName,
 		Node:  execCtx.NodeName,
 		Event: EventLLMChunk,
+		Data:  chunk,
+	}, nil) {
+		return context.Canceled
+	}
+	return nil
+}
+
+func (s *streamAdapter) WriteToolChunk(ctx context.Context, chunk message.ToolChunk) error {
+	execCtx, _ := ExecutionCtxFromContext(ctx)
+	event := EventToolChunk
+	if chunk.Progress != "" || chunk.ProgressCurrent != nil || chunk.ProgressTotal != nil {
+		event = EventToolProgress
+	}
+
+	if !s.eventYield(StreamEvent{
+		Graph: execCtx.GraphName,
+		Node:  execCtx.NodeName,
+		Event: event,
 		Data:  chunk,
 	}, nil) {
 		return context.Canceled

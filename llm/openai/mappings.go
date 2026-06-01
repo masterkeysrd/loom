@@ -153,7 +153,7 @@ func toChatCompletionNewParams(request *llm.Request) (openai.ChatCompletionNewPa
 		switch m := msg.(type) {
 		case *message.System:
 			flushPending()
-			messages = append(messages, openai.SystemMessage(extractText(m.Content)))
+			messages = append(messages, openai.SystemMessage(m.Content.Text()))
 		case *message.User:
 			flushPending()
 			userMsg, err := toUserMessageParam(m)
@@ -185,7 +185,8 @@ func toChatCompletionNewParams(request *llm.Request) (openai.ChatCompletionNewPa
 			if foundIdx != -1 {
 				pendingIDs = append(pendingIDs[:foundIdx], pendingIDs[foundIdx+1:]...)
 			}
-			messages = append(messages, openai.ToolMessage(ensureValidContent(extractText(m.Content)), m.ToolCallID))
+
+			messages = append(messages, openai.ToolMessage(ensureValidContent(toToolString(m)), m.ToolCallID))
 		}
 	}
 	flushPending()
@@ -230,7 +231,7 @@ func toChatCompletionNewParams(request *llm.Request) (openai.ChatCompletionNewPa
 }
 
 func toAssistantMessageParam(m *message.Assistant) openai.ChatCompletionAssistantMessageParam {
-	content := extractText(m.Content)
+	content := m.Content.Text()
 	assistantMsg := openai.ChatCompletionAssistantMessageParam{}
 	if content != "" {
 		assistantMsg.Content = openai.ChatCompletionAssistantMessageParamContentUnion{
@@ -265,13 +266,48 @@ func toAssistantMessageParam(m *message.Assistant) openai.ChatCompletionAssistan
 	return assistantMsg
 }
 
-func extractText(content message.Content) string {
+func toToolString(m *message.Tool) string {
+	if m.StructuredContent != nil {
+		data, _ := json.Marshal(m.StructuredContent)
+		return string(data)
+	}
+
 	var sb strings.Builder
-	for _, block := range content {
-		if tb, ok := block.(*message.TextBlock); ok {
-			sb.WriteString(tb.Text)
+	if m.IsError {
+		sb.WriteString("Error: ")
+	}
+
+	sb.WriteString(m.Content.Text())
+
+	for _, block := range m.Content {
+		switch b := block.(type) {
+		case *message.ImageBlock:
+			if b.URL != "" {
+				fmt.Fprintf(&sb, "\n[Image URL: %s]", b.URL)
+			} else {
+				sb.WriteString("\n[Image attached]")
+			}
+		case *message.AudioBlock:
+			if b.URL != "" {
+				fmt.Fprintf(&sb, "\n[Audio URL: %s]", b.URL)
+			} else {
+				sb.WriteString("\n[Audio attached]")
+			}
+		case *message.VideoBlock:
+			if b.URL != "" {
+				fmt.Fprintf(&sb, "\n[Video URL: %s]", b.URL)
+			} else {
+				sb.WriteString("\n[Video attached]")
+			}
+		case *message.DocumentBlock:
+			if b.URL != "" {
+				fmt.Fprintf(&sb, "\n[Document URL: %s]", b.URL)
+			} else {
+				sb.WriteString("\n[Document attached]")
+			}
 		}
 	}
+
 	return sb.String()
 }
 

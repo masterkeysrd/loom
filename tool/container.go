@@ -6,6 +6,7 @@ import (
 
 	"github.com/masterkeysrd/loom/internal/collection"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/stream"
 )
 
 type Container struct {
@@ -49,17 +50,20 @@ func (c *Container) Stream(ctx context.Context, tc *message.ToolCall) (ToolStrea
 		return nil, fmt.Errorf("tool %q not found", tc.Name)
 	}
 
-	stream, err := t.Handler(ctx, tc)
+	streamer, err := t.Handler(ctx, tc)
 	if err != nil {
 		return nil, err
 	}
 
-	sw, hasWriter := ToolStreamWriterFromContext(ctx)
+	sw, hasWriter := stream.WriterFromContext(ctx)
+	if hasWriter {
+		ctx = stream.WithMetadata(ctx, stream.Metadata{Source: "tool:" + tc.Name})
+	}
 
 	return func(yield func(message.ToolChunk, error) bool) {
-		for chunk, err := range stream {
+		for chunk, err := range streamer {
 			if hasWriter && err == nil {
-				_ = sw.WriteToolChunk(ctx, chunk)
+				_ = sw.Write(ctx, chunk)
 			}
 			if !yield(chunk, err) {
 				return

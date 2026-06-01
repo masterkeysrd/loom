@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/stream"
 )
 
 // EventLLMChunk is the event name emitted for every token chunk produced by an
@@ -18,35 +19,13 @@ const (
 
 // StreamEvent is the payload type produced by [Graph.Stream].
 // Every event carries the graph name, the node that produced it (if any),
-// an event-type string (e.g. [EventLLMChunk], "completed", "interrupted",
-// "error"), and arbitrary Data.
+// a source identifier (e.g. "tool:search"), an event-type string, and arbitrary Data.
 type StreamEvent struct {
-	Graph string
-	Node  string
-	Event string
-	Data  any
-}
-
-// StreamWriter is the graph-level interface for emitting arbitrary events
-// during node execution. It is stored in the context via [WithStreamWriter]
-// and read back with [StreamWriterFromContext].
-type StreamWriter interface {
-	WriteEvent(ctx context.Context, event string, data any) error
-}
-
-type streamWriterKey struct{}
-
-// WithStreamWriter stores w in ctx so that nodes can emit [StreamEvent] values
-// without receiving the writer as an explicit parameter.
-func WithStreamWriter(ctx context.Context, w StreamWriter) context.Context {
-	return context.WithValue(ctx, streamWriterKey{}, w)
-}
-
-// StreamWriterFromContext retrieves the [StreamWriter] previously stored by
-// [WithStreamWriter]. The second return value is false if no writer is set.
-func StreamWriterFromContext(ctx context.Context) (StreamWriter, bool) {
-	w, ok := ctx.Value(streamWriterKey{}).(StreamWriter)
-	return w, ok
+	Graph  string
+	Node   string
+	Source string
+	Event  string
+	Data   any
 }
 
 // ExecutionCtx carries per-execution metadata (graph name and current node
@@ -74,53 +53,44 @@ func ExecutionCtxFromContext(ctx context.Context) (ExecutionCtx, bool) {
 	return val, ok
 }
 
-// streamAdapter implements [StreamWriter], [llm.StreamWriter], and [tool.ToolStreamWriter]
-// so that a single iterator yield function can receive generic graph events,
-// LLM token chunks, and tool streaming updates without additional bridging logic.
+// streamAdapter implements [stream.Writer] so that a single iterator yield
+// function can receive generic graph events, LLM token chunks, and tool
+// streaming updates without additional bridging logic.
 type streamAdapter struct {
 	eventYield func(StreamEvent, error) bool
 }
 
+func (s *streamAdapter) Write(ctx context.Context, data any) error {
+	execCtx, _ := ExecutionCtxFromContext(ctx)
+	metadata, _ := stream.MetadataFromContext(ctx)
+
+	event := "event"
+	switch v := data.(type) {
+	case message.AssistantChunk:
+		event = EventLLMChunk
+	case message.ToolChunk:
+		event = EventToolChunk
+		if v.Progress != "" || v.ProgressCurrent != nil || v.ProgressTotal != nil {
+			event = EventToolProgress
+		}
+	case stream.Event:
+		event = v.Name
+		data = v.Data
+	}
+
+	if !s.eventYield(StreamEvent{
+		Graph:  execCtx.GraphName,
+		Node:   execCtx.NodeName,
+		Source: metadata.Source,
+		Event:  event,
+		Data:   data,
+	}, nil) {
+		return context.Canceled
+	}
+	return nil
+}
+
+// WriteEvent is a helper for internal graph events.
 func (s *streamAdapter) WriteEvent(ctx context.Context, event string, data any) error {
-	execCtx, _ := ExecutionCtxFromContext(ctx)
-	if !s.eventYield(StreamEvent{
-		Graph: execCtx.GraphName,
-		Node:  execCtx.NodeName,
-		Event: event,
-		Data:  data,
-	}, nil) {
-		return context.Canceled
-	}
-	return nil
-}
-
-func (s *streamAdapter) WriteChunk(ctx context.Context, chunk message.AssistantChunk) error {
-	execCtx, _ := ExecutionCtxFromContext(ctx)
-	if !s.eventYield(StreamEvent{
-		Graph: execCtx.GraphName,
-		Node:  execCtx.NodeName,
-		Event: EventLLMChunk,
-		Data:  chunk,
-	}, nil) {
-		return context.Canceled
-	}
-	return nil
-}
-
-func (s *streamAdapter) WriteToolChunk(ctx context.Context, chunk message.ToolChunk) error {
-	execCtx, _ := ExecutionCtxFromContext(ctx)
-	event := EventToolChunk
-	if chunk.Progress != "" || chunk.ProgressCurrent != nil || chunk.ProgressTotal != nil {
-		event = EventToolProgress
-	}
-
-	if !s.eventYield(StreamEvent{
-		Graph: execCtx.GraphName,
-		Node:  execCtx.NodeName,
-		Event: event,
-		Data:  chunk,
-	}, nil) {
-		return context.Canceled
-	}
-	return nil
+	return s.Write(ctx, stream.Event{Name: event, Data: data})
 }

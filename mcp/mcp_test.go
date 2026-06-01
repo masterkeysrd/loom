@@ -12,7 +12,7 @@ import (
 
 func TestMapContent(t *testing.T) {
 	s := &SessionClient{}
-	
+
 	mcpContent := []mcp.Content{
 		&mcp.TextContent{Text: "hello"},
 		&mcp.ImageContent{Data: []byte("fake-image"), MIMEType: "image/png"},
@@ -47,7 +47,7 @@ func TestMapContent(t *testing.T) {
 
 func TestStructuredContentMapping(t *testing.T) {
 	s := &SessionClient{}
-	
+
 	// mock MCP CallToolResult with StructuredContent
 	mcpRes := &mcp.CallToolResult{
 		Content: []mcp.Content{
@@ -56,10 +56,10 @@ func TestStructuredContentMapping(t *testing.T) {
 		StructuredContent: map[string]any{"key": "value"},
 	}
 
-	// We can't easily test createHandler without a real session, 
+	// We can't easily test createHandler without a real session,
 	// but we can test that mapContent works as expected if we had a way to call it.
 	// Actually, I just updated createHandler to pass StructuredContent.
-	
+
 	content, _ := s.mapContent(mcpRes.Content)
 	chunk := message.ToolChunk{
 		Content:           content,

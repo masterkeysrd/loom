@@ -9,7 +9,7 @@
 //   - [Model.Invoke]: blocks until the full response is available and returns
 //     a [message.Assistant].
 //   - [Model.Stream]: returns an iterator over [message.AssistantChunk] values,
-//     forwarding each chunk to a [StreamWriter] stored in the context so that
+//     forwarding each chunk to a [stream.Writer] stored in the context so that
 //     upstream code (e.g. a graph node) can surface output in real time.
 //
 // # Providers
@@ -33,8 +33,8 @@
 //
 // # Streaming Integration
 //
-// [WithStreamWriter] and [StreamWriterFromContext] store and retrieve a
-// [StreamWriter] in the context. The graph package wraps its own stream adapter
+// [stream.WithWriter] and [stream.WriterFromContext] store and retrieve a
+// [stream.Writer] in the context. The graph package wraps its own stream adapter
 // so that both graph-level events and LLM token chunks flow through the same
 // context-carried interface.
 package llm

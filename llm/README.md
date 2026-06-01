@@ -105,9 +105,10 @@ model := llm.NewModel(provider, "gpt-4o")
 resp, err := model.Invoke(ctx, messages)
 
 // 2. Streaming Invoke
+// Chunks are automatically forwarded to any stream.Writer in the context.
 stream, err := model.Stream(ctx, messages)
 for chunk, err := range stream {
-    fmt.Print(chunk.Text)
+    fmt.Print(chunk.Content.Text())
 }
 ```
 

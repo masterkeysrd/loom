@@ -70,14 +70,15 @@ newSnapshot, _ := g.Execute(ctx, nil, &snapshot.Location)
 
 ## Real-time Streaming
 
-`Graph.Stream` produces an iterator of `StreamEvent` values, allowing you to stream LLM tokens or node progress to a client.
+`Graph.Stream` produces an iterator of `StreamEvent` values, allowing you to stream LLM tokens, tool progress, or custom node events to a client.
 
 ```go
 events, _ := g.Stream(ctx, input, nil)
 for event, err := range events {
+    // event.Source tells you which model or tool produced the event (e.g. "llm:gpt-4o")
     if event.Event == graph.EventLLMChunk {
-        chunk := event.Data.(*message.AssistantChunk)
-        fmt.Print(chunk.Text)
+        chunk := event.Data.(message.AssistantChunk)
+        fmt.Print(chunk.Content.Text())
     }
 }
 ```

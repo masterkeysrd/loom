@@ -169,11 +169,11 @@ for event, err := range events {
 ```
 
 ### Emitting Events from Nodes
-Nodes can emit arbitrary events via the `StreamWriter` in the context.
+Nodes can emit arbitrary events via the `stream.Writer` in the context.
 ```go
 func myNode(ctx context.Context, s MyState) (graph.Command[MyState], error) {
-    if writer, ok := graph.StreamWriterFromContext(ctx); ok {
-        _ = writer.WriteEvent(ctx, "started", nil)
+    if writer, ok := stream.WriterFromContext(ctx); ok {
+        _ = writer.Write(ctx, stream.Event{Name: "started", Data: nil})
     }
     return graph.Update(func(s MyState) MyState { return s }), nil
 }

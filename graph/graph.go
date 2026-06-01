@@ -9,8 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/masterkeysrd/loom/llm"
-	"github.com/masterkeysrd/loom/tool"
+	"github.com/masterkeysrd/loom/stream"
 )
 
 // START is the reserved name for the virtual entry node of every graph.
@@ -123,10 +122,8 @@ func (g *Graph[State]) Stream(ctx context.Context, input Command[State], loc *Lo
 			eventYield: yield,
 		}
 
-		// Inject all writers
-		execCtx := llm.WithStreamWriter(ctx, adapter)
-		execCtx = WithStreamWriter(execCtx, adapter)
-		execCtx = tool.WithToolStreamWriter(execCtx, adapter)
+		// Inject the unified writer
+		execCtx := stream.WithWriter(ctx, adapter)
 
 		snapshot, err := g.Execute(execCtx, input, loc)
 		if err != nil {
@@ -291,7 +288,7 @@ const CheckpointSavedEvent = "on_checkpoint_saved"
 
 // recordCheckpoint persists the given snapshot via the configured
 // [Checkpointer]. If no checkpointer is set, the call is a no-op.
-// After persisting, it emits a [CheckpointSavedEvent] on the [StreamWriter]
+// After persisting, it emits a [CheckpointSavedEvent] on the [stream.Writer]
 // stored in ctx (if any).
 func (g *Graph[State]) recordCheckpoint(ctx context.Context, snapshot Snapshot[State]) error {
 	if g.checkpointer == nil {
@@ -311,8 +308,8 @@ func (g *Graph[State]) recordCheckpoint(ctx context.Context, snapshot Snapshot[S
 	}
 
 	// Notify stream consumers that a new checkpoint has been saved.
-	if writer, ok := StreamWriterFromContext(ctx); ok {
-		if err := writer.WriteEvent(ctx, CheckpointSavedEvent, snapshot.Location); err != nil {
+	if sw, ok := stream.WriterFromContext(ctx); ok {
+		if err := sw.Write(ctx, stream.Event{Name: CheckpointSavedEvent, Data: snapshot.Location}); err != nil {
 			return fmt.Errorf("failed to emit checkpoint saved event: %w", err)
 		}
 	}

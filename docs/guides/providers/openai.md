@@ -54,6 +54,28 @@ OpenAI's native JSON Schema enforcement is supported.
 model = model.WithStructuredOutput(myJsonSchema)
 ```
 
+### Prompt Caching
+
+OpenAI automatically caches prompt prefixes longer than 1024 tokens. Loom allows you to optimize this behavior using the `PromptCache` extension:
+
+#### 1. Cache Bucketing (Key)
+Use a stable identifier to improve cache hit rates by bucketing similar requests together.
+
+```go
+model = model.WithExtension(loomopenai.PromptCache{
+    Key: "user-session-123",
+})
+```
+
+#### 2. Extended Retention
+By default, caches are ephemeral. You can enable extended caching (up to 24 hours) for specific prefixes.
+
+```go
+model = model.WithExtension(loomopenai.PromptCache{
+    Retention: "24h",
+})
+```
+
 ## 5. Model Catalog
 
 The provider includes a static catalog of common OpenAI models with their context limits and capabilities. You can search or list them at runtime:

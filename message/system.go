@@ -36,4 +36,10 @@ func (s *System) GetContent() Content {
 	return s.Content
 }
 
+// WithExtension returns the message with the given provider-specific extension set.
+func (s *System) WithExtension(ext Extension) *System {
+	s.Base.AddExtension(ext)
+	return s
+}
+
 func (s *System) isMessage() {}

@@ -43,6 +43,9 @@ type ModelConfig struct {
 
 	// Thinking specifies the thinking/reasoning configuration for the model.
 	Thinking *ThinkingConfig
+
+	// Extensions captures provider-specific configurations.
+	Extensions map[string]Extension
 }
 
 type ThinkingConfig struct {
@@ -54,15 +57,28 @@ type ThinkingConfig struct {
 	Adaptive bool
 }
 
+// Streamer is a function that executes a chat completion request and returns
+// a streaming response. It is the core functional unit wrapped by middleware.
+type Streamer func(context.Context, *Request) (StreamResponse, error)
+
+// Middleware is a function that wraps a [Streamer], allowing for cross-cutting
+// concerns like logging, tracing, or request modification.
+type Middleware func(Streamer) Streamer
+
+// CallOption is a functional option that modifies an LLM [Request]
+// for a single [Model.Invoke] or [Model.Stream] call.
+type CallOption func(*Request)
+
 // Model wraps a [Provider] and a specific model name, exposing both a
 // blocking [Model.Invoke] method and a streaming [Model.Stream] method.
 // It also forwards LLM chunks to any [StreamWriter] stored in the context,
 // enabling transparent integration with the graph streaming layer.
 type Model struct {
-	name     string
-	provider Provider
-	tools    []tool.Definition
-	config   *ModelConfig
+	name       string
+	provider   Provider
+	tools      []tool.Definition
+	config     *ModelConfig
+	middleware []Middleware
 }
 
 // NewModel constructs a [Model] that will call provider using the given model
@@ -78,9 +94,10 @@ func NewModel(provider Provider, name string, config *ModelConfig) (*Model, erro
 	}
 
 	return &Model{
-		name:     name,
-		provider: provider,
-		config:   config,
+		name:       name,
+		provider:   provider,
+		config:     config,
+		middleware: make([]Middleware, 0),
 	}, nil
 }
 
@@ -222,13 +239,71 @@ func (m *Model) WithAdaptiveThinking() *Model {
 	return clone
 }
 
+// WithMiddleware returns a clone of the model with the given middleware
+// appended to the existing chain. Middleware is executed in the order it was
+// added.
+func (m *Model) WithMiddleware(mw ...Middleware) *Model {
+	clone := m.clone()
+	clone.middleware = append(clone.middleware, mw...)
+	return clone
+}
+
+// WithExtension returns a clone of the model with the given provider-specific
+// extension set.
+func (m *Model) WithExtension(ext Extension) *Model {
+	clone := m.clone()
+	if clone.config == nil {
+		clone.config = &ModelConfig{}
+	}
+	if clone.config.Extensions == nil {
+		clone.config.Extensions = make(map[string]Extension)
+	}
+	clone.config.Extensions[ext.ExtensionID()] = ext
+	return clone
+}
+
+// WithExtensionOption returns a CallOption that sets an extension for a
+// single call.
+func WithExtensionOption(ext Extension) CallOption {
+	return func(r *Request) {
+		if r.Extensions == nil {
+			r.Extensions = make(map[string]Extension)
+		}
+		r.Extensions[ext.ExtensionID()] = ext
+	}
+}
+
+// CreateCache creates a long-lived context cache resource using the model's
+// configuration and the given messages. The provider must implement the
+// [CacheManager] interface.
+func (m *Model) CreateCache(ctx context.Context, messages []message.Message, opts ...CallOption) (string, error) {
+	cm, ok := m.provider.(CacheManager)
+	if !ok {
+		return "", fmt.Errorf("llm: provider %q does not support explicit cache creation", m.provider.Name())
+	}
+
+	req := m.newRequest(messages, opts...)
+	return cm.CreateCache(ctx, req)
+}
+
+// DeleteCache removes a previously created context cache resource. The provider
+// must implement the [CacheManager] interface.
+func (m *Model) DeleteCache(ctx context.Context, id string) error {
+	cm, ok := m.provider.(CacheManager)
+	if !ok {
+		return fmt.Errorf("llm: provider %q does not support explicit cache management", m.provider.Name())
+	}
+
+	return cm.DeleteCache(ctx, id)
+}
+
 // Invoke sends messages to the model and blocks until the full response is
 // assembled. It internally calls [Model.Stream] and aggregates all chunks into
 // a single [message.Assistant] before returning.
-func (m *Model) Invoke(ctx context.Context, messages []message.Message) (*message.Assistant, error) {
+func (m *Model) Invoke(ctx context.Context, messages []message.Message, opts ...CallOption) (*message.Assistant, error) {
 	aggregator := message.NewAssistantAggregator()
 
-	stream, error := m.Stream(ctx, messages)
+	stream, error := m.Stream(ctx, messages, opts...)
 	if error != nil {
 		return nil, error
 	}
@@ -271,27 +346,20 @@ func (m *Model) Invoke(ctx context.Context, messages []message.Message) (*messag
 // [message.AssistantChunk] values. Each chunk is also forwarded to the
 // [StreamWriter] in ctx (if any) so callers upstream can emit real-time
 // events without managing two separate data paths.
-func (m *Model) Stream(ctx context.Context, messages []message.Message) (StreamResponse, error) {
-	req := &Request{
-		Model:    m.name,
-		Messages: messages,
-		Tools:    m.tools,
+func (m *Model) Stream(ctx context.Context, messages []message.Message, opts ...CallOption) (StreamResponse, error) {
+	req := m.newRequest(messages, opts...)
+
+	// Create the base streamer that calls the provider
+	var streamer Streamer = func(ctx context.Context, r *Request) (StreamResponse, error) {
+		return m.provider.Stream(ctx, r)
 	}
 
-	if m.config != nil {
-		req.MaxTokens = m.config.MaxTokens
-		req.Temperature = m.config.Temperature
-		req.TopP = m.config.TopP
-		req.TopK = m.config.TopK
-		req.PresencePenalty = m.config.PresencePenalty
-		req.FrequencyPenalty = m.config.FrequencyPenalty
-		req.Stop = m.config.Stop
-		req.ResponseFormat = m.config.ResponseFormat
-		req.ResponseSchema = m.config.ResponseSchema
-		req.Thinking = m.config.Thinking
+	// Wrap with middleware in reverse order so the first added middleware is the outermost
+	for i := len(m.middleware) - 1; i >= 0; i-- {
+		streamer = m.middleware[i](streamer)
 	}
 
-	stream, err := m.provider.Stream(ctx, req)
+	stream, err := streamer(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -318,6 +386,40 @@ func (m *Model) Stream(ctx context.Context, messages []message.Message) (StreamR
 	}, nil
 }
 
+func (m *Model) newRequest(messages []message.Message, opts ...CallOption) *Request {
+	req := &Request{
+		Model:    m.name,
+		Messages: messages,
+		Tools:    m.tools,
+	}
+
+	if m.config != nil {
+		req.MaxTokens = m.config.MaxTokens
+		req.Temperature = m.config.Temperature
+		req.TopP = m.config.TopP
+		req.TopK = m.config.TopK
+		req.PresencePenalty = m.config.PresencePenalty
+		req.FrequencyPenalty = m.config.FrequencyPenalty
+		req.Stop = m.config.Stop
+		req.ResponseFormat = m.config.ResponseFormat
+		req.ResponseSchema = m.config.ResponseSchema
+		req.Thinking = m.config.Thinking
+
+		if len(m.config.Extensions) > 0 {
+			req.Extensions = make(map[string]Extension, len(m.config.Extensions))
+			for k, v := range m.config.Extensions {
+				req.Extensions[k] = v
+			}
+		}
+	}
+
+	for _, opt := range opts {
+		opt(req)
+	}
+
+	return req
+}
+
 // clone creates a shallow copy of the model. The provider is shared between
 // the original and the clone, but the tools slice is copied so that subsequent
 // calls to BindTools on one model do not affect the other.
@@ -334,7 +436,18 @@ func (m *Model) clone() *Model {
 			th := *m.config.Thinking
 			cfg.Thinking = &th
 		}
+		if len(m.config.Extensions) > 0 {
+			cfg.Extensions = make(map[string]Extension, len(m.config.Extensions))
+			for k, v := range m.config.Extensions {
+				cfg.Extensions[k] = v
+			}
+		}
 		cp.config = &cfg
+	}
+
+	if len(m.middleware) > 0 {
+		cp.middleware = make([]Middleware, len(m.middleware))
+		copy(cp.middleware, m.middleware)
 	}
 
 	return &cp

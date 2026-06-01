@@ -45,6 +45,13 @@ type Provider interface {
 	GetConfig(modelID string) (ModelConfig, bool)
 }
 
+// Extension is the interface that all provider-specific configurations must
+// implement to be passed in a [Request].
+type Extension interface {
+	// ExtensionID returns a unique identifier for this extension type.
+	ExtensionID() string
+}
+
 // Request is the provider-agnostic input to a chat completion call.
 type Request struct {
 	Model    string
@@ -84,6 +91,21 @@ type Request struct {
 
 	// Thinking specifies the thinking/reasoning configuration for the request.
 	Thinking *ThinkingConfig
+
+	// Extensions captures provider-specific configurations that
+	// are not part of the common LLM parameters.
+	Extensions map[string]Extension
+}
+
+// CacheManager is an optional interface that providers can implement if they
+// support explicit management of long-lived context caches (e.g. Gemini).
+type CacheManager interface {
+	// CreateCache creates a new context cache resource from the given request
+	// (contents, tools, etc.) and returns its identifier.
+	CreateCache(context.Context, *Request) (string, error)
+
+	// DeleteCache removes a previously created context cache resource.
+	DeleteCache(context.Context, string) error
 }
 
 // StreamResponse is an iterator over streaming chunks from an LLM provider.

@@ -13,7 +13,29 @@ type Provider interface {
     ListProfiles() []ModelProfile
     GetProfile(id string) (ModelProfile, bool)
     GetConfig(modelID string) (ModelConfig, bool)
-    // ... plus a few metadata methods
+}
+```
+
+### Optional: Cache Management
+If your provider supports explicit resource management for context caching, you can optionally implement the `CacheManager` interface:
+
+```go
+type CacheManager interface {
+    CreateCache(context.Context, *Request) (string, error)
+    DeleteCache(context.Context, string) error
+}
+```
+
+### Optional: Extensions
+If your provider has specialized features, you should define your own extension structs.
+
+1.  **Define the struct**: It must implement either `llm.Extension` or `message.Extension`.
+2.  **Implement `ExtensionID()`**: Return a unique string (e.g. `myprovider.feature`).
+3.  **Register (Message level only)**: If it's a message-level extension, call `message.RegisterExtension` in your `init()` function so it can be restored from JSON.
+
+```go
+func init() {
+    message.RegisterExtension(func() message.Extension { return &MyMsgExt{} })
 }
 ```
 

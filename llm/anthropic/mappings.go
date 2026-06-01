@@ -54,6 +54,13 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 		}
 	}
 
+	var cacheHeader bool
+	if ext, ok := request.Extensions[PromptCaching{}.ExtensionID()]; ok {
+		if pc, ok := ext.(PromptCaching); ok {
+			cacheHeader = pc.CacheHeader
+		}
+	}
+
 	// mark if the tool was completed.
 	toolUsage := make(map[string]bool)
 	registerToolUsage := func(toolCallID string, used bool) {
@@ -61,12 +68,19 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 	}
 
 	for _, msg := range request.Messages {
+		var cache bool
+		if ext, ok := msg.GetExtensions()[MetadataCache]; ok {
+			if mc, ok := ext.(*MessageCache); ok {
+				cache = mc.Enabled
+			}
+		}
+
 		switch msg := msg.(type) {
 		case *message.System:
-			anthropicReq.System = toTextBlocksParams(msg.Content)
+			anthropicReq.System = toTextBlocksParams(msg.Content, cacheHeader)
 		case *message.Assistant:
 			anthropicReq.Messages = append(anthropicReq.Messages, anthropic.NewAssistantMessage(
-				toContentBlocksParams(msg.Content)...,
+				toContentBlocksParams(msg.Content, cache)...,
 			))
 
 			// Mark any tool calls in the assistant message as used, so that we know to expect results for them later.
@@ -75,19 +89,25 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 			}
 		case *message.User:
 			anthropicReq.Messages = append(anthropicReq.Messages, anthropic.NewUserMessage(
-				toContentBlocksParams(msg.Content)...,
+				toContentBlocksParams(msg.Content, cache)...,
 			))
 		case *message.Tool:
 			// Consistently use ToolResultBlockParam for all tool outputs.
+			contentBlocks := toToolResultContent(msg.Content)
+			trbp := &anthropic.ToolResultBlockParam{
+				ToolUseID: msg.ToolCallID,
+				Content:   contentBlocks,
+				IsError:   anthropic.Bool(msg.IsError),
+			}
+			if cache {
+				trbp.CacheControl = anthropic.NewCacheControlEphemeralParam()
+			}
+
 			anthropicReq.Messages = append(anthropicReq.Messages, anthropic.MessageParam{
 				Role: anthropic.MessageParamRoleUser,
 				Content: []anthropic.ContentBlockParamUnion{
 					{
-						OfToolResult: &anthropic.ToolResultBlockParam{
-							ToolUseID: msg.ToolCallID,
-							Content:   toToolResultContent(msg.Content),
-							IsError:   anthropic.Bool(msg.IsError),
-						},
+						OfToolResult: trbp,
 					},
 				},
 			})
@@ -107,8 +127,10 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 
 	if len(request.Tools) > 0 {
 		anthropicReq.Tools = make([]anthropic.ToolUnionParam, 0, len(request.Tools))
-		for _, tool := range request.Tools {
-			toolParam, err := toToolParam(tool)
+		for i, tool := range request.Tools {
+			// Only cache the last tool in the list if cacheHeader is set
+			cache := cacheHeader && i == len(request.Tools)-1
+			toolParam, err := toToolParam(tool, cache)
 			if err != nil {
 				return anthropic.MessageNewParams{}, fmt.Errorf("failed to convert tool definition: %w", err)
 			}
@@ -122,55 +144,102 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 	return anthropicReq, nil
 }
 
-func toTextBlocksParams(content message.Content) []anthropic.TextBlockParam {
+func toTextBlocksParams(content message.Content, cache bool) []anthropic.TextBlockParam {
 	blocks := make([]anthropic.TextBlockParam, 0, len(content))
-	for _, block := range content {
+	for i, block := range content {
 		switch block := block.(type) {
 		case *message.TextBlock:
-			blocks = append(blocks, anthropic.TextBlockParam{
+			param := anthropic.TextBlockParam{
 				Text: block.Text,
-			})
+			}
+			if cache && i == len(content)-1 {
+				param.CacheControl = anthropic.NewCacheControlEphemeralParam()
+			}
+			blocks = append(blocks, param)
 		}
 	}
 
 	return blocks
 }
 
-func toContentBlocksParams(content message.Content) []anthropic.ContentBlockParamUnion {
+func toContentBlocksParams(content message.Content, cache bool) []anthropic.ContentBlockParamUnion {
 	blocks := make([]anthropic.ContentBlockParamUnion, 0, len(content))
-	for _, block := range content {
+	for i, block := range content {
+		var b anthropic.ContentBlockParamUnion
 		switch block := block.(type) {
 		case *message.TextBlock:
-			blocks = append(blocks, anthropic.NewTextBlock(block.Text))
+			tb := anthropic.TextBlockParam{
+				Text: block.Text,
+			}
+			if cache && i == len(content)-1 {
+				tb.CacheControl = anthropic.NewCacheControlEphemeralParam()
+			}
+			b = anthropic.ContentBlockParamUnion{
+				OfText: &tb,
+			}
 		case *message.ImageBlock:
 			if len(block.Data) > 0 {
 				mimeType := block.MIMEType
 				if mimeType == "" {
 					mimeType = "image/jpeg"
 				}
-				blocks = append(blocks, anthropic.NewImageBlock(anthropic.Base64ImageSourceParam{
-					Data:      base64.StdEncoding.EncodeToString(block.Data),
-					MediaType: anthropic.Base64ImageSourceMediaType(mimeType),
-				}))
+				ib := anthropic.ImageBlockParam{
+					Source: anthropic.ImageBlockParamSourceUnion{
+						OfBase64: &anthropic.Base64ImageSourceParam{
+							Data:      base64.StdEncoding.EncodeToString(block.Data),
+							MediaType: anthropic.Base64ImageSourceMediaType(mimeType),
+						},
+					},
+				}
+				if cache && i == len(content)-1 {
+					ib.CacheControl = anthropic.NewCacheControlEphemeralParam()
+				}
+				b = anthropic.ContentBlockParamUnion{
+					OfImage: &ib,
+				}
 			}
 		case *message.DocumentBlock:
 			if len(block.Data) > 0 {
-				blocks = append(blocks, anthropic.NewDocumentBlock(anthropic.Base64PDFSourceParam{
-					Data: base64.StdEncoding.EncodeToString(block.Data),
-				}))
+				db := anthropic.DocumentBlockParam{
+					Source: anthropic.DocumentBlockParamSourceUnion{
+						OfBase64: &anthropic.Base64PDFSourceParam{
+							Data: base64.StdEncoding.EncodeToString(block.Data),
+						},
+					},
+				}
+				if cache && i == len(content)-1 {
+					db.CacheControl = anthropic.NewCacheControlEphemeralParam()
+				}
+				b = anthropic.ContentBlockParamUnion{
+					OfDocument: &db,
+				}
 			}
 		case *message.ToolCall:
 			if block.Args == nil {
 				block.Args = make(map[string]any)
 			}
-			blocks = append(blocks, anthropic.NewToolUseBlock(block.ID, block.Args, block.Name))
+			tub := anthropic.ToolUseBlockParam{
+				ID:    block.ID,
+				Input: block.Args,
+				Name:  block.Name,
+			}
+			if cache && i == len(content)-1 {
+				tub.CacheControl = anthropic.NewCacheControlEphemeralParam()
+			}
+			b = anthropic.ContentBlockParamUnion{
+				OfToolUse: &tub,
+			}
+		}
+
+		if b != (anthropic.ContentBlockParamUnion{}) {
+			blocks = append(blocks, b)
 		}
 	}
 
 	return blocks
 }
 
-func toToolParam(def tool.Definition) (anthropic.ToolParam, error) {
+func toToolParam(def tool.Definition, cache bool) (anthropic.ToolParam, error) {
 	jsonSchema, err := json.Marshal(def.InputSchema)
 	if err != nil {
 		return anthropic.ToolParam{}, err
@@ -181,11 +250,17 @@ func toToolParam(def tool.Definition) (anthropic.ToolParam, error) {
 		return anthropic.ToolParam{}, err
 	}
 
-	return anthropic.ToolParam{
+	param := anthropic.ToolParam{
 		Name:        def.Name,
 		Description: anthropic.String(def.Description),
 		InputSchema: anthropicSchema,
-	}, nil
+	}
+
+	if cache {
+		param.CacheControl = anthropic.NewCacheControlEphemeralParam()
+	}
+
+	return param, nil
 }
 
 func toAssistantChunk(event anthropic.MessageStreamEventUnion) (message.AssistantChunk, error) {

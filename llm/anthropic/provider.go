@@ -16,6 +16,39 @@ import (
 
 var _ llm.Provider = (*Provider)(nil)
 
+const (
+	// MetadataCache is the ID for the prompt caching message extension.
+	MetadataCache = "anthropic.message_cache"
+)
+
+func init() {
+	message.RegisterExtension(func() message.Extension {
+		return &MessageCache{}
+	})
+}
+
+// MessageCache is a message-level extension that signals the provider to
+// apply a cache breakpoint at this specific message.
+type MessageCache struct {
+	// Enabled signals that this message should be a cache breakpoint.
+	Enabled bool `json:"enabled"`
+}
+
+func (m MessageCache) ExtensionID() string {
+	return MetadataCache
+}
+
+// PromptCaching is an extension that configures Anthropic's prompt caching behavior.
+type PromptCaching struct {
+	// CacheHeader signals the provider to cache the "header" of the request
+	// (system prompt and tool definitions).
+	CacheHeader bool
+}
+
+func (p PromptCaching) ExtensionID() string {
+	return "anthropic.prompt_caching"
+}
+
 // Provider represents the Anthropic backend client for
 // handling chat requests for the Loom application.
 //

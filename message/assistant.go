@@ -30,6 +30,12 @@ func (a *Assistant) GetContent() Content {
 	return a.Content
 }
 
+// WithExtension returns the message with the given provider-specific extension set.
+func (a *Assistant) WithExtension(ext Extension) *Assistant {
+	a.Base.AddExtension(ext)
+	return a
+}
+
 func (a *Assistant) isMessage() {}
 
 // ToolCalls returns all [ToolCall] blocks present in the assistant's content.

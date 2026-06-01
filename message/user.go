@@ -58,4 +58,10 @@ func (u *User) GetContent() Content {
 	return u.Content
 }
 
+// WithExtension returns the message with the given provider-specific extension set.
+func (u *User) WithExtension(ext Extension) *User {
+	u.Base.AddExtension(ext)
+	return u
+}
+
 func (u *User) isMessage() {}

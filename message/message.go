@@ -3,6 +3,7 @@ package message
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
 )
 
 // MessageList is an ordered sequence of [Message] values representing a
@@ -92,6 +93,61 @@ func (ml *MessageList) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// Extension is the interface that all provider-specific message configurations
+// must implement to be passed in a [Message].
+type Extension interface {
+	// ExtensionID returns a unique identifier for this extension type.
+	ExtensionID() string
+}
+
+// ExtensionFactory is a function that creates a new instance of a concrete Extension.
+type ExtensionFactory func() Extension
+
+var (
+	extensionRegistry   = make(map[string]ExtensionFactory)
+	extensionRegistryMu sync.RWMutex
+)
+
+// RegisterExtension stores an extension factory in the global registry,
+// allowing concrete types to be restored during JSON unmarshaling.
+func RegisterExtension(factory ExtensionFactory) {
+	extensionRegistryMu.Lock()
+	defer extensionRegistryMu.Unlock()
+	ext := factory()
+	extensionRegistry[ext.ExtensionID()] = factory
+}
+
+// ExtensionMap is a collection of provider-specific configurations keyed by their ID.
+// It implements custom JSON unmarshaling to restore concrete types from the registry.
+type ExtensionMap map[string]Extension
+
+// UnmarshalJSON decodes a JSON object into an ExtensionMap, using the global
+// registry to instantiate the correct concrete types for each key.
+func (m *ExtensionMap) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	*m = make(ExtensionMap)
+	extensionRegistryMu.RLock()
+	defer extensionRegistryMu.RUnlock()
+
+	for id, rawVal := range raw {
+		if factory, ok := extensionRegistry[id]; ok {
+			ext := factory()
+			if err := json.Unmarshal(rawVal, ext); err != nil {
+				return fmt.Errorf("failed to unmarshal message extension %q: %w", id, err)
+			}
+			(*m)[id] = ext
+		} else {
+			// If not in registry, we skip it to avoid data corruption.
+			continue
+		}
+	}
+	return nil
+}
+
 // Message is the sealed interface for all conversation turns.
 // Concrete implementations — [System], [User], [Assistant], and [Tool] —
 // are distinguished by their [Role] and carry a [Content] slice.
@@ -102,6 +158,9 @@ type Message interface {
 	GetContent() Content
 	GetMetadata() map[string]any
 	SetMetadata(map[string]any)
+	GetExtensions() ExtensionMap
+	SetExtensions(ExtensionMap)
+	AddExtension(Extension)
 	isMessage()
 }
 
@@ -126,8 +185,9 @@ func (r Role) String() string {
 
 // Base carries the identity fields shared by all message types.
 type Base struct {
-	ID       string         `json:"id"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	ID         string         `json:"id"`
+	Metadata   map[string]any `json:"metadata,omitempty"`
+	Extensions ExtensionMap   `json:"extensions,omitempty"`
 }
 
 // GetID returns the message identifier.
@@ -148,4 +208,22 @@ func (b *Base) GetMetadata() map[string]any {
 // SetMetadata sets the key/value metadata attached to this message.
 func (b *Base) SetMetadata(metadata map[string]any) {
 	b.Metadata = metadata
+}
+
+// GetExtensions returns the provider-specific configurations attached to this message.
+func (b *Base) GetExtensions() ExtensionMap {
+	return b.Extensions
+}
+
+// SetExtensions sets the provider-specific configurations attached to this message.
+func (b *Base) SetExtensions(extensions ExtensionMap) {
+	b.Extensions = extensions
+}
+
+// AddExtension attaches a single provider-specific configuration to this message.
+func (b *Base) AddExtension(ext Extension) {
+	if b.Extensions == nil {
+		b.Extensions = make(ExtensionMap)
+	}
+	b.Extensions[ext.ExtensionID()] = ext
 }

@@ -149,6 +149,17 @@ func toChatCompletionNewParams(request *llm.Request) (openai.ChatCompletionNewPa
 		params.ReasoningEffort = shared.ReasoningEffort(request.Thinking.Effort)
 	}
 
+	if ext, ok := request.Extensions[PromptCache{}.ExtensionID()]; ok {
+		if pc, ok := ext.(PromptCache); ok {
+			if pc.Key != "" {
+				params.PromptCacheKey = openai.String(pc.Key)
+			}
+			if pc.Retention != "" {
+				params.PromptCacheRetention = openai.ChatCompletionNewParamsPromptCacheRetention(pc.Retention)
+			}
+		}
+	}
+
 	for _, msg := range request.Messages {
 		switch m := msg.(type) {
 		case *message.System:

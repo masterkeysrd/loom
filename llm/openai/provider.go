@@ -16,6 +16,21 @@ import (
 
 var _ llm.Provider = (*Provider)(nil)
 
+// PromptCache is an extension that configures OpenAI's prompt caching behavior.
+type PromptCache struct {
+	// Key is a string hint used to optimize cache bucketing
+	// for similar requests (e.g. per-user or per-session).
+	Key string
+
+	// Retention specifies the retention policy for the prompt
+	// cache. Use "24h" to enable extended caching.
+	Retention string
+}
+
+func (p PromptCache) ExtensionID() string {
+	return "openai.prompt_cache"
+}
+
 // Provider represents the OpenAI backend client for
 // handling chat requests for the Loom application.
 type Provider struct {

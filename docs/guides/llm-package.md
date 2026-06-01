@@ -40,40 +40,73 @@ for chunk, err := range stream {
 }
 ```
 
-## 2. Using the LLM Registry
-
-The `Registry` is useful for decoupling your application from specific provider packages. It allows you to register provider factories and retrieve them by name.
-
-```go
-registry := llm.NewRegistry()
-
-// Register a provider
-registry.Register("openai", func() (llm.Provider, error) {
-    return loomopenai.NewDefaultProvider()
-})
-
-// Later, retrieve and use it
-provider, _ := registry.Get("openai")
-model := llm.NewModel(provider, "gpt-4o")
-```
-
-## 3. Advanced Configuration
+## 2. Advanced Configuration
 
 ### Structured Output (JSON Schema)
-
 If a provider supports it, you can enforce a specific JSON schema for the model's response.
-
 ```go
 model = model.WithStructuredOutput(myJsonSchema)
 ```
 
 ### Thinking (Reasoning) Mode
-
 For models that support "thinking" or extended reasoning (like Anthropic Claude or Google Gemini), you can configure the reasoning budget.
-
 ```go
 model = model.WithThinking(4000) // 4000 tokens for thinking
 ```
+
+### Extensions & Hints
+Providers often have specialized features (like caching) that aren't part of the common LLM parameters. Loom uses a type-safe **Extensions** system to pass these hints.
+
+Extensions come in two flavors:
+1.  **Call Extensions (`llm.Extension`)**: Apply to the entire request (e.g., enable system prompt caching).
+2.  **Message Extensions (`message.Extension`)**: Apply to a specific turn in the conversation (e.g., mark a checkpoint).
+
+```go
+// Example: Setting a call-level extension for Anthropic
+model = model.WithExtension(loomanthropic.PromptCaching{CacheHeader: true})
+
+// Example: Passing a call-level extension for a single call
+model.Invoke(ctx, msgs, llm.WithExtensionOption(loomopenai.PromptCache{
+    Key: "user-session-123",
+}))
+```
+
+## 3. Middleware & Hooks
+Middleware allows you to wrap LLM calls to inject cross-cutting concerns like logging, auditing, or automatic metadata injection.
+
+```go
+model = model.WithMiddleware(func(next llm.Streamer) llm.Streamer {
+    return func(ctx context.Context, req *llm.Request) (llm.StreamResponse, error) {
+        fmt.Printf("Calling model: %s\n", req.Model)
+        
+        // You can also modify the request before it reaches the provider
+        if len(req.Messages) > 10 {
+            req.Extensions[myprovider.CustomExt{}.ExtensionID()] = myprovider.CustomExt{Enabled: true}
+        }
+
+        return next(ctx, req)
+    }
+})
+```
+
+## 4. Cache Management
+For providers that support explicit resource management (like Google Gemini's Context Caching), Loom provides a `CacheManager` API.
+
+```go
+// 1. Create a long-lived cache from a list of messages
+cacheID, err := model.
+    WithExtension(loomgenai.CacheCreation{DisplayName: "Project Docs"}).
+    CreateCache(ctx, documentMessages)
+
+// 2. Use the cache ID in subsequent calls
+resp, _ := model.Invoke(ctx, prompt, llm.WithExtensionOption(loomgenai.ContextCache{ID: cacheID}))
+
+// 3. Delete when no longer needed
+model.DeleteCache(ctx, cacheID)
+```
+
+## 5. Using the LLM Registry
+The `Registry` is useful for decoupling your application from specific provider packages. It allows you to register provider factories and retrieve them by name.
 
 ## Summary
 

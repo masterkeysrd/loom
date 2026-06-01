@@ -84,6 +84,34 @@ if resp.Metrics != nil {
 }
 ```
 
+## 5. Message Extensions & Metadata
+Loom provides two ways to attach auxiliary information to a message:
+
+### Extensions (Type-Safe Hints)
+**Extensions** are provider-specific structs that influence model behavior. Unlike raw metadata, Extensions are type-safe and are automatically restored to their concrete types when loaded from storage.
+
+Loom provides two methods for adding extensions:
+
+1.  **`WithExtension` (Fluent)**: Available on concrete message types (`User`, `Assistant`, etc.). It returns the same concrete type, allowing for method chaining without type erasure.
+2.  **`AddExtension` (Polymorphic)**: Available on the `Message` interface. Use this when you are working with a generic message object.
+
+```go
+// 1. Fluent usage (preserves *message.User type)
+msg := message.NewUserText("Analyze this...").
+    WithExtension(&loomanthropic.MessageCache{Enabled: true})
+
+// 2. Interface usage
+var m message.Message = msg
+m.AddExtension(&someother.Extension{})
+```
+
+### Metadata (Arbitrary Data)
+**Metadata** is a simple `map[string]any` for application-level data (IDs, timestamps, custom flags) that doesn't need a formal schema.
+
+```go
+msg.Metadata["session_id"] = "xyz-123"
+```
+
 ## Summary
 
 - **Roles**: Use `System`, `User`, `Assistant`, and `Tool` to distinguish participants.

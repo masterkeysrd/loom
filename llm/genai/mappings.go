@@ -28,6 +28,12 @@ func toGenerateContentArgs(req *llm.Request) ([]*genai.Content, *genai.GenerateC
 		},
 	}
 
+	if ext, ok := req.Extensions[ContextCache{}.ExtensionID()]; ok {
+		if cc, ok := ext.(ContextCache); ok {
+			config.CachedContent = cc.ID
+		}
+	}
+
 	if req.MaxTokens > 0 {
 		config.MaxOutputTokens = int32(req.MaxTokens)
 	}

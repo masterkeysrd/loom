@@ -27,4 +27,10 @@ func (t *Tool) GetContent() Content {
 	return t.Content
 }
 
+// WithExtension returns the message with the given provider-specific extension set.
+func (t *Tool) WithExtension(ext Extension) *Tool {
+	t.Base.AddExtension(ext)
+	return t
+}
+
 func (t *Tool) isMessage() {}

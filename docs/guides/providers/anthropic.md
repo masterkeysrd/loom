@@ -44,6 +44,29 @@ Enable the model to dynamically adjust its thinking process.
 model = model.WithAdaptiveThinking()
 ```
 
+### Prompt Caching
+
+Anthropic support "Prompt Caching" via ephemeral markers. Loom provides a structured way to leverage this at two levels:
+
+#### 1. Caching the "Header" (Call Extension)
+This is the most common pattern. It caches the static parts of your request (system prompt and tool definitions) so they are reused across turns.
+
+```go
+// Use the PromptCaching extension
+model = model.WithExtension(loomanthropic.PromptCaching{
+    CacheHeader: true,
+})
+```
+
+#### 2. Manual Breakpoints (Message Extension)
+You can mark specific messages in the conversation as cache checkpoints using **Message Extensions**.
+
+```go
+// Add a breakpoint to this specific turn using the fluent API
+msg := message.NewUserText("Analyze this 500-page PDF...").
+    WithExtension(&loomanthropic.MessageCache{Enabled: true})
+```
+
 ## 4. Model Catalog
 
 The provider maintains a list of known Anthropic models and their characteristics.

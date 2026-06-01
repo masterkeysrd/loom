@@ -16,6 +16,30 @@ import (
 
 var _ llm.Provider = (*Provider)(nil)
 
+// ContextCache is an extension that specifies a pre-created context cache
+// to use for a request.
+type ContextCache struct {
+	// ID is the name of the cached content resource.
+	ID string
+}
+
+func (c ContextCache) ExtensionID() string {
+	return "google-genai.context_cache"
+}
+
+// CacheCreation is an extension that configures the creation of a new
+// context cache.
+type CacheCreation struct {
+	// DisplayName is a human-readable name for the cache.
+	DisplayName string
+	// TTL is the time-to-live for the cache.
+	TTL time.Duration
+}
+
+func (c CacheCreation) ExtensionID() string {
+	return "google-genai.cache_creation"
+}
+
 // Provider is the Google GenAI backend client that implements [llm.Provider].
 //
 //go:generate loom-gen llm-profiles -provider=google -out=profiles.gen.go -pkg=loomgenai
@@ -129,6 +153,44 @@ func (p *Provider) SearchProfiles(query string) []llm.ModelProfile {
 // OverrideProfile stores a custom profile for id, shadowing any static entry.
 func (p *Provider) OverrideProfile(id string, profile llm.ModelProfile) {
 	p.overrides.Store(id, profile)
+}
+
+// CreateCache creates a new Google GenAI context cache resource.
+func (p *Provider) CreateCache(ctx context.Context, req *llm.Request) (string, error) {
+	contents, config, err := toGenerateContentArgs(req)
+	if err != nil {
+		return "", fmt.Errorf("genai: build cache request: %w", err)
+	}
+
+	createConfig := &genai.CreateCachedContentConfig{
+		Contents:          contents,
+		SystemInstruction: config.SystemInstruction,
+		Tools:             config.Tools,
+		ToolConfig:        config.ToolConfig,
+	}
+
+	if ext, ok := req.Extensions[CacheCreation{}.ExtensionID()]; ok {
+		if cc, ok := ext.(CacheCreation); ok {
+			createConfig.DisplayName = cc.DisplayName
+			createConfig.TTL = cc.TTL
+		}
+	}
+
+	cache, err := p.client.Caches.Create(ctx, req.Model, createConfig)
+	if err != nil {
+		return "", fmt.Errorf("genai: create cache: %w", err)
+	}
+
+	return cache.Name, nil
+}
+
+// DeleteCache deletes an existing Google GenAI context cache resource.
+func (p *Provider) DeleteCache(ctx context.Context, id string) error {
+	_, err := p.client.Caches.Delete(ctx, id, nil)
+	if err != nil {
+		return fmt.Errorf("genai: delete cache: %w", err)
+	}
+	return nil
 }
 
 func (p *Provider) GetConfig(id string) (llm.ModelConfig, bool) {

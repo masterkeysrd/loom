@@ -6,6 +6,7 @@ import (
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/tool"
 )
 
 func TestToMessageNewParamsAssistantToolCallsHaveToolUseBlocks(t *testing.T) {
@@ -60,6 +61,62 @@ func TestToMessageNewParamsAssistantToolCallsHaveToolUseBlocks(t *testing.T) {
 	}
 }
 
+func TestToMessageNewParams_Caching(t *testing.T) {
+	req := &llm.Request{
+		Model: "claude-3-5-sonnet-latest",
+		Extensions: map[string]llm.Extension{
+			PromptCaching{}.ExtensionID(): PromptCaching{CacheHeader: true},
+		},
+		Messages: []message.Message{
+			&message.System{
+				Content: message.Content{
+					&message.TextBlock{Text: "System prompt"},
+				},
+			},
+			message.NewUserText("User message").WithExtension(&MessageCache{Enabled: true}),
+		},
+		Tools: []tool.Definition{
+			{
+				Name:        "get_weather",
+				Description: "Get weather",
+			},
+		},
+	}
+
+	params, err := toMessageNewParams(req)
+	if err != nil {
+		t.Fatalf("toMessageNewParams failed: %v", err)
+	}
+
+	// Check system prompt caching
+	if len(params.System) == 0 {
+		t.Fatal("expected system prompt")
+	}
+	if params.System[0].CacheControl.Type != "ephemeral" {
+		t.Errorf("expected system prompt to have ephemeral cache control, got %v", params.System[0].CacheControl.Type)
+	}
+
+	// Check user message caching
+	if len(params.Messages) == 0 {
+		t.Fatal("expected messages")
+	}
+	userMsg := params.Messages[0]
+	if len(userMsg.Content) == 0 {
+		t.Fatal("expected user message content")
+	}
+	if userMsg.Content[0].GetCacheControl().Type != "ephemeral" {
+		t.Errorf("expected user message to have ephemeral cache control, got %v", userMsg.Content[0].GetCacheControl().Type)
+	}
+
+	// Check tool caching
+	if len(params.Tools) == 0 {
+		t.Fatal("expected tools")
+	}
+	if params.Tools[0].OfTool.CacheControl.Type != "ephemeral" {
+		t.Errorf("expected tool to have ephemeral cache control, got %v", params.Tools[0].OfTool.CacheControl.Type)
+	}
+}
+
 func TestToContentBlocksParamsMultimodal(t *testing.T) {
 	content := message.Content{
 		&message.TextBlock{Text: "Analyze this image."},
@@ -73,7 +130,7 @@ func TestToContentBlocksParamsMultimodal(t *testing.T) {
 		},
 	}
 
-	blocks := toContentBlocksParams(content)
+	blocks := toContentBlocksParams(content, false)
 	if len(blocks) != 3 {
 		t.Fatalf("expected 3 blocks, got %d", len(blocks))
 	}

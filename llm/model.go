@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/stream"
 	"github.com/masterkeysrd/loom/tool"
 	"github.com/masterkeysrd/loom/trace"
 )
@@ -71,7 +72,7 @@ type CallOption func(*Request)
 
 // Model wraps a [Provider] and a specific model name, exposing both a
 // blocking [Model.Invoke] method and a streaming [Model.Stream] method.
-// It also forwards LLM chunks to any [StreamWriter] stored in the context,
+// It also forwards LLM chunks to any [stream.Writer] stored in the context,
 // enabling transparent integration with the graph streaming layer.
 type Model struct {
 	name       string
@@ -351,7 +352,7 @@ func (m *Model) Invoke(ctx context.Context, messages []message.Message, opts ...
 
 // Stream sends messages to the model and returns an iterator over
 // [message.AssistantChunk] values. Each chunk is also forwarded to the
-// [StreamWriter] in ctx (if any) so callers upstream can emit real-time
+// [stream.Writer] in ctx (if any) so callers upstream can emit real-time
 // events without managing two separate data paths.
 func (m *Model) Stream(ctx context.Context, messages []message.Message, opts ...CallOption) (StreamResponse, error) {
 	req := m.newRequest(messages, opts...)
@@ -366,15 +367,18 @@ func (m *Model) Stream(ctx context.Context, messages []message.Message, opts ...
 		streamer = m.middleware[i](streamer)
 	}
 
-	stream, err := streamer(ctx, req)
+	resp, err := streamer(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	sw, hasWriter := StreamWriterFromContext(ctx)
+	sw, hasWriter := stream.WriterFromContext(ctx)
+	if hasWriter {
+		ctx = stream.WithMetadata(ctx, stream.Metadata{Source: "llm:" + m.profile.Name})
+	}
 
 	return func(yield func(message.AssistantChunk, error) bool) {
-		for chunk, err := range stream {
+		for chunk, err := range resp {
 			if err == nil && chunk.Metrics != nil && m.profile != nil {
 				costs, total := m.profile.EstimateCost(chunk.Metrics.Tokens)
 				chunk.Metrics.Cost = costs
@@ -390,7 +394,7 @@ func (m *Model) Stream(ctx context.Context, messages []message.Message, opts ...
 				})
 			}
 			if hasWriter && err == nil {
-				_ = sw.WriteChunk(ctx, message.CloneAssistantChunk(chunk))
+				_ = sw.Write(ctx, message.CloneAssistantChunk(chunk))
 			}
 			if !yield(chunk, err) {
 				return

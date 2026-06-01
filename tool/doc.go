@@ -21,7 +21,7 @@
 // yields [message.ToolChunk] values. The [Container.Stream] method provides an
 // iterator-based interface for consuming these chunks, mirroring the streaming
 // pattern used in the llm package. Chunks are automatically aggregated into a
-// single [message.Tool] result for the LLM while being forwarded to any [ToolStreamWriter]
+// single [message.Tool] result for the LLM while being forwarded to any [stream.Writer]
 // in the context (e.g. for real-time UI updates).
 //
 // Example:

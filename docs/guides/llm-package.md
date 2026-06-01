@@ -34,6 +34,7 @@ model = model.
 resp, err := model.Invoke(ctx, messages)
 
 // 5. Stream the model (real-time)
+// Chunks are automatically forwarded to any stream.Writer in the context.
 stream, err := model.Stream(ctx, messages)
 for chunk, err := range stream {
     fmt.Print(chunk.Content.Text())

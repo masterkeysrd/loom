@@ -102,6 +102,9 @@ To observe tool progress and token-level updates from the LLM, use the `g.Stream
 events, _ := g.Stream(ctx, input, nil)
 
 for event, err := range events {
+    // The 'Source' field identifies the origin (e.g., "llm:gpt-4o" or "tool:web_search")
+    fmt.Printf("[%s] ", event.Source)
+
     switch event.Event {
     case graph.EventToolProgress:
         chunk := event.Data.(message.ToolChunk)

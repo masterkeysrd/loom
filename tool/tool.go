@@ -68,26 +68,6 @@ type Annotation struct {
 // ToolStream is an iterator over [message.ToolChunk] values produced by a tool.
 type ToolStream func(yield func(message.ToolChunk, error) bool)
 
-// ToolStreamWriter is the interface for forwarding tool chunks to a consumer.
-type ToolStreamWriter interface {
-	WriteToolChunk(ctx context.Context, chunk message.ToolChunk) error
-}
-
-type toolStreamWriterKey struct{}
-
-// WithToolStreamWriter stores w in ctx so that tool streams can forward chunks
-// without requiring callers to pass the writer explicitly.
-func WithToolStreamWriter(ctx context.Context, w ToolStreamWriter) context.Context {
-	return context.WithValue(ctx, toolStreamWriterKey{}, w)
-}
-
-// ToolStreamWriterFromContext retrieves the [ToolStreamWriter] previously stored by
-// [WithToolStreamWriter]. The boolean is false when no writer is present.
-func ToolStreamWriterFromContext(ctx context.Context) (ToolStreamWriter, bool) {
-	w, ok := ctx.Value(toolStreamWriterKey{}).(ToolStreamWriter)
-	return w, ok
-}
-
 // ToolHandler is the type-erased handler for a [Tool].
 // It receives a raw [message.ToolCall] and returns a [ToolStream] result
 // that can be iterated to get chunks or aggregated into a final result.

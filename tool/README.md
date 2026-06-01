@@ -77,7 +77,8 @@ logTool, _ := tool.NewStreaming(
 )
 
 // The framework automatically aggregates these chunks when the LLM calls the tool.
-// If a StreamWriter is present in the context, chunks are also forwarded to the UI in real-time.
+// If a stream.Writer is present in the context, chunks are also forwarded to the UI in real-time.
+// Each chunk is automatically tagged with the tool's name (e.g. Source: "tool:get_logs").
 ```
 
 ## Error Handling

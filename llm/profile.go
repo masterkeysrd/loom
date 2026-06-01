@@ -13,6 +13,25 @@ type ModelProfile struct {
 	Limits       ProfileLimits `json:"limits"`
 	Modalities   Modalities    `json:"modalities"`
 	OpenWeights  bool          `json:"open_weights,omitempty"`
+	Pricing      Pricing       `json:"pricing,omitempty"`
+}
+
+type Pricing struct {
+	Input        float64       `json:"input"`
+	Output       float64       `json:"output"`
+	CacheRead    float64       `json:"cache_read,omitempty"`
+	CacheWrite   float64       `json:"cache_write,omitempty"`
+	Reasoning    float64       `json:"reasoning,omitempty"`
+	TieredLimits []TierPricing `json:"tiers,omitempty"`
+}
+
+type TierPricing struct {
+	Input      float64 `json:"input"`
+	Output     float64 `json:"output"`
+	CacheRead  float64 `json:"cache_read,omitempty"`
+	CacheWrite float64 `json:"cache_write,omitempty"`
+	Reasoning  float64 `json:"reasoning,omitempty"`
+	TierLimit  int     `json:"limit"`
 }
 
 type Capabilities struct {

@@ -29,13 +29,24 @@ type AssistantChunk struct {
 // isChunk marks AssistantChunk as a [Chunk].
 func (c *AssistantChunk) isChunk() {}
 
-// ToolCalls returns all [ToolCall] blocks present in this chunk's content.
-func (c *AssistantChunk) ToolCalls() []*ToolCall {
-	var calls []*ToolCall
-	for _, b := range c.Content {
-		if tc, ok := b.(*ToolCall); ok {
-			calls = append(calls, tc)
-		}
-	}
-	return calls
+// ToolChunk is a single streaming fragment produced by a tool execution.
+// It can carry progress updates for the UI and/or content blocks for the LLM result.
+type ToolChunk struct {
+	BaseChunk `json:",inline"`
+
+	// Progress is an ephemeral status update intended for UI display only.
+	Progress string `json:"progress,omitempty"`
+
+	// ProgressCurrent and ProgressTotal provide optional numerical progress (e.g. 50/100).
+	ProgressCurrent *float64 `json:"progress_current,omitempty"`
+	ProgressTotal   *float64 `json:"progress_total,omitempty"`
+
+	// Content is a sequence of blocks to be aggregated into the final tool result.
+	Content Content `json:"content,omitempty"`
+
+	// IsError indicates if this chunk represents a functional error.
+	IsError bool `json:"is_error,omitempty"`
 }
+
+// isChunk marks ToolChunk as a [Chunk].
+func (c *ToolChunk) isChunk() {}

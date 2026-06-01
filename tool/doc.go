@@ -14,9 +14,20 @@
 // Applications can use [errors.Is] or [errors.As] to detect these failures and decide
 // how to report them back to the LLM (e.g., by providing schema feedback).
 //
+// # Streaming
+//
+// The framework supports tools that stream their results (e.g., for long-running tasks
+// or protocol-based yields like MCP). Use [NewStreaming] to define a tool that
+// yields [message.ToolChunk] values. The [Container.Stream] method provides an
+// iterator-based interface for consuming these chunks, mirroring the streaming
+// pattern used in the llm package. Chunks are automatically aggregated into a
+// single [message.Tool] result for the LLM while being forwarded to any [ToolStreamWriter]
+// in the context (e.g. for real-time UI updates).
+//
 // Example:
 //
 //	resp, err := container.Call(ctx, call)
+
 //	if errors.Is(err, tool.ErrInvalidInput) {
 //	    // Handle validation error (e.g., tell the LLM it sent bad arguments)
 //	}

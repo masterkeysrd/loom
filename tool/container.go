@@ -43,11 +43,55 @@ func (c *Container) Definitions() []Definition {
 	return defs
 }
 
-func (c *Container) Call(ctx context.Context, tc *message.ToolCall) (*message.Tool, error) {
-	tool, exists := c.tools.Get(tc.Name)
+func (c *Container) Stream(ctx context.Context, tc *message.ToolCall) (ToolStream, error) {
+	t, exists := c.tools.Get(tc.Name)
 	if !exists {
 		return nil, fmt.Errorf("tool %q not found", tc.Name)
 	}
 
-	return tool.Handler(ctx, tc)
+	stream, err := t.Handler(ctx, tc)
+	if err != nil {
+		return nil, err
+	}
+
+	sw, hasWriter := ToolStreamWriterFromContext(ctx)
+
+	return func(yield func(message.ToolChunk, error) bool) {
+		for chunk, err := range stream {
+			if hasWriter && err == nil {
+				_ = sw.WriteToolChunk(ctx, chunk)
+			}
+			if !yield(chunk, err) {
+				return
+			}
+		}
+	}, nil
+}
+
+func (c *Container) Call(ctx context.Context, tc *message.ToolCall) (*message.Tool, error) {
+	stream, err := c.Stream(ctx, tc)
+	if err != nil {
+		return nil, err
+	}
+
+	var content message.Content
+	var isError bool
+	for chunk, err := range stream {
+		if err != nil {
+			return nil, err
+		}
+		if len(chunk.Content) > 0 {
+			content = append(content, chunk.Content...)
+		}
+		if chunk.IsError {
+			isError = true
+		}
+	}
+
+	return &message.Tool{
+		ToolCallID: tc.ID,
+		Name:       tc.Name,
+		Content:    content,
+		IsError:    isError,
+	}, nil
 }

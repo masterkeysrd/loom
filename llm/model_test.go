@@ -18,8 +18,32 @@ func (m *modelMockProvider) Stream(ctx context.Context, req *llm.Request) (llm.S
 	return func(yield func(message.AssistantChunk, error) bool) {}, nil
 }
 
-func (m *modelMockProvider) GetConfig(name string) (llm.ModelConfig, bool) {
-	return llm.ModelConfig{}, false
+func (m *modelMockProvider) GetProfile(id string) (llm.ModelProfile, bool) {
+	if id == "test-model" {
+		return llm.ModelProfile{
+			Limits: llm.ProfileLimits{
+				Output: 4096,
+			},
+		}, true
+	}
+	return llm.ModelProfile{}, false
+}
+
+func TestNewModel_DefaultsMaxTokensFromProfile(t *testing.T) {
+	provider := &modelMockProvider{}
+	model, err := llm.NewModel(provider, "test-model", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	_, _ = model.Stream(context.Background(), nil)
+	if provider.lastRequest == nil {
+		t.Fatal("expected request to be captured")
+	}
+
+	if provider.lastRequest.MaxTokens != 4096 {
+		t.Errorf("expected MaxTokens to default to 4096, got %d", provider.lastRequest.MaxTokens)
+	}
 }
 
 func TestModel_FluentConfig(t *testing.T) {

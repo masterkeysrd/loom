@@ -18,7 +18,9 @@ func (m *mockProvider) Stream(ctx context.Context, req *Request) (StreamResponse
 	m.lastRequest = req
 	return func(yield func(message.AssistantChunk, error) bool) {}, nil
 }
-func (m *mockProvider) GetConfig(modelID string) (ModelConfig, bool) { return ModelConfig{}, false }
+func (m *mockProvider) GetProfile(id string) (ModelProfile, bool) {
+	return ModelProfile{}, false
+}
 
 func TestWithStructuredOutput(t *testing.T) {
 	provider := &mockProvider{}

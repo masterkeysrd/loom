@@ -18,8 +18,8 @@ func (m *middlewareMockProvider) Stream(ctx context.Context, req *llm.Request) (
 	return func(yield func(message.AssistantChunk, error) bool) {}, nil
 }
 
-func (m *middlewareMockProvider) GetConfig(name string) (llm.ModelConfig, bool) {
-	return llm.ModelConfig{}, false
+func (m *middlewareMockProvider) GetProfile(id string) (llm.ModelProfile, bool) {
+	return llm.ModelProfile{}, false
 }
 
 func TestModel_Middleware(t *testing.T) {

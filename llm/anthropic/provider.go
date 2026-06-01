@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"os"
 	"sync"
 	"time"
@@ -173,7 +172,13 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 // overrides merged on top of the generated static catalog.
 func (p *Provider) ListProfiles() []llm.ModelProfile {
 	merged := make(map[string]llm.ModelProfile, len(staticProfiles))
-	maps.Copy(merged, staticProfiles)
+	for k, v := range staticProfiles {
+		if override, ok := staticProfileOverrides[k]; ok {
+			merged[k] = override(v)
+		} else {
+			merged[k] = v
+		}
+	}
 	p.overrides.Range(func(k, v any) bool {
 		merged[k.(string)] = v.(llm.ModelProfile)
 		return true
@@ -192,6 +197,11 @@ func (p *Provider) GetProfile(id string) (llm.ModelProfile, bool) {
 		return v.(llm.ModelProfile), true
 	}
 	m, ok := staticProfiles[id]
+	if ok {
+		if override, hasOverride := staticProfileOverrides[id]; hasOverride {
+			m = override(m)
+		}
+	}
 	return m, ok
 }
 
@@ -206,17 +216,4 @@ func (p *Provider) SearchProfiles(query string) []llm.ModelProfile {
 // runtime without regenerating the static catalog.
 func (p *Provider) OverrideProfile(id string, profile llm.ModelProfile) {
 	p.overrides.Store(id, profile)
-}
-
-func (p *Provider) GetConfig(modelID string) (llm.ModelConfig, bool) {
-	if config, ok := staticConfigs[modelID]; ok {
-		return config, ok
-	}
-	profile, ok := p.GetProfile(modelID)
-	if !ok {
-		return llm.ModelConfig{}, false
-	}
-	return llm.ModelConfig{
-		MaxTokens: profile.Limits.Context,
-	}, true
 }

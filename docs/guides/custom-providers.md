@@ -12,7 +12,6 @@ type Provider interface {
     Stream(context.Context, *Request) (StreamResponse, error)
     ListProfiles() []ModelProfile
     GetProfile(id string) (ModelProfile, bool)
-    GetConfig(modelID string) (ModelConfig, bool)
 }
 ```
 

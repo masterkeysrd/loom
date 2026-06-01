@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +17,8 @@ import (
 )
 
 var _ llm.Provider = (*Provider)(nil)
+
+const defaultContextLength = 4096
 
 // Provider represents the Ollama backend client for
 // handling chat requests for the Loom application.
@@ -80,10 +84,31 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 	}, nil
 }
 
-// ListProfiles returns all known Ollama model profiles. The static catalog is
-// empty by default (models are user-installed), so only runtime overrides are
-// returned. NewModel skips validation when the slice is empty.
+// ListProfiles returns all known Ollama model profiles. It first queries the
+// local Ollama instance for installed models, registering any new ones as
+// skeleton profiles in the runtime cache.
 func (p *Provider) ListProfiles() []llm.ModelProfile {
+	// Discover models via tags
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if tags, err := p.client.List(ctx); err == nil {
+		for _, m := range tags.Models {
+			id := m.Name
+			if _, ok := p.overrides.Load(id); !ok {
+				if _, ok := staticProfiles[id]; !ok {
+					// Add a skeleton profile so it shows up in searches.
+					// Full metadata will be fetched on first GetProfile.
+					p.overrides.Store(id, llm.ModelProfile{
+						ID:     id,
+						Name:   id,
+						Family: m.Details.Family,
+					})
+				}
+			}
+		}
+	}
+
 	merged := make(map[string]llm.ModelProfile, len(staticProfiles))
 	maps.Copy(merged, staticProfiles)
 	p.overrides.Range(func(k, v any) bool {
@@ -97,14 +122,106 @@ func (p *Provider) ListProfiles() []llm.ModelProfile {
 	return result
 }
 
-// GetProfile returns the profile for the given model ID, checking overrides
-// before falling back to the generated static catalog.
+// GetProfile returns the profile for the given model ID. It checks overrides
+// and the static catalog first; if not found, it attempts to fetch full
+// metadata (context window, capabilities) from the Ollama API and caches the
+// result.
 func (p *Provider) GetProfile(id string) (llm.ModelProfile, bool) {
 	if v, ok := p.overrides.Load(id); ok {
-		return v.(llm.ModelProfile), true
+		profile := v.(llm.ModelProfile)
+		// If it's just a skeleton (missing limits), try to upgrade it
+		if profile.Limits.Context == 0 {
+			if upgraded, err := p.fetchAndCacheProfile(id); err == nil {
+				return upgraded, true
+			}
+		}
+		return profile, true
 	}
-	m, ok := staticProfiles[id]
-	return m, ok
+	if m, ok := staticProfiles[id]; ok {
+		return m, true
+	}
+
+	// Lazy fetch full details if not even a skeleton exists
+	if profile, err := p.fetchAndCacheProfile(id); err == nil {
+		return profile, true
+	}
+
+	return llm.ModelProfile{}, false
+}
+
+func (p *Provider) fetchAndCacheProfile(id string) (llm.ModelProfile, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	resp, err := p.client.Show(ctx, &api.ShowRequest{Model: id})
+	if err != nil {
+		return llm.ModelProfile{}, err
+	}
+
+	profile := toModelProfile(id, resp)
+	p.overrides.Store(id, profile)
+	return profile, nil
+}
+
+func toModelProfile(id string, resp *api.ShowResponse) llm.ModelProfile {
+	p := llm.ModelProfile{
+		ID:     id,
+		Name:   id,
+		Family: resp.Details.Family,
+		Capabilities: llm.Capabilities{
+			Temperature: true,
+			ToolCall:    true, // Assume true for modern Ollama models
+		},
+	}
+
+	// Map modalities and capabilities
+	for _, cap := range resp.Capabilities {
+		switch string(cap) {
+		case "vision":
+			p.Modalities.Inputs = append(p.Modalities.Inputs, llm.ModalityImage)
+			p.Capabilities.Attachment = true
+		}
+	}
+
+	// Always add text modality
+	p.Modalities.Inputs = append(p.Modalities.Inputs, llm.ModalityText)
+	p.Modalities.Outputs = append(p.Modalities.Outputs, llm.ModalityText)
+
+	// Context window discovery:
+	// 1. Try to parse from Parameters string (Modelfile overrides)
+	// 2. Try to find in ModelInfo (Model architecture defaults)
+	// 3. Fallback to defaultContextLength (one of Ollama's common base defaults)
+	p.Limits.Context = defaultContextLength
+
+	// Parse parameters (e.g., "num_ctx 2048")
+	for line := range strings.SplitSeq(resp.Parameters, "\n") {
+		parts := strings.Fields(line)
+		if len(parts) == 2 && parts[0] == "num_ctx" {
+			if val, err := strconv.Atoi(parts[1]); err == nil {
+				p.Limits.Context = val
+			}
+		}
+	}
+
+	// ModelInfo usually has the more accurate hardware-derived limit
+	for k, v := range resp.ModelInfo {
+		if strings.HasSuffix(k, ".context_length") {
+			if f, ok := v.(float64); ok {
+				p.Limits.Context = int(f)
+				break
+			}
+			if i, ok := v.(int); ok {
+				p.Limits.Context = i
+				break
+			}
+			if i64, ok := v.(int64); ok {
+				p.Limits.Context = int(i64)
+				break
+			}
+		}
+	}
+
+	return p
 }
 
 // SearchProfiles returns profiles whose ID or DisplayName contains query

@@ -76,6 +76,7 @@ type CallOption func(*Request)
 type Model struct {
 	name       string
 	provider   Provider
+	profile    *ModelProfile
 	tools      []tool.Definition
 	config     *ModelConfig
 	middleware []Middleware
@@ -86,9 +87,14 @@ type Model struct {
 // non-empty catalog and name is not found in it, preventing hallucinated or
 // cross-provider model IDs from reaching the API.
 func NewModel(provider Provider, name string, config *ModelConfig) (*Model, error) {
+	var profile *ModelProfile
+	if p, found := provider.GetProfile(name); found {
+		profile = &p
+	}
+
 	if config == nil {
 		config = &ModelConfig{}
-		if profile, found := provider.GetProfile(name); found {
+		if profile != nil {
 			config.MaxTokens = profile.Limits.Output
 		}
 	}
@@ -96,6 +102,7 @@ func NewModel(provider Provider, name string, config *ModelConfig) (*Model, erro
 	return &Model{
 		name:       name,
 		provider:   provider,
+		profile:    profile,
 		config:     config,
 		middleware: make([]Middleware, 0),
 	}, nil
@@ -368,6 +375,12 @@ func (m *Model) Stream(ctx context.Context, messages []message.Message, opts ...
 
 	return func(yield func(message.AssistantChunk, error) bool) {
 		for chunk, err := range stream {
+			if err == nil && chunk.Metrics != nil && m.profile != nil {
+				costs, total := m.profile.EstimateCost(chunk.Metrics.Tokens)
+				chunk.Metrics.Cost = costs
+				chunk.Metrics.TotalCost = total
+			}
+
 			if err == nil {
 				trace.Append(ctx, "model", "stream_chunk", map[string]any{
 					"chunk_text":  message.Content(chunk.Content).Text(),

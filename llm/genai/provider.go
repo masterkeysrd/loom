@@ -42,7 +42,7 @@ func (c CacheCreation) ExtensionID() string {
 
 // Provider is the Google GenAI backend client that implements [llm.Provider].
 //
-//go:generate loom-gen llm-profiles -provider=google -out=profiles.gen.go -pkg=loomgenai
+//go:generate loomgen llm-profiles -provider=google -out=profiles.gen.go -pkg=loomgenai
 type Provider struct {
 	client    *genai.Client
 	overrides sync.Map

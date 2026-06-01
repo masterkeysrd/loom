@@ -289,12 +289,14 @@ func toAssistantChunk(event anthropic.MessageStreamEventUnion) (message.Assistan
 		inputTokens := int(e.Usage.InputTokens)
 		outputTokens := int(e.Usage.OutputTokens)
 		chunk.Metrics = &message.TokenMetrics{
-			PromptTokens:       inputTokens,
-			CompletionTokens:   outputTokens,
-			TotalTokens:        inputTokens + outputTokens,
-			CachedPromptTokens: int(e.Usage.CacheReadInputTokens),
-			CacheWriteTokens:   int(e.Usage.CacheCreationInputTokens),
-			ReasoningTokens:    int(e.Usage.OutputTokensDetails.ThinkingTokens),
+			TotalTokens: inputTokens + outputTokens,
+			Tokens: message.TokenDetails{
+				Input:      inputTokens,
+				Output:     outputTokens,
+				CacheRead:  int(e.Usage.CacheReadInputTokens),
+				CacheWrite: int(e.Usage.CacheCreationInputTokens),
+				Reasoning:  int(e.Usage.OutputTokensDetails.ThinkingTokens),
+			},
 		}
 	case anthropic.MessageStopEvent:
 	case anthropic.ContentBlockStartEvent:

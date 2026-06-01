@@ -51,7 +51,7 @@ func (p PromptCaching) ExtensionID() string {
 // Provider represents the Anthropic backend client for
 // handling chat requests for the Loom application.
 //
-//go:generate loom-gen llm-profiles -provider=anthropic -out=profiles.gen.go -pkg=loomanthropic
+//go:generate loomgen llm-profiles -provider=anthropic -out=profiles.gen.go -pkg=loomanthropic
 type Provider struct {
 	client    *anthropic.Client
 	overrides sync.Map

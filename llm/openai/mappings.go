@@ -352,11 +352,13 @@ func toAssistantChunk(chunk *openai.ChatCompletionChunk) (message.AssistantChunk
 
 	if chunk.Usage.TotalTokens > 0 {
 		res.Metrics = &message.TokenMetrics{
-			PromptTokens:       int(chunk.Usage.PromptTokens),
-			CompletionTokens:   int(chunk.Usage.CompletionTokens),
-			TotalTokens:        int(chunk.Usage.TotalTokens),
-			CachedPromptTokens: int(chunk.Usage.PromptTokensDetails.CachedTokens),
-			ReasoningTokens:    int(chunk.Usage.CompletionTokensDetails.ReasoningTokens),
+			TotalTokens: int(chunk.Usage.TotalTokens),
+			Tokens: message.TokenDetails{
+				Input:     int(chunk.Usage.PromptTokens),
+				Output:    int(chunk.Usage.CompletionTokens),
+				CacheRead: int(chunk.Usage.PromptTokensDetails.CachedTokens),
+				Reasoning: int(chunk.Usage.CompletionTokensDetails.ReasoningTokens),
+			},
 		}
 	}
 

@@ -1,6 +1,10 @@
 package llm
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/masterkeysrd/loom/message"
+)
 
 // ModelProfile describes the capabilities and metadata of a specific LLM model.
 // Providers embed a map of ModelProfile values (generated via go:generate) and
@@ -14,6 +18,45 @@ type ModelProfile struct {
 	Modalities   Modalities    `json:"modalities"`
 	OpenWeights  bool          `json:"open_weights,omitempty"`
 	Pricing      Pricing       `json:"pricing,omitempty"`
+}
+
+// EstimateCost calculates the estimated financial cost of a request based on
+// the provided token details. It automatically handles tiered pricing logic
+// if the model's profile defines it.
+func (p ModelProfile) EstimateCost(details message.TokenDetails) (message.CostDetails, message.Cost) {
+	// 1. Select the appropriate pricing tier.
+	// Some models (like Anthropic/Gemini) charge more if the total context window is large.
+	pricing := p.Pricing
+	totalTokens := details.Input + details.Output
+
+	for _, tier := range p.Pricing.TieredLimits {
+		if totalTokens >= tier.TierLimit {
+			pricing.Input = tier.Input
+			pricing.Output = tier.Output
+			pricing.CacheRead = tier.CacheRead
+			pricing.CacheWrite = tier.CacheWrite
+			pricing.Reasoning = tier.Reasoning
+		}
+	}
+
+	// 2. Helper to convert "price per million" to "nano-dollars per token"
+	// $1.00 = 1,000,000,000 nano-dollars.
+	// (price / 1,000,000) * 1,000,000,000 = price * 1,000.
+	toNano := func(price float64, tokens int) message.Cost {
+		return message.Cost(price * 1000 * float64(tokens))
+	}
+
+	costs := message.CostDetails{
+		Input:      toNano(pricing.Input, details.Input),
+		Output:     toNano(pricing.Output, details.Output),
+		CacheRead:  toNano(pricing.CacheRead, details.CacheRead),
+		CacheWrite: toNano(pricing.CacheWrite, details.CacheWrite),
+		Reasoning:  toNano(pricing.Reasoning, details.Reasoning),
+	}
+
+	total := costs.Input + costs.Output + costs.CacheRead + costs.CacheWrite + costs.Reasoning
+
+	return costs, total
 }
 
 type Pricing struct {

@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/masterkeysrd/loom/llm"
@@ -351,14 +350,4 @@ func toToolResultContent(content message.Content) []anthropic.ToolResultBlockPar
 		}
 	}
 	return blocks
-}
-
-func extractText(content message.Content) string {
-	var sb strings.Builder
-	for _, block := range content {
-		if t, ok := block.(*message.TextBlock); ok {
-			sb.WriteString(t.Text)
-		}
-	}
-	return sb.String()
 }

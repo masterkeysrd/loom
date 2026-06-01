@@ -71,7 +71,30 @@ processorTool, _ := tool.NewStreaming(
 )
 ```
 
-## 4. Graph Streaming
+## 4. MCP Tools
+
+Loom provides first-class support for the Model Context Protocol (MCP). You can dynamically extract tools from any MCP-compliant server and add them to your `tool.Container`.
+
+```go
+// Connect to an MCP server
+client := mcp.NewClient(mcp.Config{
+    Transport: "stdio",
+    Command:   "python",
+    Args:      []string{"my_server.py"},
+})
+
+// Extract tools
+session, _ := client.Session(ctx)
+mcpTools, _ := session.Tools(ctx)
+
+// Integrate with Loom container
+container := tool.NewContainer()
+container.AddTools(mcpTools...)
+```
+
+See the [MCP Guide](./mcp.md) for more details.
+
+## 5. Graph Streaming
 
 To observe tool progress and token-level updates from the LLM, use the `g.Stream` method.
 

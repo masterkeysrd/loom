@@ -30,11 +30,27 @@ type Config struct {
 	// Auth provides dynamic authentication (OAuth2/Enterprise).
 	// This is not serialized to JSON automatically.
 	Auth AuthProvider `json:"-"`
+
+	// Elicitation provides interactive user input handling.
+	// This is not serialized to JSON automatically.
+	Elicitation ElicitationProvider `json:"-"`
 }
 
 // AuthProvider defines a standard interface for generating an MCP OAuthHandler.
 type AuthProvider interface {
 	GetHandler(ctx context.Context) (auth.OAuthHandler, error)
+}
+
+// ElicitationProvider defines how the client handles interactive requests
+// from the server for user input or actions.
+type ElicitationProvider interface {
+	// HandleElicit is called when the server requests information (Form)
+	// or an action (URL).
+	HandleElicit(ctx context.Context, params *mcp.ElicitParams) (*mcp.ElicitResult, error)
+
+	// HandleElicitComplete is called when an out-of-band elicitation (like a URL flow)
+	// is finished on the server side.
+	HandleElicitComplete(ctx context.Context, params *mcp.ElicitationCompleteParams)
 }
 
 // Client represents a client for a single MCP server.
@@ -51,10 +67,7 @@ func NewClient(config Config) *Client {
 		config: config,
 	}
 
-	c.client = mcp.NewClient(&mcp.Implementation{
-		Name:    "loom-mcp-client",
-		Version: "0.1.0",
-	}, &mcp.ClientOptions{
+	opts := &mcp.ClientOptions{
 		ProgressNotificationHandler: func(ctx context.Context, req *mcp.ProgressNotificationClientRequest) {
 			if ch, ok := c.progressRegistry.Load(req.Params.ProgressToken); ok {
 				var total *float64
@@ -74,7 +87,21 @@ func NewClient(config Config) *Client {
 				}
 			}
 		},
-	})
+	}
+
+	if config.Elicitation != nil {
+		opts.ElicitationHandler = func(ctx context.Context, req *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+			return config.Elicitation.HandleElicit(ctx, req.Params)
+		}
+		opts.ElicitationCompleteHandler = func(ctx context.Context, req *mcp.ElicitationCompleteNotificationRequest) {
+			config.Elicitation.HandleElicitComplete(ctx, req.Params)
+		}
+	}
+
+	c.client = mcp.NewClient(&mcp.Implementation{
+		Name:    "loom-mcp-client",
+		Version: "0.1.0",
+	}, opts)
 
 	return c
 }

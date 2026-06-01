@@ -120,6 +120,34 @@ config := mcp.Config{
 ```
 When a session is started, Loom will automatically spin up a local callback server and prompt the user to authenticate in their browser.
 
+## 7. Elicitation (Interactive Input)
+
+Elicitation allows an MCP server to request information or actions from the user during a session (e.g., asking for a password or confirming an action).
+
+To support this, implement the `ElicitationProvider` interface and provide it in your `Config`.
+
+```go
+type MyElicitProvider struct{}
+
+func (p *MyElicitProvider) HandleElicit(ctx context.Context, params *mcp.ElicitParams) (*mcp.ElicitResult, error) {
+    fmt.Println("Server request:", params.Message)
+    // Handle form input or URL action here...
+    return &mcp.ElicitResult{Action: "accept"}, nil
+}
+
+func (p *MyElicitProvider) HandleElicitComplete(ctx context.Context, params *mcp.ElicitationCompleteParams) {
+    fmt.Println("Elicitation complete:", params.ElicitationID)
+}
+
+config := mcp.Config{
+    Transport:   "stdio",
+    Command:     "my-server",
+    Elicitation: &MyElicitProvider{},
+}
+```
+
+Loom provides the infrastructure to bridge these server-side requests to your custom UI logic.
+
 ## Summary
 
 - **Standardized**: Connect to any MCP-compliant data source.

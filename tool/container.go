@@ -75,6 +75,7 @@ func (c *Container) Call(ctx context.Context, tc *message.ToolCall) (*message.To
 	}
 
 	var content message.Content
+	var structured any
 	var isError bool
 	for chunk, err := range stream {
 		if err != nil {
@@ -83,15 +84,19 @@ func (c *Container) Call(ctx context.Context, tc *message.ToolCall) (*message.To
 		if len(chunk.Content) > 0 {
 			content = append(content, chunk.Content...)
 		}
+		if chunk.StructuredContent != nil {
+			structured = chunk.StructuredContent
+		}
 		if chunk.IsError {
 			isError = true
 		}
 	}
 
 	return &message.Tool{
-		ToolCallID: tc.ID,
-		Name:       tc.Name,
-		Content:    content,
-		IsError:    isError,
+		ToolCallID:        tc.ID,
+		Name:              tc.Name,
+		Content:           content,
+		StructuredContent: structured,
+		IsError:           isError,
 	}, nil
 }

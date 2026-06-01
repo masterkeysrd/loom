@@ -44,6 +44,9 @@ type ToolChunk struct {
 	// Content is a sequence of blocks to be aggregated into the final tool result.
 	Content Content `json:"content,omitempty"`
 
+	// StructuredContent holds the structured Go value returned by the tool.
+	StructuredContent any `json:"structured_content,omitempty"`
+
 	// IsError indicates if this chunk represents a functional error.
 	IsError bool `json:"is_error,omitempty"`
 }

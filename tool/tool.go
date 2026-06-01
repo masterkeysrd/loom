@@ -204,7 +204,10 @@ func AdaptHandler[In, Out any](name string, schema *jsonschema.Resolved, fn Hand
 				content = message.Content{&message.TextBlock{Text: string(outData)}}
 			}
 
-			yield(message.ToolChunk{Content: content}, nil)
+			yield(message.ToolChunk{
+				Content:           content,
+				StructuredContent: out,
+			}, nil)
 		}, nil
 	}
 }

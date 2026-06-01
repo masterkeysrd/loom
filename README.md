@@ -13,6 +13,7 @@ Unlike linear chains, `loom` provides a robust, state-first architecture inspire
     - **Automatic Summarization**: Intelligently condense long conversations when token limits are reached.
     - **Precise Trimming**: Flexible message trimming strategies (e.g., sliding window) to fit context windows.
 - **🔌 Provider Agnostic**: One interface for OpenAI, Anthropic, Ollama, and Google Gemini.
+- **🔌 MCP Support**: Native integration with the Model Context Protocol for tools, resources, and prompts.
 - **🛠️ Tool Integration**: Native support for tool calling and tool-use loops.
 - **🛡️ Type Safe**: Built from the ground up with Go generics for maximum developer productivity and safety.
 
@@ -24,6 +25,7 @@ Detailed guides on how to use Loom's features:
 - [💬 Conversations](./docs/guides/conversations.md): Message roles, multimodal content, and history.
 - [🧠 LLM Package](./docs/guides/llm-package.md): Learn about the Model API and Registry.
 - [🔌 Providers: OpenAI](./docs/guides/providers/openai.md), [Anthropic](./docs/guides/providers/anthropic.md), [Gemini](./docs/guides/providers/google.md), [Ollama](./docs/guides/providers/ollama.md).
+- [🔌 MCP Support](./docs/guides/mcp.md): Connect to MCP servers for tools, resources, and prompts.
 - [💾 Persistence & State](./docs/guides/persistence.md): Learn about checkpointing and thread resumption.
 - [🤝 Human-in-the-Loop](./docs/guides/hitl.md): Patterns for human approval and input.
 - [🛠️ Tools & Streaming](./docs/guides/tools.md): Integrate tools and handle real-time events.

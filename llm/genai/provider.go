@@ -192,13 +192,3 @@ func (p *Provider) DeleteCache(ctx context.Context, id string) error {
 	}
 	return nil
 }
-
-func (p *Provider) GetConfig(id string) (llm.ModelConfig, bool) {
-	profile, ok := p.GetProfile(id)
-	if !ok {
-		return llm.ModelConfig{}, false
-	}
-	return llm.ModelConfig{
-		MaxTokens: profile.Limits.Context,
-	}, true
-}

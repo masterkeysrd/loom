@@ -87,9 +87,9 @@ type Model struct {
 // cross-provider model IDs from reaching the API.
 func NewModel(provider Provider, name string, config *ModelConfig) (*Model, error) {
 	if config == nil {
-		cfg, found := provider.GetConfig(name)
-		if found {
-			config = &cfg
+		config = &ModelConfig{}
+		if profile, found := provider.GetProfile(name); found {
+			config.MaxTokens = profile.Limits.Output
 		}
 	}
 

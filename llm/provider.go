@@ -38,11 +38,6 @@ type Provider interface {
 	// OverrideProfile registers a custom profile for id, shadowing any
 	// entry with the same ID in the static catalog.
 	OverrideProfile(id string, profile ModelProfile)
-
-	// GetConfig returns the provider's current configuration, which may include
-	// global defaults or model-specific overrides. The boolean indicates whether
-	// a config was found for the given model ID.
-	GetConfig(modelID string) (ModelConfig, bool)
 }
 
 // Extension is the interface that all provider-specific configurations must

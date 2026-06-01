@@ -119,13 +119,3 @@ func (p *Provider) SearchProfiles(query string) []llm.ModelProfile {
 func (p *Provider) OverrideProfile(id string, profile llm.ModelProfile) {
 	p.overrides.Store(id, profile)
 }
-
-func (p *Provider) GetConfig(id string) (llm.ModelConfig, bool) {
-	profile, ok := p.GetProfile(id)
-	if !ok {
-		return llm.ModelConfig{}, false
-	}
-	return llm.ModelConfig{
-		MaxTokens: profile.Limits.Context,
-	}, true
-}

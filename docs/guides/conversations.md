@@ -77,10 +77,11 @@ Loom tracks token usage for every assistant response. This information is attach
 
 ```go
 if resp.Metrics != nil {
-    fmt.Printf("Prompt: %d, Completion: %d, Total: %d\n",
-        resp.Metrics.PromptTokens,
-        resp.Metrics.CompletionTokens,
-        resp.Metrics.TotalTokens)
+    fmt.Printf("Input: %d, Output: %d, Total: %d, Estimated Cost: %s\n",
+        resp.Metrics.Tokens.Input,
+        resp.Metrics.Tokens.Output,
+        resp.Metrics.TotalTokens,
+        resp.Metrics.TotalCost)
 }
 ```
 

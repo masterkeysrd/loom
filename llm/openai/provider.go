@@ -32,6 +32,8 @@ func (p PromptCache) ExtensionID() string {
 
 // Provider represents the OpenAI backend client for
 // handling chat requests for the Loom application.
+//
+//go:generate loomgen llm-profiles -provider=openai -out=profiles.gen.go -pkg=loomopenai
 type Provider struct {
 	client    *openai.Client
 	overrides sync.Map

@@ -142,7 +142,7 @@ func WithAnnotation(a Annotation) Option {
 //   - Validating call.Args against the resolved schema before invoking fn.
 //   - Decoding the validated map into In via a JSON round-trip.
 //   - JSON-encoding the Out value and yielding it as a single chunk.
-func AdaptHandler[In, Out any](name string, schema *jsonschema.Resolved, fn HandlerFunc[In, Out]) ToolHandler {
+func AdaptHandler[In, Out any](name, desc string, schema *jsonschema.Resolved, fn HandlerFunc[In, Out]) ToolHandler {
 	return func(ctx context.Context, call *message.ToolCall) (ToolStream, error) {
 		// Validate the raw argument map against the inferred JSON schema.
 		// map[string]any is the canonical "JSON value" form jsonschema expects.
@@ -161,14 +161,24 @@ func AdaptHandler[In, Out any](name string, schema *jsonschema.Resolved, fn Hand
 		}
 
 		return func(yield func(message.ToolChunk, error) bool) {
+			// Span name MUST be execute_tool {gen_ai.tool.name}
 			ctx, span := telemetry.Start(ctx, "execute_tool "+name, trace.WithSpanKind(trace.SpanKindInternal))
 			defer span.End()
 
 			span.SetAttributes(
-				attribute.String("gen_ai.operation.name", "execute_tool"), // Make sure OTel recognizes this as a GenAI tool span
+				telemetry.WithOperation(telemetry.OpExecuteTool),
 				telemetry.WithToolName(name),
+				telemetry.WithToolCallID(call.ID),
+				telemetry.WithToolDescription(desc),
 				attribute.String("loom.tool.type", "local"),
 			)
+
+			// Record tool arguments if content recording is enabled
+			if telemetry.ShouldRecordContent(ctx) {
+				if args, err := json.Marshal(call.Args); err == nil {
+					span.SetAttributes(telemetry.KeyContentToolArguments.String(string(args)))
+				}
+			}
 
 			startTime := time.Now()
 			out, err := fn(ctx, input)
@@ -176,6 +186,9 @@ func AdaptHandler[In, Out any](name string, schema *jsonschema.Resolved, fn Hand
 
 			if err != nil {
 				if toolErr, ok := err.(*Error); ok {
+					if telemetry.ShouldRecordContent(ctx) {
+						span.SetAttributes(telemetry.KeyContentToolResult.String(toolErr.Error()))
+					}
 					yield(message.ToolChunk{
 						Content: toolErr.Content,
 						IsError: true,
@@ -185,6 +198,7 @@ func AdaptHandler[In, Out any](name string, schema *jsonschema.Resolved, fn Hand
 
 				span.RecordError(err)
 				span.SetStatus(codes.Error, err.Error())
+				span.SetAttributes(telemetry.WithErrorType(fmt.Sprintf("%T", err)))
 				yield(message.ToolChunk{}, err)
 				return
 			}
@@ -203,6 +217,10 @@ func AdaptHandler[In, Out any](name string, schema *jsonschema.Resolved, fn Hand
 				content = message.Content{&message.TextBlock{Text: string(outData)}}
 			}
 
+			if telemetry.ShouldRecordContent(ctx) {
+				span.SetAttributes(telemetry.KeyContentToolResult.String(content.Text()))
+			}
+
 			yield(message.ToolChunk{
 				Content:           content,
 				StructuredContent: out,
@@ -212,7 +230,7 @@ func AdaptHandler[In, Out any](name string, schema *jsonschema.Resolved, fn Hand
 }
 
 // AdaptStreamHandler wraps a typed [StreamHandlerFunc] into a [ToolHandler].
-func AdaptStreamHandler[In any](name string, schema *jsonschema.Resolved, fn StreamHandlerFunc[In]) ToolHandler {
+func AdaptStreamHandler[In any](name, desc string, schema *jsonschema.Resolved, fn StreamHandlerFunc[In]) ToolHandler {
 	return func(ctx context.Context, call *message.ToolCall) (ToolStream, error) {
 		// Validate the raw argument map against the inferred JSON schema.
 		if err := schema.Validate(call.Args); err != nil {
@@ -229,7 +247,48 @@ func AdaptStreamHandler[In any](name string, schema *jsonschema.Resolved, fn Str
 			return nil, fmt.Errorf("tool %q: failed to decode args into input type: %w", name, err)
 		}
 
-		return fn(ctx, input)
+		return func(yield func(message.ToolChunk, error) bool) {
+			// Span name MUST be execute_tool {gen_ai.tool.name}
+			ctx, span := telemetry.Start(ctx, "execute_tool "+name, trace.WithSpanKind(trace.SpanKindInternal))
+			defer span.End()
+
+			span.SetAttributes(
+				telemetry.WithOperation(telemetry.OpExecuteTool),
+				telemetry.WithToolName(name),
+				telemetry.WithToolCallID(call.ID),
+				telemetry.WithToolDescription(desc),
+				attribute.String("loom.tool.type", "local"),
+			)
+
+			// Record tool arguments if content recording is enabled
+			if telemetry.ShouldRecordContent(ctx) {
+				if args, err := json.Marshal(call.Args); err == nil {
+					span.SetAttributes(telemetry.KeyContentToolArguments.String(string(args)))
+				}
+			}
+
+			stream, err := fn(ctx, input)
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+				return
+			}
+
+			for chunk, err := range stream {
+				if err != nil {
+					span.RecordError(err)
+					span.SetStatus(codes.Error, err.Error())
+					if !yield(chunk, err) {
+						return
+					}
+					continue
+				}
+
+				if !yield(chunk, err) {
+					return
+				}
+			}
+		}, nil
 	}
 }
 
@@ -264,7 +323,7 @@ func New[In, Out any](name, title, description string, handler HandlerFunc[In, O
 			InputSchema:  inputSchema,
 			OutputSchema: outputSchema,
 		},
-		Handler: AdaptHandler(name, resolvedInput, handler),
+		Handler: AdaptHandler(name, description, resolvedInput, handler),
 	}
 	for _, opt := range opts {
 		opt(def)
@@ -293,7 +352,7 @@ func NewStreaming[In any](name, title, description string, handler StreamHandler
 			Description: description,
 			InputSchema: inputSchema,
 		},
-		Handler: AdaptStreamHandler(name, resolvedInput, handler),
+		Handler: AdaptStreamHandler(name, description, resolvedInput, handler),
 	}
 	for _, opt := range opts {
 		opt(def)

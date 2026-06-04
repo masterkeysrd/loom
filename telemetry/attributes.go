@@ -37,11 +37,12 @@ var (
 	WithStopSequences    = KeyGenAIRequestStopSequences.StringSlice
 	WithPresencePenalty  = KeyGenAIRequestPresencePenalty.Float64
 	WithFrequencyPenalty = KeyGenAIRequestFrequencyPenalty.Float64
-	WithToolName         = semconv.GenAIToolNameKey.String
-	WithToolCallID       = semconv.GenAIToolCallIDKey.String
 	WithToolType         = semconv.GenAIToolTypeKey.String
 	WithInputTokens      = KeyGenAIUsageInputTokens.Int
 	WithOutputTokens     = KeyGenAIUsageOutputTokens.Int
+	WithReasoningTokens  = KeyGenAIUsageReasoningTokens.Int
+	WithCacheReadTokens  = KeyGenAIUsageCacheReadTokens.Int
+	WithCacheWriteTokens = KeyGenAIUsageCacheWriteTokens.Int
 
 	// RPC and JSON-RPC helpers
 	WithRPCMethod = semconv.RPCMethodKey.String
@@ -68,6 +69,7 @@ const (
 	KeyContentSystemPrompt   = attribute.Key("gen_ai.system_instructions")
 	KeyContentToolArguments  = attribute.Key("gen_ai.tool.call.arguments")
 	KeyContentToolResult     = attribute.Key("gen_ai.tool.call.result")
+	KeyContentToolDefs       = attribute.Key("gen_ai.tool.definitions")
 
 	// GenAI Keys (standard ones as defined in latest conventions)
 	KeyGenAIProvider                = attribute.Key("gen_ai.provider.name")
@@ -75,9 +77,18 @@ const (
 	KeyGenAIRequestModel            = attribute.Key("gen_ai.request.model")
 	KeyGenAIRequestStream           = attribute.Key("gen_ai.request.stream")
 	KeyGenAIRequestSeed             = attribute.Key("gen_ai.request.seed")
+	KeyGenAIRequestChoiceCount      = attribute.Key("gen_ai.request.choice.count")
 	KeyGenAIConversationID          = attribute.Key("gen_ai.conversation.id")
 	KeyGenAIResponseType            = attribute.Key("gen_ai.output.type")
 	KeyGenAIResponseModel           = attribute.Key("gen_ai.response.model")
+	KeyGenAIResponseID              = attribute.Key("gen_ai.response.id")
+	KeyGenAIResponseFinishReasons   = attribute.Key("gen_ai.response.finish_reasons")
+	KeyGenAIResponseTimeToFirst     = attribute.Key("gen_ai.response.time_to_first_chunk")
+	KeyGenAIUsageInputTokens        = attribute.Key("gen_ai.usage.input_tokens")
+	KeyGenAIUsageOutputTokens       = attribute.Key("gen_ai.usage.output_tokens")
+	KeyGenAIUsageReasoningTokens    = attribute.Key("gen_ai.usage.reasoning.output_tokens")
+	KeyGenAIUsageCacheReadTokens    = attribute.Key("gen_ai.usage.cache_read.input_tokens")
+	KeyGenAIUsageCacheWriteTokens   = attribute.Key("gen_ai.usage.cache_creation.input_tokens")
 	KeyGenAIRequestMaxTokens        = attribute.Key("gen_ai.request.max_tokens")
 	KeyGenAIRequestTemperature      = attribute.Key("gen_ai.request.temperature")
 	KeyGenAIRequestTopP             = attribute.Key("gen_ai.request.top_p")
@@ -85,8 +96,10 @@ const (
 	KeyGenAIRequestStopSequences    = attribute.Key("gen_ai.request.stop_sequences")
 	KeyGenAIRequestPresencePenalty  = attribute.Key("gen_ai.request.presence_penalty")
 	KeyGenAIRequestFrequencyPenalty = attribute.Key("gen_ai.request.frequency_penalty")
-	KeyGenAIUsageInputTokens        = attribute.Key("gen_ai.usage.input_tokens")
-	KeyGenAIUsageOutputTokens       = attribute.Key("gen_ai.usage.output_tokens")
+
+	// Tool Keys
+	KeyGenAIToolCallID      = attribute.Key("gen_ai.tool.call.id")
+	KeyGenAIToolDescription = attribute.Key("gen_ai.tool.description")
 
 	KeyErrorType = attribute.Key("error.type")
 )
@@ -107,6 +120,26 @@ func WithConversationID(id string) attribute.KeyValue {
 
 func WithErrorType(err string) attribute.KeyValue {
 	return KeyErrorType.String(err)
+}
+
+func WithToolName(name string) attribute.KeyValue {
+	return semconv.GenAIToolNameKey.String(name)
+}
+
+func WithToolCallID(id string) attribute.KeyValue {
+	return KeyGenAIToolCallID.String(id)
+}
+
+func WithToolDescription(desc string) attribute.KeyValue {
+	return KeyGenAIToolDescription.String(desc)
+}
+
+func WithResponseID(id string) attribute.KeyValue {
+	return KeyGenAIResponseID.String(id)
+}
+
+func WithFinishReasons(reasons []string) attribute.KeyValue {
+	return KeyGenAIResponseFinishReasons.StringSlice(reasons)
 }
 
 func WithLoomGraph(name string) attribute.KeyValue {

@@ -22,6 +22,7 @@ func TelemetryMiddleware(provider Provider) Middleware {
 			opName := telemetry.OpChat
 			providerName := getProviderName(provider.Name())
 
+			// Span name MUST be {gen_ai.operation.name} {gen_ai.request.model}
 			spanName := fmt.Sprintf("%s %s", opName, req.Model)
 			ctx, span := telemetry.Start(ctx, spanName, trace.WithSpanKind(trace.SpanKindClient))
 
@@ -31,6 +32,13 @@ func TelemetryMiddleware(provider Provider) Middleware {
 				telemetry.WithProvider(string(providerName)),
 				telemetry.WithModel(req.Model),
 				telemetry.WithStream(true), // Loom core always uses streaming internally
+			}
+
+			// Capture Tool Definitions if content recording is enabled
+			if telemetry.ShouldRecordContent(ctx) {
+				if defs, err := json.Marshal(req.Tools); err == nil {
+					attrs = append(attrs, telemetry.KeyContentToolDefs.String(string(defs)))
+				}
 			}
 
 			// Add optional request parameters
@@ -71,8 +79,24 @@ func TelemetryMiddleware(provider Provider) Middleware {
 
 			// Record content if opt-in
 			if telemetry.ShouldRecordContent(ctx) {
-				if payload, err := json.Marshal(req.Messages); err == nil {
+				var chatHistory []message.Message
+				var systemInstructions []message.Message
+
+				for _, m := range req.Messages {
+					if _, ok := m.(*message.System); ok {
+						systemInstructions = append(systemInstructions, m)
+					} else {
+						chatHistory = append(chatHistory, m)
+					}
+				}
+
+				if payload, err := json.Marshal(chatHistory); err == nil {
 					telemetry.RecordContent(ctx, span, telemetry.KeyContentInputMessages, payload)
+				}
+				if len(systemInstructions) > 0 {
+					if payload, err := json.Marshal(systemInstructions); err == nil {
+						telemetry.RecordContent(ctx, span, telemetry.KeyContentSystemPrompt, payload)
+					}
 				}
 			}
 
@@ -91,6 +115,9 @@ func TelemetryMiddleware(provider Provider) Middleware {
 				var lastChunkTime time.Time
 				var totalTokens message.TokenMetrics
 				var responseModel string
+				var responseID string
+				var finishReasons []string
+				agg := message.NewAssistantAggregator()
 
 				defer func() {
 					duration := time.Since(startTime)
@@ -101,6 +128,21 @@ func TelemetryMiddleware(provider Provider) Middleware {
 					if responseModel != "" {
 						finalAttrs = append(finalAttrs, telemetry.WithResponseModel(responseModel))
 						span.SetAttributes(telemetry.WithResponseModel(responseModel))
+					}
+					if responseID != "" {
+						span.SetAttributes(telemetry.WithResponseID(responseID))
+					}
+					if len(finishReasons) > 0 {
+						span.SetAttributes(telemetry.WithFinishReasons(finishReasons))
+					}
+
+					// Record assistant messages if content recording is enabled
+					if telemetry.ShouldRecordContent(ctx) {
+						if fullMsg, err := agg.Build(); err == nil {
+							if payload, err := json.Marshal([]message.Message{fullMsg}); err == nil {
+								telemetry.RecordContent(ctx, span, telemetry.KeyContentOutputMessages, payload)
+							}
+						}
 					}
 
 					// Record final metrics
@@ -114,6 +156,16 @@ func TelemetryMiddleware(provider Provider) Middleware {
 							telemetry.WithInputTokens(totalTokens.Tokens.Input),
 							telemetry.WithOutputTokens(totalTokens.Tokens.Output),
 						)
+
+						if totalTokens.Tokens.Reasoning > 0 {
+							span.SetAttributes(telemetry.WithReasoningTokens(totalTokens.Tokens.Reasoning))
+						}
+						if totalTokens.Tokens.CacheRead > 0 {
+							span.SetAttributes(telemetry.WithCacheReadTokens(totalTokens.Tokens.CacheRead))
+						}
+						if totalTokens.Tokens.CacheWrite > 0 {
+							span.SetAttributes(telemetry.WithCacheWriteTokens(totalTokens.Tokens.CacheWrite))
+						}
 					}
 
 					span.End()
@@ -133,15 +185,25 @@ func TelemetryMiddleware(provider Provider) Middleware {
 
 					if !firstChunkReceived {
 						firstChunkReceived = true
-						telemetry.RecordTimeToFirstChunk(ctx, now.Sub(startTime), opName, providerName, telemetry.WithModel(req.Model))
+						elapsed := now.Sub(startTime)
+						telemetry.RecordTimeToFirstChunk(ctx, elapsed, opName, providerName, telemetry.WithModel(req.Model))
+						span.SetAttributes(telemetry.KeyGenAIResponseTimeToFirst.Float64(elapsed.Seconds()))
 					} else {
 						telemetry.RecordTimePerOutputChunk(ctx, now.Sub(lastChunkTime), opName, providerName, telemetry.WithModel(req.Model))
 					}
 					lastChunkTime = now
 
+					if chunk.ID != "" {
+						responseID = chunk.ID
+					}
 					if chunk.Model != "" {
 						responseModel = chunk.Model
 					}
+					if chunk.DoneReason != "" {
+						finishReasons = append(finishReasons, chunk.DoneReason)
+					}
+
+					agg.Add(&chunk)
 
 					if chunk.Metrics != nil {
 						totalTokens.TotalTokens = chunk.Metrics.TotalTokens

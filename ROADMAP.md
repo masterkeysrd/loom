@@ -19,7 +19,6 @@ This document outlines the planned evolution of the `loom` framework. Our goal i
 - [ ] **Cost & Usage Tracking**: Centralized aggregation of token usage and estimated costs across entire execution threads.
 
 ## 🔌 Ecosystem & Integration
-- [ ] **Standard Tool Library**: A collection of high-quality, pre-built tools for common tasks (Web Search, Shell, Calculator, SQL, File I/O).
 - [ ] **OpenAPI & MCP Support**: Automatic tool generation from OpenAPI specs and native support for the Model Context Protocol (MCP).
 - [ ] **OpenTelemetry (OTel) Integration**: First-class support for OTel spans and traces to integrate with modern observability stacks (Jaeger, Honeycomb, etc.).
 

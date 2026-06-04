@@ -23,11 +23,11 @@ span.SetAttributes(telemetry.WithLoomThread("thread-123"))
 
 ## Loom Studio
 
-Loom Studio is a built-in visualization and debugging tool for your agents. It provides a real-time dashboard for metrics and a detailed waterfall viewer for execution traces.
+Loom Studio is a built-in control plane for your agents. It provides a real-time visualization layer on top of your telemetry data.
 
 ### Running Loom Studio
 
-To start Loom Studio, run the following command in your terminal:
+To start Loom Studio, run:
 
 ```bash
 loom studio
@@ -38,6 +38,20 @@ By default, it will:
 - Listen for OTLP gRPC telemetry on `localhost:4317`.
 - Listen for OTLP HTTP telemetry on `localhost:4318`.
 - Store data in a local SQLite database at `.loom/telemetry.db`.
+
+### Core Views
+
+1.  **Dashboard**: A high-level overview of system health, featuring token consumption, LLM call volume, P50 latency, and tool invocation counts.
+2.  **Trace Explorer**: An audit log of every execution thread. You can search by Thread ID or Graph name to find specific interactions.
+3.  **Trace Waterfall**: A detailed Gantt-style view of a single execution. It breaks down the timing of every LLM call, node transition, and tool execution.
+4.  **Metrics Explorer**: A deep-dive into time-series data. It supports **Temporal Bucketing** (1s to 1h intervals) to smooth out data and ensure fast rendering even with millions of points.
+
+### Semantic Conventions (v1.41.1)
+
+Loom strictly adheres to the latest **OpenTelemetry GenAI Semantic Conventions**. This means spans and metrics are standardized:
+- **Inference Spans**: Named `chat {model}` with attributes for tokens (input/output/reasoning/cache), temperature, and response IDs.
+- **Tool Spans**: Named `execute_tool {name}`.
+- **Histograms**: Use the official explicit bucket boundaries for precise distribution analysis.
 
 ### Automatic Tracing
 

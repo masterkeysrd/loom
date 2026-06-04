@@ -3,6 +3,7 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -64,6 +65,11 @@ type Config struct {
 // Returns a shutdown function and an error.
 // If the application already has OpenTelemetry configured globally, calling this is unnecessary.
 func Init(ctx context.Context, cfg Config) (func(context.Context) error, error) {
+	// Opt-in to the latest GenAI semantic conventions as per v1.41.1 spec
+	if os.Getenv("OTEL_SEMCONV_STABILITY_OPT_IN") == "" {
+		os.Setenv("OTEL_SEMCONV_STABILITY_OPT_IN", "gen_ai_latest_experimental")
+	}
+
 	if cfg.OTLPEndpoint == "" {
 		cfg.OTLPEndpoint = "localhost:4317"
 	}
@@ -116,12 +122,18 @@ func Init(ctx context.Context, cfg Config) (func(context.Context) error, error) 
 		return nil, fmt.Errorf("failed to create metric exporter: %w", err)
 	}
 
-	// Explicit Bucket Boundaries as per PLAN.md
+	// Explicit Bucket Boundaries as per GenAI Semantic Conventions v1.41.1
 	tokenBuckets := sdkmetric.AggregationExplicitBucketHistogram{
-		Boundaries: []float64{1, 4, 16, 64, 256, 1024, 4096, 16384, 65536},
+		Boundaries: []float64{
+			1, 4, 16, 64, 256, 1024, 4096, 16384, 65536,
+			262144, 1048576, 4194304, 16777216, 67108864,
+		},
 	}
 	durationBuckets := sdkmetric.AggregationExplicitBucketHistogram{
-		Boundaries: []float64{0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64, 1.28, 2.56, 5.12, 10.24},
+		Boundaries: []float64{
+			0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64, 1.28, 2.56, 5.12, 10.24,
+			20.48, 40.96, 81.92,
+		},
 	}
 	rpcDurationBuckets := sdkmetric.AggregationExplicitBucketHistogram{
 		Boundaries: []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10},

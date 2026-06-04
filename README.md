@@ -8,6 +8,7 @@ Unlike linear chains, `loom` provides a robust, state-first architecture inspire
 
 - **🕸️ Graph-based Workflows**: Define agents as directed graphs with nodes and conditional edges.
 - **💾 State Persistence**: Built-in checkpointing with support for PostgreSQL and SQLite.
+- **🖥️ Loom Studio**: Built-in Trace Explorer and Metrics Dashboard for real-time observability.
 - **📺 Real-time Streaming**: First-class support for token-level streaming and event-based updates.
 - **🧠 Advanced Memory Management**:
     - **Automatic Summarization**: Intelligently condense long conversations when token limits are reached.
@@ -22,6 +23,7 @@ Unlike linear chains, `loom` provides a robust, state-first architecture inspire
 Detailed guides on how to use Loom's features:
 
 - [🚀 Quick Start Guide](./docs/guides/quickstart.md): Build your first graph-based agent.
+- [🖥️ Loom Studio](./docs/guides/observability.md): The built-in visualization and debugging dashboard.
 - [💬 Conversations](./docs/guides/conversations.md): Message roles, multimodal content, and history.
 - [🧠 LLM Package](./docs/guides/llm-package.md): Learn about the Model API and Registry.
 - [🔌 Providers: OpenAI](./docs/guides/providers/openai.md), [Anthropic](./docs/guides/providers/anthropic.md), [Gemini](./docs/guides/providers/google.md), [Ollama](./docs/guides/providers/ollama.md).
@@ -30,7 +32,7 @@ Detailed guides on how to use Loom's features:
 - [🤝 Human-in-the-Loop](./docs/guides/hitl.md): Patterns for human approval and input.
 - [🛠️ Tools & Streaming](./docs/guides/tools.md): Integrate tools and handle real-time events.
 - [🧠 Memory & Context](./docs/guides/memory.md): Manage conversation history and token limits.
-- [🔍 Observability](./docs/guides/observability.md): Graph visualization and tracing.
+- [🔍 Observability](./docs/guides/observability.md): Deep-dive into metrics and tracing.
 - [🏗️ Custom Providers](./docs/guides/custom-providers.md): Extend Loom with new LLM backends.
 
 ## Installation
@@ -98,9 +100,10 @@ func main() {
         },
     }
 
+    // Pass a unique ThreadID for telemetry correlation
     snapshot, err := g.Execute(ctx, graph.Update[MyState](func(s MyState) MyState {
         return initialState
-    }), nil)
+    }), &graph.Location{ThreadID: "first-weave"})
 
     if err != nil {
         log.Fatal(err)
@@ -108,6 +111,31 @@ func main() {
 
     fmt.Println(snapshot.State.Messages.Last().GetContent().Text())
 }
+```
+
+## 🖥️ Loom Studio
+
+Loom Studio is a built-in control plane for your agents. It provides:
+
+- **Dashboard**: Real-time stats on token usage, model latency (P50), and tool invocations.
+- **Trace Explorer**: A high-fidelity waterfall viewer to audit every decision and tool call.
+- **Metrics Explorer**: Deep-dive into telemetry with temporal bucketing and attribute filtering.
+
+To start the studio:
+
+```bash
+loom studio
+```
+
+Then visit `http://localhost:8080`.
+
+### Content Recording (Opt-in)
+
+By default, Loom masks sensitive content (prompts and tool payloads). To see raw messages in the Studio:
+
+```go
+// Wrap your context to enable rich content recording
+ctx = telemetry.WithContentRecording(ctx)
 ```
 
 ## Core Concepts

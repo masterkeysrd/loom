@@ -186,6 +186,7 @@ func toAssistantChunk(resp api.ChatResponse) (message.AssistantChunk, error) {
 	}
 
 	chunk := message.AssistantChunk{
+		Model:      resp.Model,
 		Content:    content,
 		Done:       resp.Done,
 		DoneReason: resp.DoneReason,

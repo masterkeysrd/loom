@@ -1,68 +1,87 @@
-# Visualization & Observability 🔍
+# Observability
 
-Loom provides built-in tools to help you understand your graph's structure and debug its execution in real-time.
+Loom provides first-class support for observability using OpenTelemetry (OTel). This allows you to trace the execution of your agents, monitor performance, and debug complex multi-step workflows.
 
-## 1. Graph Visualization (Mermaid)
+## Quick Start
 
-Loom can automatically generate diagrams of your workflows using [Mermaid](https://mermaid.js.org/) syntax. This is incredibly useful for documentation and for verifying your graph's logic.
-
-### Generating Mermaid Code
+The easiest way to get started is to use the built-in `telemetry` package and Loom Studio.
 
 ```go
-g, _ := builder.Build()
+import "github.com/masterkeysrd/loom/telemetry"
 
-// Get the raw Mermaid string
-fmt.Println(g.ToMermaid())
+// Initialize telemetry (usually in main)
+shutdown, _ := telemetry.Init(ctx, telemetry.Config{ServiceName: "my-agent"})
+defer shutdown(ctx)
 
-// Get a URL to render the diagram immediately
-fmt.Println("View Diagram:", g.MermaidURL())
+// Start a span
+ctx, span := telemetry.Start(ctx, "my-operation")
+defer span.End()
+
+// Log a custom attribute
+span.SetAttributes(telemetry.WithLoomThread("thread-123"))
 ```
 
-### Visualizing Edges
-- **Direct Edges**: Shown as solid arrows (`-->`).
-- **Conditional Edges**: Shown as dotted arrows (`-.->`).
-- **Route Edges**: Shown with labels for each possible path.
+## Loom Studio
 
-## 2. Observability & Tracing
+Loom Studio is a built-in control plane for your agents. It provides a real-time visualization layer on top of your telemetry data.
 
-The `trace` package provides a lightweight way to log the execution flow of your agents. By default, it writes logs to `logs/stream_chain.jsonl`.
+### Running Loom Studio
 
-### Using the Trace Package
+To start Loom Studio, run:
 
-You can attach a `SessionID` to a context to group related events.
-
-```go
-import "github.com/masterkeysrd/loom/trace"
-
-ctx = trace.WithSession(ctx, "user-session-123")
-
-// Log a custom event
-trace.Append(ctx, "my-component", "my-stage", map[string]any{
-    "info": "something happened",
-})
+```bash
+loom studio
 ```
+
+By default, it will:
+- Open a web dashboard on `http://localhost:8080`.
+- Listen for OTLP gRPC telemetry on `localhost:4317`.
+- Listen for OTLP HTTP telemetry on `localhost:4318`.
+- Store data in a local SQLite database at `.loom/telemetry.db`.
+
+### Core Views
+
+1.  **Dashboard**: A high-level overview of system health, featuring token consumption, LLM call volume, P50 latency, and tool invocation counts.
+2.  **Trace Explorer**: An audit log of every execution thread. You can search by Thread ID or Graph name to find specific interactions.
+3.  **Trace Waterfall**: A detailed Gantt-style view of a single execution. It breaks down the timing of every LLM call, node transition, and tool execution.
+4.  **Metrics Explorer**: A deep-dive into time-series data. It supports **Temporal Bucketing** (1s to 1h intervals) to smooth out data and ensure fast rendering even with millions of points.
+
+### Semantic Conventions (v1.41.1)
+
+Loom strictly adheres to the latest **OpenTelemetry GenAI Semantic Conventions**. This means spans and metrics are standardized:
+- **Inference Spans**: Named `chat {model}` with attributes for tokens (input/output/reasoning/cache), temperature, and response IDs.
+- **Tool Spans**: Named `execute_tool {name}`.
+- **Histograms**: Use the official explicit bucket boundaries for precise distribution analysis.
 
 ### Automatic Tracing
 
-Loom's `Model` and `Graph` packages automatically emit trace events for:
-- LLM requests and chunks.
+Loom's `Model` and `Graph` packages automatically emit OpenTelemetry spans and metrics for:
+- LLM requests (using GenAI semantic conventions).
 - Node entry and exit.
-- State updates and interrupts.
+- Graph execution durations and node invocations.
 
-### Example Log Entry
+### Capturing Sensitive Content
 
-```json
-{
-  "timestamp": "2024-05-31T12:00:00Z",
-  "session_id": "user-session-123",
-  "component": "model",
-  "stage": "invoke_complete",
-  "data": { "message_id": "...", "metrics": { ... } }
-}
+By default, Loom does **not** record sensitive content (prompts, completion text, tool results) to protect your privacy. You can opt-in to content recording using `telemetry.WithContentRecording`:
+
+```go
+ctx = telemetry.WithContentRecording(ctx)
+// Subsequent LLM and tool calls in this context will record their payloads
 ```
 
-## 3. Best Practices
+## Production Observability
 
-- **Visualize Early**: Use `g.MermaidURL()` during development to ensure your graph matches your mental model.
-- **Session IDs**: Always use `WithSession` to make it easier to trace a single user's journey through multiple graph executions.
-- **Log Rotation**: Since Loom logs to a file, ensure you have a strategy for log rotation in production environments.
+Since Loom uses standard OpenTelemetry under the hood, you can easily point it to any OTel-compliant backend (Datadog, Honeycomb, Jaeger, etc.) by setting the standard environment variables:
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://api.honeycomb.io"
+export OTEL_EXPORTER_OTLP_HEADERS="x-honeycomb-team=your-api-key"
+```
+
+If your application already has OpenTelemetry configured, Loom will automatically use your existing `TracerProvider` and `MeterProvider` without any additional setup.
+
+## Best Practices
+
+- **Trace IDs**: Always propagate `context.Context` through your application to ensure spans are correctly parented.
+- **Attributes**: Use standard semantic conventions for custom attributes when possible to ensure compatibility with various observability tools.
+- **Sampling**: In high-throughput production environments, consider configuring a sampler to reduce the volume of telemetry data.

@@ -68,10 +68,14 @@ func (g *Graph[State]) Execute(ctx context.Context, input Command[State], loc *L
 		snapshot.State = input.Apply(snapshot.State.Copy())
 	}
 
+	rec := newRecorder(g.name)
+	ctx, rec = rec.startGraph(ctx, snapshot.Location)
+	defer func() { rec.endGraph(ctx, nil) }() // Normal end if no error returned early
+
 	for !snapshot.IsDone() {
 		nodes, err := g.getNodes(snapshot.Next)
 		if err != nil {
-			return snapshot, fmt.Errorf("failed to get nodes: %w", err)
+			return snapshot, err
 		}
 
 		// For the moment only support one node.
@@ -82,14 +86,9 @@ func (g *Graph[State]) Execute(ctx context.Context, input Command[State], loc *L
 		nodeName := snapshot.Next[0]
 		node := nodes[0]
 
-		nodeCtx := WithExecutionCtx(ctx, ExecutionCtx{
-			GraphName: g.name,
-			NodeName:  nodeName,
-			Location:  snapshot.Location,
-		})
-		cmd, err := node.Execute(nodeCtx, snapshot.State.Copy())
+		cmd, err := g.executeNode(ctx, rec, nodeName, node, snapshot)
 		if err != nil {
-			return snapshot, fmt.Errorf("failed to execute node: %w", err)
+			return snapshot, err
 		}
 
 		var interrupt bool
@@ -108,6 +107,26 @@ func (g *Graph[State]) Execute(ctx context.Context, input Command[State], loc *L
 	}
 
 	return snapshot, nil
+}
+
+func (g *Graph[State]) executeNode(ctx context.Context, rec *recorder, name string, node Node[State], snapshot Snapshot[State]) (Command[State], error) {
+	nodeCtx, span := rec.startNode(ctx, name)
+	startTime := time.Now()
+
+	execCtx := WithExecutionCtx(nodeCtx, ExecutionCtx{
+		GraphName: g.name,
+		NodeName:  name,
+		Location:  snapshot.Location,
+	})
+
+	cmd, err := node.Execute(execCtx, snapshot.State.Copy())
+
+	rec.endNode(ctx, name, span, startTime, err)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute node: %w", err)
+	}
+
+	return cmd, nil
 }
 
 // Stream is the streaming variant of [Graph.Execute].

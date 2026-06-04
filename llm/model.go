@@ -3,13 +3,13 @@ package llm
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/message"
 	"github.com/masterkeysrd/loom/stream"
 	"github.com/masterkeysrd/loom/tool"
-	"github.com/masterkeysrd/loom/trace"
 )
 
 type ModelConfig struct {
@@ -100,13 +100,18 @@ func NewModel(provider Provider, name string, config *ModelConfig) (*Model, erro
 		}
 	}
 
-	return &Model{
+	m := &Model{
 		name:       name,
 		provider:   provider,
 		profile:    profile,
 		config:     config,
 		middleware: make([]Middleware, 0),
-	}, nil
+	}
+
+	// Apply telemetry middleware by default
+	m.middleware = append(m.middleware, TelemetryMiddleware(provider))
+
+	return m, nil
 }
 
 // BindTools registers tool definitions with the model. On every subsequent
@@ -322,30 +327,12 @@ func (m *Model) Invoke(ctx context.Context, messages []message.Message, opts ...
 		}
 
 		aggregator.Add(&chunk)
-		blocks, blocksErr := aggregator.GetBlocks()
-		aggregateText := ""
-		if blocksErr == nil {
-			aggregateText = message.Content(blocks).Text()
-		}
-		trace.Append(ctx, "model", "invoke_chunk", map[string]any{
-			"chunk_text":     message.Content(chunk.Content).Text(),
-			"aggregate_text": aggregateText,
-			"done":           chunk.Done,
-			"done_reason":    chunk.DoneReason,
-			"metrics":        chunk.Metrics,
-		})
 	}
 
 	msg, err := aggregator.Build()
 	if err != nil {
 		return nil, fmt.Errorf("failed to build assistant message: %w", err)
 	}
-
-	trace.Append(ctx, "model", "invoke_complete", map[string]any{
-		"message_id":   msg.GetID(),
-		"message_text": msg.GetContent().Text(),
-		"metrics":      msg.Metrics,
-	})
 
 	return msg, nil
 }
@@ -385,14 +372,6 @@ func (m *Model) Stream(ctx context.Context, messages []message.Message, opts ...
 				chunk.Metrics.TotalCost = total
 			}
 
-			if err == nil {
-				trace.Append(ctx, "model", "stream_chunk", map[string]any{
-					"chunk_text":  message.Content(chunk.Content).Text(),
-					"done":        chunk.Done,
-					"done_reason": chunk.DoneReason,
-					"metrics":     chunk.Metrics,
-				})
-			}
 			if hasWriter && err == nil {
 				_ = sw.Write(ctx, message.CloneAssistantChunk(chunk))
 			}
@@ -424,9 +403,7 @@ func (m *Model) newRequest(messages []message.Message, opts ...CallOption) *Requ
 
 		if len(m.config.Extensions) > 0 {
 			req.Extensions = make(map[string]Extension, len(m.config.Extensions))
-			for k, v := range m.config.Extensions {
-				req.Extensions[k] = v
-			}
+			maps.Copy(req.Extensions, m.config.Extensions)
 		}
 	}
 
@@ -455,9 +432,7 @@ func (m *Model) clone() *Model {
 		}
 		if len(m.config.Extensions) > 0 {
 			cfg.Extensions = make(map[string]Extension, len(m.config.Extensions))
-			for k, v := range m.config.Extensions {
-				cfg.Extensions[k] = v
-			}
+			maps.Copy(cfg.Extensions, m.config.Extensions)
 		}
 		cp.config = &cfg
 	}

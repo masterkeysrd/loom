@@ -287,13 +287,16 @@ func toAssistantChunk(event anthropic.MessageStreamEventUnion) (message.Assistan
 	case anthropic.MessageDeltaEvent:
 		inputTokens := int(e.Usage.InputTokens)
 		outputTokens := int(e.Usage.OutputTokens)
+		cacheRead := int(e.Usage.CacheReadInputTokens)
+		cacheWrite := int(e.Usage.CacheCreationInputTokens)
+
 		chunk.Metrics = &message.TokenMetrics{
-			TotalTokens: inputTokens + outputTokens,
+			TotalTokens: inputTokens + outputTokens + cacheRead + cacheWrite,
 			Tokens: message.TokenDetails{
-				Input:      inputTokens,
+				Input:      inputTokens + cacheRead + cacheWrite, // Summed for OTel compliance
 				Output:     outputTokens,
-				CacheRead:  int(e.Usage.CacheReadInputTokens),
-				CacheWrite: int(e.Usage.CacheCreationInputTokens),
+				CacheRead:  cacheRead,
+				CacheWrite: cacheWrite,
 				Reasoning:  int(e.Usage.OutputTokensDetails.ThinkingTokens),
 			},
 		}

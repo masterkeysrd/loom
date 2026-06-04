@@ -13,6 +13,10 @@ type middlewareMockProvider struct {
 	lastRequest *llm.Request
 }
 
+func (m *middlewareMockProvider) Name() string {
+	return "mock"
+}
+
 func (m *middlewareMockProvider) Stream(ctx context.Context, req *llm.Request) (llm.StreamResponse, error) {
 	m.lastRequest = req
 	return func(yield func(message.AssistantChunk, error) bool) {}, nil

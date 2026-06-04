@@ -9,13 +9,20 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/google/uuid"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/telemetry"
 	"github.com/masterkeysrd/loom/tool"
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/semconv/v1.41.0/rpcconv"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Config defines the connection parameters for an MCP server.
@@ -355,6 +362,29 @@ func (s *SessionClient) adaptTool(mcpTool *mcp.Tool) (*tool.Tool, error) {
 	}, nil
 }
 
+type anyMapCarrier map[string]any
+
+func (c anyMapCarrier) Get(key string) string {
+	if v, ok := c[key]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+func (c anyMapCarrier) Set(key string, value string) {
+	c[key] = value
+}
+
+func (c anyMapCarrier) Keys() []string {
+	keys := make([]string, 0, len(c))
+	for k := range c {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
 func (s *SessionClient) createHandler(name string, schema *jsonschema.Resolved) tool.ToolHandler {
 	return func(ctx context.Context, call *message.ToolCall) (tool.ToolStream, error) {
 		if err := schema.Validate(call.Args); err != nil {
@@ -372,12 +402,29 @@ func (s *SessionClient) createHandler(name string, schema *jsonschema.Resolved) 
 		}
 		params.SetProgressToken(token)
 
+		// Inject trace context into MCP metadata
+		if params.Meta == nil {
+			params.Meta = make(map[string]any)
+		}
+		otel.GetTextMapPropagator().Inject(ctx, anyMapCarrier(params.Meta))
+
 		return func(yield func(message.ToolChunk, error) bool) {
+			ctx, span := telemetry.Start(ctx, "tools/call", trace.WithSpanKind(trace.SpanKindClient))
+			defer span.End()
+
+			span.SetAttributes(
+				telemetry.WithRPCMethod("tools/call"),
+				attribute.String("rpc.system.name", "jsonrpc"),
+				telemetry.WithToolName(name),
+				attribute.String("loom.tool.type", "mcp"),
+			)
+
 			type result struct {
 				res *mcp.CallToolResult
 				err error
 			}
 			resChan := make(chan result, 1)
+			startTime := time.Now()
 			go func() {
 				res, err := s.session.CallTool(ctx, params)
 				resChan <- result{res: res, err: err}
@@ -390,7 +437,10 @@ func (s *SessionClient) createHandler(name string, schema *jsonschema.Resolved) 
 						return
 					}
 				case r := <-resChan:
+					telemetry.RecordRPCDuration(ctx, time.Since(startTime), rpcconv.SystemNameJSONRPC, "tools/call")
 					if r.err != nil {
+						span.RecordError(r.err)
+						span.SetStatus(codes.Error, r.err.Error())
 						yield(message.ToolChunk{}, r.err)
 						return
 					}

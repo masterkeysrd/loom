@@ -2,9 +2,10 @@ package loomollama
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"maps"
+	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -14,6 +15,9 @@ import (
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
 	"github.com/ollama/ollama/api"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var _ llm.Provider = (*Provider)(nil)
@@ -24,18 +28,31 @@ const defaultContextLength = 4096
 // handling chat requests for the Loom application.
 type Provider struct {
 	client    *api.Client
+	baseURL   *url.URL
 	overrides sync.Map
 }
 
 // NewDefaultProvider creates a [Provider] using the Ollama client configured
 // from environment variables (OLLAMA_HOST, etc.).
 func NewDefaultProvider() (*Provider, error) {
-	client, err := api.ClientFromEnvironment()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Ollama client: %w", err)
+	host := os.Getenv("OLLAMA_HOST")
+	if host == "" {
+		host = "http://127.0.0.1:11434"
 	}
 
-	return &Provider{client: client}, nil
+	u, err := url.Parse(host)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse OLLAMA_HOST: %w", err)
+	}
+
+	httpClient := &http.Client{
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+
+	return &Provider{
+		client:  api.NewClient(u, httpClient),
+		baseURL: u,
+	}, nil
 }
 
 // Name returns "ollama", uniquely identifying this provider in a [llm.Registry].
@@ -52,19 +69,24 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 		return nil, fmt.Errorf("failed to convert chat request: %w", err)
 	}
 
-	{
-		file, err := os.Create(fmt.Sprintf("./logs/ollama_request_%d.json", time.Now().Unix()))
-		if err != nil {
-			return nil, fmt.Errorf("failed to create debug file: %w", err)
-		}
-		defer file.Close()
-
-		encoder := json.NewEncoder(file)
-		encoder.SetIndent("", "  ")
-		if err := encoder.Encode(ollamaRequest); err != nil {
-			return nil, fmt.Errorf("failed to write debug file: %w", err)
+	// Ollama Specific Span Decoration
+	span := trace.SpanFromContext(ctx)
+	attrs := []attribute.KeyValue{
+		attribute.String("ollama.api.type", "chat"),
+	}
+	if p.baseURL != nil {
+		attrs = append(attrs, attribute.String("server.address", p.baseURL.Hostname()))
+		if portStr := p.baseURL.Port(); portStr != "" {
+			if port, err := strconv.Atoi(portStr); err == nil {
+				attrs = append(attrs, attribute.Int("server.port", port))
+			}
+		} else if p.baseURL.Scheme == "https" {
+			attrs = append(attrs, attribute.Int("server.port", 443))
+		} else if p.baseURL.Scheme == "http" {
+			attrs = append(attrs, attribute.Int("server.port", 80))
 		}
 	}
+	span.SetAttributes(attrs...)
 
 	return func(yield func(message.AssistantChunk, error) bool) {
 		callback := func(resp api.ChatResponse) error {

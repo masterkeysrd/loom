@@ -2,15 +2,17 @@ package loomopenai
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
+	"net/http"
 	"sync"
-	"time"
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
 	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var _ llm.Provider = (*Provider)(nil)
@@ -42,7 +44,10 @@ type Provider struct {
 // NewDefaultProvider creates a [Provider] using the OpenAI client configured
 // from the OPENAI_API_KEY environment variable.
 func NewDefaultProvider() (*Provider, error) {
-	client := openai.NewClient()
+	httpClient := &http.Client{
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+	client := openai.NewClient(option.WithHTTPClient(httpClient))
 	return &Provider{
 		client: &client,
 	}, nil
@@ -69,14 +74,13 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 		return nil, fmt.Errorf("failed to convert chat request: %w", err)
 	}
 
-	{
-		file, err := os.Create(fmt.Sprintf("./logs/openai_request_%d.json", time.Now().Unix()))
-		if err == nil {
-			encoder := json.NewEncoder(file)
-			encoder.SetIndent("", "  ")
-			_ = encoder.Encode(params)
-			file.Close()
-		}
+	// OpenAI Specific Span Decoration
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(
+		attribute.String("openai.api.type", "chat_completions"),
+	)
+	if params.ServiceTier != "" {
+		span.SetAttributes(attribute.String("openai.request.service_tier", string(params.ServiceTier)))
 	}
 
 	return func(yield func(message.AssistantChunk, error) bool) {

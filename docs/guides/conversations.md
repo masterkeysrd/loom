@@ -52,7 +52,18 @@ thinking := assistantMsg.Content.Thought()
 
 ## 3. Managing History (MessageList)
 
-A `MessageList` is a slice of messages that provides convenient methods for serialization and manipulation.
+A `MessageList` is a specialized slice of messages that provides critical functionality for state management and persistence. **Always use `MessageList` instead of a raw `[]message.Message` when storing history in your Graph State.**
+
+```go
+type MyState struct {
+    History message.MessageList `json:"history"`
+}
+```
+
+### Why use MessageList?
+1.  **Polymorphic Serialization**: `MessageList` automatically handles the complex task of serializing different message types (User, Assistant, etc.) into a single JSON array with a "role" discriminator.
+2.  **Type-Safe Deserialization**: When loading a checkpoint from a database (SQL or PG), `MessageList` ensures that raw JSON is correctly restored into the proper Go structs.
+3.  **Fluent Helpers**: Provides methods like `Last()` and `Text()` to easily access content without range loops.
 
 ```go
 history := message.MessageList{
@@ -62,13 +73,6 @@ history := message.MessageList{
 
 // Add a new response
 history = append(history, assistantResponse)
-```
-
-### Serialization
-`MessageList` automatically handles JSON serialization, including the "role" discriminator required by most APIs.
-
-```go
-data, _ := json.Marshal(history)
 ```
 
 ## 4. Token Metrics

@@ -2,15 +2,16 @@ package loomanthropic
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
+	"net/http"
 	"sync"
-	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var _ llm.Provider = (*Provider)(nil)
@@ -60,7 +61,10 @@ type Provider struct {
 // NewDefaultProvider creates a [Provider] using the Anthropic client configured
 // from the ANTHROPIC_API_KEY environment variable.
 func NewDefaultProvider() (*Provider, error) {
-	client := anthropic.NewClient()
+	httpClient := &http.Client{
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+	client := anthropic.NewClient(option.WithHTTPClient(httpClient))
 	return &Provider{
 		client: &client,
 	}, nil
@@ -88,19 +92,8 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 		return nil, fmt.Errorf("failed to convert chat request: %w", err)
 	}
 
-	{
-		file, err := os.Create(fmt.Sprintf("./logs/anthropic_request_%d.json", time.Now().Unix()))
-		if err != nil {
-			return nil, fmt.Errorf("failed to create debug file: %w", err)
-		}
-		defer file.Close()
-
-		encoder := json.NewEncoder(file)
-		encoder.SetIndent("", "  ")
-		if err := encoder.Encode(body); err != nil {
-			return nil, fmt.Errorf("failed to write debug file: %w", err)
-		}
-	}
+	// Retrieve active span (can be used for provider-specific decoration)
+	_ = trace.SpanFromContext(ctx)
 
 	return func(yield func(message.AssistantChunk, error) bool) {
 		// Create the streaming request

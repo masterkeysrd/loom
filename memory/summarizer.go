@@ -5,10 +5,14 @@ import (
 	"fmt"
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/telemetry"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -136,18 +140,27 @@ func NewSummarizer(invoker llm.Invoker, config SummarizerConfig) (*Summarizer, e
 }
 
 func (s *Summarizer) Summarize(ctx context.Context, in SummarizeInput) (SummarizeOutput, error) {
+	ctx, span := telemetry.Start(ctx, "loom.memory.summarize", trace.WithSpanKind(trace.SpanKindInternal))
+	defer span.End()
+
 	messages := in.Messages
 	if err := s.ensureMessagesIds(messages); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return SummarizeOutput{}, fmt.Errorf("failed to ensure message IDs: %w", err)
 	}
 
 	totalTokens, err := s.config.TokenCounter.CountTokens(ctx, messages)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return SummarizeOutput{}, fmt.Errorf("failed to count tokens: %w", err)
 	}
 
 	shouldSummarize, err := s.shouldSummarize(ctx, in.Messages, totalTokens)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return SummarizeOutput{}, fmt.Errorf("failed to evaluate summarization triggers: %w", err)
 	}
 
@@ -159,8 +172,15 @@ func (s *Summarizer) Summarize(ctx context.Context, in SummarizeInput) (Summariz
 		}, nil
 	}
 
+	startTime := time.Now()
+	defer func() {
+		telemetry.RecordMemorySummarizeDuration(ctx, time.Since(startTime))
+	}()
+
 	cutoffIdx, err := s.findCutoff(ctx, in)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return SummarizeOutput{}, fmt.Errorf("failed to determine cutoff for summarization: %w", err)
 	}
 
@@ -175,6 +195,8 @@ func (s *Summarizer) Summarize(ctx context.Context, in SummarizeInput) (Summariz
 	messagesToSummarize, messagesToKeep := s.partitionMessages(in.Messages, cutoffIdx)
 	summary, err := s.createSummary(ctx, in.CurrentSummary, messagesToSummarize)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return SummarizeOutput{}, fmt.Errorf("failed to create summary: %w", err)
 	}
 	newMessages := s.buildNewMessages(summary)

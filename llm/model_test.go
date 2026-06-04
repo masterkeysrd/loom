@@ -13,6 +13,10 @@ type modelMockProvider struct {
 	lastRequest *llm.Request
 }
 
+func (m *modelMockProvider) Name() string {
+	return "mock"
+}
+
 func (m *modelMockProvider) Stream(ctx context.Context, req *llm.Request) (llm.StreamResponse, error) {
 	m.lastRequest = req
 	return func(yield func(message.AssistantChunk, error) bool) {}, nil

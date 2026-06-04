@@ -1,5 +1,52 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Link, useParams, useLocation } from 'react-router-dom';
+
+// Data Interfaces
+interface Metric {
+  name: string;
+  description: string;
+  unit: string;
+  type: string;
+}
+
+interface MetricPoint {
+  metric_name: string;
+  timestamp_nano: number;
+  value: number;
+  attributes: Record<string, unknown>;
+}
+
+interface Thread {
+  thread_id: string;
+  graph_name: string;
+  start_time: number;
+  trace_count: number;
+  total_tokens: number;
+  has_error: boolean;
+  invocation_count: number;
+}
+
+interface Span {
+  trace_id: string;
+  span_id: string;
+  parent_span_id?: string;
+  name: string;
+  kind: string;
+  start_time_nano: number;
+  end_time_nano: number;
+  attributes: Record<string, unknown>;
+  status_code: string;
+  status_message?: string;
+}
+
+interface DashboardStats {
+  total_threads: number;
+  total_spans: number;
+  total_tokens: number;
+  error_count: number;
+  llm_call_count: number;
+  p50_latency: number;
+}
 import { 
   LayoutDashboard, 
   List, 
@@ -40,6 +87,36 @@ import {
   Line
 } from 'recharts';
 import { format } from 'date-fns';
+
+// Unit transformation helpers shared across components
+const formatUnitLabel = (unit: string) => {
+  if (!unit) return 'n/a';
+  const u = unit.toLowerCase();
+  if (u === 's') return 'seconds';
+  if (u === '{tokens}' || u === 'tokens' || u === '{token}' || u === 'token') return 'tokens';
+  if (u === 'by' || u === 'bytes') return 'bytes';
+  return unit;
+};
+
+const formatMetricValue = (value: number, unit: string) => {
+  if (value === 0) return '0';
+  const u = unit?.toLowerCase();
+  if (u === 'by' || u === 'bytes') {
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(value) / Math.log(k));
+    return parseFloat((value / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+  if (u === 's') {
+    if (value < 0.001) return `${(value * 1000000).toFixed(2)}µs`;
+    if (value < 1) return `${(value * 1000).toFixed(2)}ms`;
+    return `${value.toFixed(2)}s`;
+  }
+  if (u === '{tokens}' || u === 'tokens' || u === '{token}' || u === 'token') {
+    return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  }
+  return value.toLocaleString();
+};
 
 function App() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -116,7 +193,14 @@ function App() {
   );
 }
 
-function SidebarLink({ to, icon, label, collapsed }: { to: string, icon: React.ReactNode, label: string, collapsed?: boolean }) {
+interface SidebarLinkProps {
+  to: string;
+  icon: React.ReactNode;
+  label: string;
+  collapsed?: boolean;
+}
+
+function SidebarLink({ to, icon, label, collapsed }: SidebarLinkProps) {
   const location = useLocation();
   const isActive = location.pathname === to || (to !== '/' && location.pathname.startsWith(to));
   
@@ -137,10 +221,10 @@ function SidebarLink({ to, icon, label, collapsed }: { to: string, icon: React.R
 }
 
 function Dashboard() {
-  const [stats, setStats] = useState<any>(null);
-  const [metrics, setMetrics] = useState<any[]>([]);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [metrics, setMetrics] = useState<{ name: string; points: MetricPoint[] }[]>([]);
 
-  const formatMS = (ms: number) => {
+  const formatMS = (ms: number | undefined) => {
     if (!ms) return '0ms';
     if (ms < 1000) return `${ms.toFixed(0)}ms`;
     return `${(ms / 1000).toFixed(2)}s`;
@@ -163,7 +247,8 @@ function Dashboard() {
         })
       )
     ).then(results => {
-      setMetrics(results.filter((r: any) => r && r.points && r.points.length > 0));
+      const validResults = results.filter((r): r is { name: string; points: MetricPoint[] } => r !== null && r.points && r.points.length > 0);
+      setMetrics(validResults);
     });
   }, []);
 
@@ -200,7 +285,7 @@ function Dashboard() {
         <StatCard 
           icon={<Coins className="text-amber-600" />} 
           label="Tokens" 
-          value={stats?.total_tokens ? stats.total_tokens.toLocaleString() : 0} 
+          value={stats?.total_tokens ? formatMetricValue(stats.total_tokens, 'tokens') + ' tokens' : '0 tokens'} 
           trend="Total" 
           color="amber"
         />
@@ -221,7 +306,7 @@ function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {metrics.map(metric => {
+        {metrics.map((metric: { name: string; points: MetricPoint[] }) => {
           // Group data by attributes
           let seriesKey = 'default';
           if (metric.name === 'gen_ai.client.token.usage') {
@@ -234,25 +319,25 @@ function Dashboard() {
             seriesKey = 'loom.node.name';
           }
 
-          const timeMap = new Map<string, any>();
+          const timeMap = new Map<string, Record<string, unknown>>();
           const seriesNames = new Set<string>();
 
-          metric.points.forEach((p: any) => {
+          metric.points.forEach((p: MetricPoint) => {
             const time = format(new Date(p.timestamp_nano / 1000000), 'HH:mm:ss');
-            const name = p.attributes[seriesKey] || 'default';
+            const name = (p.attributes[seriesKey] as string) || 'default';
             seriesNames.add(name);
             
             if (!timeMap.has(time)) {
               timeMap.set(time, { time });
             }
-            const entry = timeMap.get(time);
+            const entry = timeMap.get(time)!;
             
             // For token usage, we want to see the volume per type
             // For tool execution, we want to see the count of calls
             if (metric.name.includes('loom.tool')) {
-               entry[name] = (entry[name] || 0) + 1; // Count invocations
+               entry[name] = ((entry[name] as number) || 0) + 1; // Count invocations
             } else {
-               entry[name] = (entry[name] || 0) + p.value;
+               entry[name] = ((entry[name] as number) || 0) + p.value;
             }
           });
 
@@ -296,9 +381,17 @@ function Dashboard() {
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                     <XAxis dataKey="time" stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
-                    <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
+                    <YAxis 
+                      stroke="#94A3B8" 
+                      fontSize={11} 
+                      tickLine={false} 
+                      axisLine={false} 
+                      tickFormatter={(v) => metric.name.includes('tool') ? v : formatMetricValue(v, metric.points[0]?.unit)}
+                    />
                     <Tooltip 
                       contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', padding: '12px' }}
+                      labelStyle={{ fontWeight: 'black', marginBottom: '4px', fontSize: '12px' }}
+                      formatter={(value: unknown) => [metric.name.includes('tool') ? value : formatMetricValue(value as number, metric.points[0]?.unit), 'Value']}
                     />
                     {sortedSeries.map((name, i) => (
                       <Area 
@@ -325,7 +418,15 @@ function Dashboard() {
   );
 }
 
-function StatCard({ icon, label, value, trend, color }: any) {
+interface StatCardProps {
+  icon: React.ReactNode;
+  label: string;
+  value: string | number;
+  trend: string;
+  color: string;
+}
+
+function StatCard({ icon, label, value, trend, color }: StatCardProps) {
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden group hover:shadow-md transition-all duration-300">
       <div className={`absolute top-0 right-0 w-24 h-24 bg-${color}-50 rounded-full -mr-8 -mt-8 opacity-50 group-hover:scale-110 transition-transform`}></div>
@@ -346,21 +447,21 @@ function StatCard({ icon, label, value, trend, color }: any) {
 }
 
 function ThreadsList({ searchQuery }: { searchQuery: string }) {
-  const [threads, setThreads] = useState<any[]>([]);
+  const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const fetchThreads = () => {
+  const fetchThreads = useCallback(() => {
     setLoading(true);
     const url = searchQuery ? `/api/threads?q=${encodeURIComponent(searchQuery)}` : '/api/threads';
     fetch(url).then(res => res.json()).then(data => {
       if (data) setThreads(data);
       setLoading(false);
     });
-  };
+  }, [searchQuery]);
 
   useEffect(() => {
-    fetchThreads();
-  }, [searchQuery]);
+    Promise.resolve().then(() => fetchThreads());
+  }, [fetchThreads]);
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in slide-in-from-bottom-4 duration-500">
@@ -438,12 +539,12 @@ function ThreadsList({ searchQuery }: { searchQuery: string }) {
 
 function ThreadDetail() {
   const { threadId } = useParams();
-  const [spans, setSpans] = useState<any[]>([]);
+  const [spans, setSpans] = useState<Span[]>([]);
   const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const fetchSpans = () => {
+  const fetchSpans = useCallback(() => {
     setLoading(true);
     fetch(`/api/threads/${threadId}`).then(res => res.json()).then(data => {
       if (data) {
@@ -452,16 +553,16 @@ function ThreadDetail() {
       }
       setLoading(false);
     });
-  };
+  }, [threadId, selectedSpanId]);
 
   useEffect(() => {
-    fetchSpans();
-  }, [threadId]);
+    Promise.resolve().then(() => fetchSpans());
+  }, [fetchSpans]);
 
   const selectedSpan = useMemo(() => spans.find(s => s.span_id === selectedSpanId), [spans, selectedSpanId]);
 
   const childrenMap = useMemo(() => {
-    const map = new Map<string, any[]>();
+    const map = new Map<string, Span[]>();
     spans.forEach(s => {
       if (s.parent_span_id && s.parent_span_id !== "0000000000000000") {
         if (!map.has(s.parent_span_id)) map.set(s.parent_span_id, []);
@@ -506,7 +607,7 @@ function ThreadDetail() {
     return sum + input + output;
   }, 0);
 
-  const renderSpanLine = (span: any, depth: number) => {
+  const renderSpanLine = (span: Span, depth: number) => {
     const startOffset = span.start_time_nano - minTime;
     const duration = span.end_time_nano - span.start_time_nano;
     const leftPercent = totalDuration > 0 ? (startOffset / totalDuration) * 100 : 0;
@@ -516,7 +617,7 @@ function ThreadDetail() {
     let colorClass = "bg-indigo-500";
     let icon = <ChevronRight size={14} />;
     
-    const opName = span.attributes['gen_ai.operation.name'];
+    const opName = span.attributes['gen_ai.operation.name'] as string;
     
     if (opName === 'execute_tool' || span.name.includes("execute_tool") || span.attributes['gen_ai.tool.name']) {
       colorClass = "bg-violet-600";
@@ -587,7 +688,7 @@ function ThreadDetail() {
             </div>
           </div>
         </div>
-        {children.sort((a,b) => a.start_time_nano - b.start_time_nano).map(child => renderSpanLine(child, depth + 1))}
+        {children.sort((a: Span, b: Span) => a.start_time_nano - b.start_time_nano).map(child => renderSpanLine(child, depth + 1))}
       </div>
     );
   };
@@ -745,7 +846,7 @@ function ThreadDetail() {
   );
 }
 
-function InfoBox({ label, value, color = 'slate' }: any) {
+function InfoBox({ label, value, color = 'slate' }: { label: string, value: string | number, color?: string }) {
   return (
     <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
       <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest leading-none mb-1">{label}</div>
@@ -754,7 +855,7 @@ function InfoBox({ label, value, color = 'slate' }: any) {
   );
 }
 
-function AttributeSection({ title, icon, attributes }: any) {
+function AttributeSection({ title, icon, attributes }: { title: string, icon: React.ReactNode, attributes: [string, unknown][] }) {
   if (attributes.length === 0) return null;
   return (
     <div className="space-y-3">
@@ -763,7 +864,7 @@ function AttributeSection({ title, icon, attributes }: any) {
         {title}
       </div>
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
-        {attributes.map(([k, v]: any) => (
+        {attributes.map(([k, v]: [string, unknown]) => (
           <div key={k} className="flex justify-between items-start p-3 group hover:bg-slate-50 transition-colors">
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter group-hover:text-indigo-600 transition-colors shrink-0">{k}</span>
             <span className="text-xs text-slate-700 font-mono break-all text-right ml-4">{String(v)}</span>
@@ -801,7 +902,7 @@ function CollapsiblePayload({ title, content, theme }: { title: string, content:
   );
 }
 
-function DetailBadge({ label, value, icon, color }: any) {
+function DetailBadge({ label, value, icon, color }: { label: string, value: string | number, icon: React.ReactNode, color: string }) {
   return (
     <div className={`px-4 py-2 bg-${color}-50 border border-${color}-100 rounded-2xl flex items-center gap-3 shadow-sm`}>
       <div className={`p-1.5 bg-${color}-500/10 text-${color}-600 rounded-lg`}>{icon}</div>
@@ -813,7 +914,7 @@ function DetailBadge({ label, value, icon, color }: any) {
   );
 }
 
-function InspectorCard({ title, icon, children }: any) {
+function InspectorCard({ title, icon, children }: { title: string, icon: React.ReactNode, children: React.ReactNode }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">
@@ -826,9 +927,9 @@ function InspectorCard({ title, icon, children }: any) {
 }
 
 function MetricsExplorer() {
-  const [metrics, setMetrics] = useState<any[]>([]);
-  const [selectedMetric, setSelectedMetric] = useState<any>(null);
-  const [points, setPoints] = useState<any[]>([]);
+  const [metrics, setMetrics] = useState<Metric[]>([]);
+  const [selectedMetric, setSelectedMetric] = useState<Metric | null>(null);
+  const [points, setPoints] = useState<MetricPoint[]>([]);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [interval, setInterval] = useState('10s');
   const [loading, setLoading] = useState(false);
@@ -844,13 +945,29 @@ function MetricsExplorer() {
 
   useEffect(() => {
     if (!selectedMetric) return;
-    setLoading(true);
-    fetch(`/api/metrics/${selectedMetric.name}?interval=${interval}`)
-      .then(res => res.json())
-      .then(data => {
-        setPoints(data || []);
-        setLoading(false);
-      });
+    
+    let ignore = false;
+    const load = async () => {
+      // Use a microtask to avoid synchronous setState in effect body
+      await Promise.resolve();
+      if (ignore) return;
+      
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/metrics/${selectedMetric.name}?interval=${interval}`);
+        const data = await res.json();
+        if (!ignore) {
+          setPoints(data || []);
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    };
+
+    load();
+    return () => { ignore = true; };
   }, [selectedMetric, interval]);
 
   const availableAttributes = useMemo(() => {
@@ -877,7 +994,7 @@ function MetricsExplorer() {
     // Sort and format for recharts
     return filteredPoints
       .sort((a, b) => a.timestamp_nano - b.timestamp_nano)
-      .map(p => ({
+      .map((p: MetricPoint) => ({
         time: format(new Date(p.timestamp_nano / 1000000), 'HH:mm:ss'),
         value: p.value,
         timestamp: p.timestamp_nano
@@ -937,7 +1054,7 @@ function MetricsExplorer() {
                   <span className={isSelected ? (isCounter ? 'text-orange-600' : 'text-indigo-600') : 'text-slate-500'}>
                     {isCounter ? 'Counter' : 'Histogram'}
                   </span>
-                  <span className="text-slate-500 italic">"{m.unit || 'n/a'}"</span>
+                  <span className="text-slate-500 italic">"{formatUnitLabel(m.unit)}"</span>
                 </div>
               </button>
             );
@@ -1002,13 +1119,13 @@ function MetricsExplorer() {
               <MetricStatCard 
                 icon={<BarChart3 className={selectedMetric.type.includes('Sum') ? 'text-orange-500' : 'text-indigo-500'} />} 
                 label="Aggregate Peak" 
-                value={selectedMetric.unit === 'seconds' ? stats.max.toFixed(3) : stats.max.toLocaleString()} 
-                subtext={selectedMetric.unit ? `${selectedMetric.unit} maximum` : 'Telemetry maximum'} 
+                value={formatMetricValue(stats.max, selectedMetric.unit)} 
+                subtext={selectedMetric.unit ? `${formatUnitLabel(selectedMetric.unit)} maximum` : 'Telemetry maximum'} 
               />
               <MetricStatCard 
                 icon={<Filter className="text-slate-500" />} 
                 label="Running Average" 
-                value={stats.avg.toFixed(2)} 
+                value={formatMetricValue(stats.avg, selectedMetric.unit)} 
                 subtext="Smoothed window" 
               />
             </div>
@@ -1055,11 +1172,12 @@ function MetricsExplorer() {
                       fontSize={11} 
                       tickLine={false} 
                       axisLine={false}
-                      tickFormatter={(v) => selectedMetric.unit === 'seconds' ? `${v}s` : v}
+                      tickFormatter={(v) => formatMetricValue(v, selectedMetric.unit)}
                     />
                     <Tooltip 
                       contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', padding: '12px' }}
                       labelStyle={{ fontWeight: 'black', marginBottom: '4px', fontSize: '12px' }}
+                      formatter={(value: unknown) => [formatMetricValue(value as number, selectedMetric.unit), 'Value']}
                     />
                     <Line 
                       type="monotone" 
@@ -1084,7 +1202,7 @@ function MetricsExplorer() {
   );
 }
 
-function MetricStatCard({ icon, label, value, subtext }: any) {
+function MetricStatCard({ icon, label, value, subtext }: { icon: React.ReactNode, label: string, value: string | number, subtext: string }) {
   return (
     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
       <div className="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">

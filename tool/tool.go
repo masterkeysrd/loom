@@ -5,9 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // ErrInvalidInput is a sentinel error for any tool input validation failure.
@@ -156,7 +161,18 @@ func AdaptHandler[In, Out any](name string, schema *jsonschema.Resolved, fn Hand
 		}
 
 		return func(yield func(message.ToolChunk, error) bool) {
+			ctx, span := telemetry.Start(ctx, "execute_tool "+name, trace.WithSpanKind(trace.SpanKindInternal))
+			defer span.End()
+
+			span.SetAttributes(
+				telemetry.WithToolName(name),
+				attribute.String("loom.tool.type", "local"),
+			)
+
+			startTime := time.Now()
 			out, err := fn(ctx, input)
+			telemetry.RecordToolDuration(ctx, time.Since(startTime), telemetry.WithToolName(name))
+
 			if err != nil {
 				if toolErr, ok := err.(*Error); ok {
 					yield(message.ToolChunk{
@@ -166,6 +182,8 @@ func AdaptHandler[In, Out any](name string, schema *jsonschema.Resolved, fn Hand
 					return
 				}
 
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
 				yield(message.ToolChunk{}, err)
 				return
 			}

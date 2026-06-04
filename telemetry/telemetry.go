@@ -17,6 +17,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
 	"go.opentelemetry.io/otel/semconv/v1.41.0/genaiconv"
 	"go.opentelemetry.io/otel/semconv/v1.41.0/mcpconv"
+	"go.opentelemetry.io/otel/semconv/v1.41.0/rpcconv"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -33,6 +34,9 @@ var (
 
 	// MCP standard instruments via mcpconv
 	mcpOpDuration mcpconv.ClientOperationDuration
+
+	// RPC standard instruments via rpcconv
+	rpcOpDuration rpcconv.ClientCallDuration
 
 	// Loom-specific instruments
 	graphExecutionDuration  metric.Float64Histogram
@@ -114,8 +118,8 @@ func Init(ctx context.Context, cfg Config) (func(context.Context) error, error) 
 	durationBuckets := sdkmetric.AggregationExplicitBucketHistogram{
 		Boundaries: []float64{0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64, 1.28, 2.56, 5.12, 10.24},
 	}
-	mcpDurationBuckets := sdkmetric.AggregationExplicitBucketHistogram{
-		Boundaries: []float64{0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10},
+	rpcDurationBuckets := sdkmetric.AggregationExplicitBucketHistogram{
+		Boundaries: []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10},
 	}
 
 	reader := sdkmetric.NewPeriodicReader(metricExporter)
@@ -139,10 +143,14 @@ func Init(ctx context.Context, cfg Config) (func(context.Context) error, error) 
 			sdkmetric.Instrument{Name: genaiconv.ClientOperationTimePerOutputChunk{}.Name()},
 			sdkmetric.Stream{Aggregation: durationBuckets},
 		)),
-		// MCP Views
+		// MCP/RPC Views
 		sdkmetric.WithView(sdkmetric.NewView(
 			sdkmetric.Instrument{Name: mcpconv.ClientOperationDuration{}.Name()},
-			sdkmetric.Stream{Aggregation: mcpDurationBuckets},
+			sdkmetric.Stream{Aggregation: rpcDurationBuckets},
+		)),
+		sdkmetric.WithView(sdkmetric.NewView(
+			sdkmetric.Instrument{Name: rpcconv.ClientCallDuration{}.Name()},
+			sdkmetric.Stream{Aggregation: rpcDurationBuckets},
 		)),
 	)
 	otel.SetMeterProvider(mp)
@@ -187,6 +195,11 @@ func initInstruments() error {
 	}
 
 	mcpOpDuration, err = mcpconv.NewClientOperationDuration(meter)
+	if err != nil {
+		return err
+	}
+
+	rpcOpDuration, err = rpcconv.NewClientCallDuration(meter)
 	if err != nil {
 		return err
 	}
@@ -260,6 +273,11 @@ func RecordDuration(ctx context.Context, duration time.Duration, op genaiconv.Op
 
 func RecordMCPDuration(ctx context.Context, duration time.Duration, method mcpconv.MethodNameAttr, attrs ...attribute.KeyValue) {
 	mcpOpDuration.Record(ctx, duration.Seconds(), method, attrs...)
+}
+
+func RecordRPCDuration(ctx context.Context, duration time.Duration, system rpcconv.SystemNameAttr, method string, attrs ...attribute.KeyValue) {
+	attrs = append(attrs, rpcOpDuration.AttrMethod(method))
+	rpcOpDuration.Record(ctx, duration.Seconds(), system, attrs...)
 }
 
 func RecordGraphDuration(ctx context.Context, duration time.Duration, attrs ...attribute.KeyValue) {

@@ -42,6 +42,10 @@ var (
 	WithToolType         = semconv.GenAIToolType
 	WithInputTokens      = semconv.GenAIUsageInputTokens
 	WithOutputTokens     = semconv.GenAIUsageOutputTokens
+
+	// RPC and JSON-RPC helpers
+	WithRPCMethod = semconv.RPCMethod
+	WithJSONRPCID = semconv.JSONRPCRequestID
 )
 
 // Attribute Keys
@@ -49,7 +53,6 @@ const (
 	// MCP Keys
 	KeyMCPMethodName = attribute.Key("mcp.method.name")
 	KeyMCPSessionID  = attribute.Key("mcp.session.id")
-	KeyJSONRPCID     = attribute.Key("jsonrpc.request.id")
 
 	// Loom Keys
 	KeyLoomGraphName      = attribute.Key("loom.graph.name")
@@ -91,4 +94,14 @@ func WithLoomCheckpoint(id string) attribute.KeyValue {
 
 func WithLoomMemoryStrategy(strategy string) attribute.KeyValue {
 	return KeyLoomMemoryStrategy.String(strategy)
+}
+
+// MCP-specific helpers
+
+func WithMCPMethod(method string) attribute.KeyValue {
+	return KeyMCPMethodName.String(method)
+}
+
+func WithMCPSession(id string) attribute.KeyValue {
+	return KeyMCPSessionID.String(id)
 }

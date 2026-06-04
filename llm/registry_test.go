@@ -13,7 +13,6 @@ type mockProvider struct {
 
 func (m *mockProvider) Name() string { return "mock" }
 
-
 func TestRegistry_LazyLoading(t *testing.T) {
 	registry := llm.NewRegistry()
 	callCount := 0

@@ -2,12 +2,9 @@ package loomanthropic
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"sync"
-	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -97,20 +94,6 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 
 	// Retrieve active span (can be used for provider-specific decoration)
 	_ = trace.SpanFromContext(ctx)
-
-	{
-		file, err := os.Create(fmt.Sprintf("./logs/anthropic_request_%d.json", time.Now().Unix()))
-		if err != nil {
-			return nil, fmt.Errorf("failed to create debug file: %w", err)
-		}
-		defer file.Close()
-
-		encoder := json.NewEncoder(file)
-		encoder.SetIndent("", "  ")
-		if err := encoder.Encode(body); err != nil {
-			return nil, fmt.Errorf("failed to write debug file: %w", err)
-		}
-	}
 
 	return func(yield func(message.AssistantChunk, error) bool) {
 		// Create the streaming request

@@ -2,7 +2,6 @@ package loomollama
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"maps"
 	"net/http"
@@ -88,20 +87,6 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 		}
 	}
 	span.SetAttributes(attrs...)
-
-	{
-		file, err := os.Create(fmt.Sprintf("./logs/ollama_request_%d.json", time.Now().Unix()))
-		if err != nil {
-			return nil, fmt.Errorf("failed to create debug file: %w", err)
-		}
-		defer file.Close()
-
-		encoder := json.NewEncoder(file)
-		encoder.SetIndent("", "  ")
-		if err := encoder.Encode(ollamaRequest); err != nil {
-			return nil, fmt.Errorf("failed to write debug file: %w", err)
-		}
-	}
 
 	return func(yield func(message.AssistantChunk, error) bool) {
 		callback := func(resp api.ChatResponse) error {

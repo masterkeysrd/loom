@@ -2,11 +2,9 @@ package loomgenai
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"maps"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
@@ -96,26 +94,6 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 	span.SetAttributes(
 		attribute.String("genai.api.type", "generate_content"),
 	)
-
-	{
-		file, err := os.Create(fmt.Sprintf("./logs/genai_request_%d.json", time.Now().Unix()))
-		if err != nil {
-			return nil, fmt.Errorf("failed to create debug file: %w", err)
-		}
-		defer file.Close()
-
-		genaiRequest := map[string]any{
-			"model":    request.Model,
-			"contents": contents,
-			"config":   config,
-		}
-
-		encoder := json.NewEncoder(file)
-		encoder.SetIndent("", "  ")
-		if err := encoder.Encode(genaiRequest); err != nil {
-			return nil, fmt.Errorf("failed to write debug file: %w", err)
-		}
-	}
 
 	return func(yield func(message.AssistantChunk, error) bool) {
 		for resp, err := range p.client.Models.GenerateContentStream(ctx, request.Model, contents, config) {

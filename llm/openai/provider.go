@@ -2,12 +2,9 @@ package loomopenai
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"sync"
-	"time"
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
@@ -84,16 +81,6 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 	)
 	if params.ServiceTier != "" {
 		span.SetAttributes(attribute.String("openai.request.service_tier", string(params.ServiceTier)))
-	}
-
-	{
-		file, err := os.Create(fmt.Sprintf("./logs/openai_request_%d.json", time.Now().Unix()))
-		if err == nil {
-			encoder := json.NewEncoder(file)
-			encoder.SetIndent("", "  ")
-			_ = encoder.Encode(params)
-			file.Close()
-		}
 	}
 
 	return func(yield func(message.AssistantChunk, error) bool) {

@@ -26,26 +26,26 @@ var (
 	TokenTypeOutput = genaiconv.TokenTypeOutput
 
 	// Helpers from standard semconv
-	WithModel         = semconv.GenAIRequestModel
-	WithResponseModel = semconv.GenAIResponseModel
-	WithSystem        = KeyGenAISystem.String
+	WithModel         = KeyGenAIRequestModel.String
+	WithResponseModel = KeyGenAIResponseModel.String
+	WithProvider      = KeyGenAIProvider.String
 
-	WithMaxTokens        = semconv.GenAIRequestMaxTokens
-	WithTemperature      = semconv.GenAIRequestTemperature
-	WithTopP             = semconv.GenAIRequestTopP
-	WithTopK             = semconv.GenAIRequestTopK
-	WithStopSequences    = semconv.GenAIRequestStopSequences
-	WithPresencePenalty  = semconv.GenAIRequestPresencePenalty
-	WithFrequencyPenalty = semconv.GenAIRequestFrequencyPenalty
-	WithToolName         = semconv.GenAIToolName
-	WithToolCallID       = semconv.GenAIToolCallID
-	WithToolType         = semconv.GenAIToolType
-	WithInputTokens      = semconv.GenAIUsageInputTokens
-	WithOutputTokens     = semconv.GenAIUsageOutputTokens
+	WithMaxTokens        = KeyGenAIRequestMaxTokens.Int
+	WithTemperature      = KeyGenAIRequestTemperature.Float64
+	WithTopP             = KeyGenAIRequestTopP.Float64
+	WithTopK             = KeyGenAIRequestTopK.Int
+	WithStopSequences    = KeyGenAIRequestStopSequences.StringSlice
+	WithPresencePenalty  = KeyGenAIRequestPresencePenalty.Float64
+	WithFrequencyPenalty = KeyGenAIRequestFrequencyPenalty.Float64
+	WithToolName         = semconv.GenAIToolNameKey.String
+	WithToolCallID       = semconv.GenAIToolCallIDKey.String
+	WithToolType         = semconv.GenAIToolTypeKey.String
+	WithInputTokens      = KeyGenAIUsageInputTokens.Int
+	WithOutputTokens     = KeyGenAIUsageOutputTokens.Int
 
 	// RPC and JSON-RPC helpers
-	WithRPCMethod = semconv.RPCMethod
-	WithJSONRPCID = semconv.JSONRPCRequestID
+	WithRPCMethod = semconv.RPCMethodKey.String
+	WithJSONRPCID = semconv.JSONRPCRequestIDKey.String
 )
 
 // Attribute Keys
@@ -69,12 +69,45 @@ const (
 	KeyContentToolArguments  = attribute.Key("gen_ai.tool.call.arguments")
 	KeyContentToolResult     = attribute.Key("gen_ai.tool.call.result")
 
-	// GenAI Keys (shorthands for standard ones)
-	KeyGenAISystem       = attribute.Key("gen_ai.system")
-	KeyGenAIRequestModel = attribute.Key("gen_ai.request.model")
+	// GenAI Keys (standard ones as defined in latest conventions)
+	KeyGenAIProvider                = attribute.Key("gen_ai.provider.name")
+	KeyGenAIOperation               = attribute.Key("gen_ai.operation.name")
+	KeyGenAIRequestModel            = attribute.Key("gen_ai.request.model")
+	KeyGenAIRequestStream           = attribute.Key("gen_ai.request.stream")
+	KeyGenAIRequestSeed             = attribute.Key("gen_ai.request.seed")
+	KeyGenAIConversationID          = attribute.Key("gen_ai.conversation.id")
+	KeyGenAIResponseType            = attribute.Key("gen_ai.output.type")
+	KeyGenAIResponseModel           = attribute.Key("gen_ai.response.model")
+	KeyGenAIRequestMaxTokens        = attribute.Key("gen_ai.request.max_tokens")
+	KeyGenAIRequestTemperature      = attribute.Key("gen_ai.request.temperature")
+	KeyGenAIRequestTopP             = attribute.Key("gen_ai.request.top_p")
+	KeyGenAIRequestTopK             = attribute.Key("gen_ai.request.top_k")
+	KeyGenAIRequestStopSequences    = attribute.Key("gen_ai.request.stop_sequences")
+	KeyGenAIRequestPresencePenalty  = attribute.Key("gen_ai.request.presence_penalty")
+	KeyGenAIRequestFrequencyPenalty = attribute.Key("gen_ai.request.frequency_penalty")
+	KeyGenAIUsageInputTokens        = attribute.Key("gen_ai.usage.input_tokens")
+	KeyGenAIUsageOutputTokens       = attribute.Key("gen_ai.usage.output_tokens")
+
+	KeyErrorType = attribute.Key("error.type")
 )
 
 // Loom-specific helpers
+
+func WithOperation(op genaiconv.OperationNameAttr) attribute.KeyValue {
+	return KeyGenAIOperation.String(string(op))
+}
+
+func WithStream(stream bool) attribute.KeyValue {
+	return KeyGenAIRequestStream.Bool(stream)
+}
+
+func WithConversationID(id string) attribute.KeyValue {
+	return KeyGenAIConversationID.String(id)
+}
+
+func WithErrorType(err string) attribute.KeyValue {
+	return KeyErrorType.String(err)
+}
 
 func WithLoomGraph(name string) attribute.KeyValue {
 	return KeyLoomGraphName.String(name)

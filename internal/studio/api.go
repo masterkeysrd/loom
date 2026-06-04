@@ -1,6 +1,7 @@
 package studio
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -26,37 +27,61 @@ func (s *APIServer) RegisterHandlers(mux *http.ServeMux) {
 
 func (s *APIServer) handleStats(w http.ResponseWriter, r *http.Request) {
 	var stats struct {
-		TotalThreads int64 `json:"total_threads"`
-		TotalSpans   int64 `json:"total_spans"`
-		TotalTokens  int64 `json:"total_tokens"`
-		ErrorCount   int64 `json:"error_count"`
+		TotalThreads int64   `json:"total_threads"`
+		TotalSpans   int64   `json:"total_spans"`
+		TotalTokens  float64 `json:"total_tokens"`
+		ErrorCount   int64   `json:"error_count"`
 	}
 
 	_ = s.db.db.QueryRow("SELECT COUNT(DISTINCT thread_id) FROM loom_traces").Scan(&stats.TotalThreads)
 	_ = s.db.db.QueryRow("SELECT COUNT(*) FROM spans").Scan(&stats.TotalSpans)
-	_ = s.db.db.QueryRow("SELECT SUM(value) FROM metric_points WHERE metric_name = 'gen_ai.client.token.usage'").Scan(&stats.TotalTokens)
+	// For cumulative counters, we want the sum of the latest value per series
+	_ = s.db.db.QueryRow(`
+		SELECT COALESCE(SUM(max_val), 0) FROM (
+			SELECT MAX(mp.value) as max_val 
+			FROM metric_points mp
+			JOIN metric_series ms ON mp.series_id = ms.id
+			WHERE ms.metric_name = 'gen_ai.client.token.usage'
+			GROUP BY mp.series_id
+		)
+	`).Scan(&stats.TotalTokens)
 	_ = s.db.db.QueryRow("SELECT COUNT(*) FROM spans WHERE status_code = 'Error'").Scan(&stats.ErrorCount)
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(stats)
 }
 
 func (s *APIServer) handleThreads(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.db.Query(`
+	queryParam := r.URL.Query().Get("q")
+	var rows *sql.Rows
+	var err error
+
+	sqlQuery := `
 		SELECT 
 			lt.thread_id, 
 			lt.graph_name, 
-			lt.start_time_unix_nano as start_time, 
-			(SELECT COUNT(*) FROM spans s2 WHERE s2.trace_id = lt.trace_id) as trace_count,
-			COALESCE((
-				SELECT SUM(CAST(JSON_EXTRACT(s.attributes_json, '$."gen_ai.usage.input_tokens"') AS INTEGER)) +
-				       SUM(CAST(JSON_EXTRACT(s.attributes_json, '$."gen_ai.usage.output_tokens"') AS INTEGER))
-				FROM spans s 
-				WHERE s.trace_id = lt.trace_id
-			), 0) as total_tokens
+			MIN(lt.start_time_unix_nano) as start_time, 
+			COUNT(lt.trace_id) as trace_count,
+			COALESCE(SUM(tokens.t), 0) as total_tokens
 		FROM loom_traces lt
-		GROUP BY lt.thread_id, lt.graph_name
-		ORDER BY start_time DESC
-	`)
+		LEFT JOIN (
+			SELECT trace_id, 
+			       SUM(CAST(COALESCE(JSON_EXTRACT(attributes_json, '$."gen_ai.usage.input_tokens"'), 0) AS INTEGER)) +
+			       SUM(CAST(COALESCE(JSON_EXTRACT(attributes_json, '$."gen_ai.usage.output_tokens"'), 0) AS INTEGER)) as t
+			FROM spans
+			GROUP BY trace_id
+		) tokens ON lt.trace_id = tokens.trace_id
+	`
+
+	if queryParam != "" {
+		sqlQuery += " WHERE lt.thread_id LIKE ? OR lt.graph_name LIKE ?"
+		sqlQuery += " GROUP BY lt.thread_id, lt.graph_name ORDER BY start_time DESC"
+		rows, err = s.db.db.Query(sqlQuery, "%"+queryParam+"%", "%"+queryParam+"%")
+	} else {
+		sqlQuery += " GROUP BY lt.thread_id, lt.graph_name ORDER BY start_time DESC"
+		rows, err = s.db.db.Query(sqlQuery)
+	}
+
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -175,10 +200,11 @@ func (s *APIServer) handleMetricData(w http.ResponseWriter, r *http.Request) {
 	metricName := parts[3]
 
 	rows, err := s.db.db.Query(`
-		SELECT timestamp_unix_nano, value, attributes_json
-		FROM metric_points
-		WHERE metric_name = ?
-		ORDER BY timestamp_unix_nano ASC
+		SELECT mp.timestamp_unix_nano, mp.value, ms.attributes_json
+		FROM metric_points mp
+		JOIN metric_series ms ON mp.series_id = ms.id
+		WHERE ms.metric_name = ?
+		ORDER BY mp.timestamp_unix_nano ASC
 	`, metricName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

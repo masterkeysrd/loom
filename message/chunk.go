@@ -19,6 +19,7 @@ type BaseChunk struct {
 type AssistantChunk struct {
 	BaseChunk `json:",inline"`
 
+	Model   string        `json:"model,omitempty"`
 	Content []Block       `json:"content"`
 	Metrics *TokenMetrics `json:"metrics,omitempty"`
 

@@ -29,6 +29,7 @@ const defaultContextLength = 4096
 // handling chat requests for the Loom application.
 type Provider struct {
 	client    *api.Client
+	baseURL   *url.URL
 	overrides sync.Map
 }
 
@@ -50,7 +51,8 @@ func NewDefaultProvider() (*Provider, error) {
 	}
 
 	return &Provider{
-		client: api.NewClient(u, httpClient),
+		client:  api.NewClient(u, httpClient),
+		baseURL: u,
 	}, nil
 }
 
@@ -70,9 +72,22 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 
 	// Ollama Specific Span Decoration
 	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(
+	attrs := []attribute.KeyValue{
 		attribute.String("ollama.api.type", "chat"),
-	)
+	}
+	if p.baseURL != nil {
+		attrs = append(attrs, attribute.String("server.address", p.baseURL.Hostname()))
+		if portStr := p.baseURL.Port(); portStr != "" {
+			if port, err := strconv.Atoi(portStr); err == nil {
+				attrs = append(attrs, attribute.Int("server.port", port))
+			}
+		} else if p.baseURL.Scheme == "https" {
+			attrs = append(attrs, attribute.Int("server.port", 443))
+		} else if p.baseURL.Scheme == "http" {
+			attrs = append(attrs, attribute.Int("server.port", 80))
+		}
+	}
+	span.SetAttributes(attrs...)
 
 	{
 		file, err := os.Create(fmt.Sprintf("./logs/ollama_request_%d.json", time.Now().Unix()))

@@ -2,7 +2,9 @@ package studio
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -20,10 +22,18 @@ func OpenDB(path string) (*DB, error) {
 		return nil, err
 	}
 
-	db, err := sql.Open("sqlite", path)
+	// Use URI format to enable WAL mode and busy timeout.
+	// synchronous=NORMAL is recommended when using WAL mode.
+	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)", path)
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
+
+	// SQLite handles concurrency better with a limited connection pool
+	// especially when using WAL mode.
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
 
 	if err := migrate(db); err != nil {
 		db.Close()
@@ -39,7 +49,6 @@ func (d *DB) Close() error {
 
 func migrate(db *sql.DB) error {
 	queries := []string{
-		`PRAGMA journal_mode=WAL;`,
 		`CREATE TABLE IF NOT EXISTS spans (
 			trace_id TEXT NOT NULL,
 			span_id TEXT NOT NULL,
@@ -63,14 +72,24 @@ func migrate(db *sql.DB) error {
 			type TEXT
 		);`,
 
-		`CREATE TABLE IF NOT EXISTS metric_points (
+		`CREATE TABLE IF NOT EXISTS metric_series (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			metric_name TEXT NOT NULL,
+			attributes_json TEXT NOT NULL,
+			series_hash TEXT NOT NULL,
+			FOREIGN KEY(metric_name) REFERENCES metrics(name),
+			UNIQUE(metric_name, series_hash)
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_metric_series_name ON metric_series(metric_name);`,
+		`CREATE INDEX IF NOT EXISTS idx_metric_series_hash ON metric_series(metric_name, series_hash);`,
+
+		`CREATE TABLE IF NOT EXISTS metric_points (
+			series_id INTEGER NOT NULL,
 			timestamp_unix_nano INTEGER NOT NULL,
 			value REAL NOT NULL,
-			attributes_json TEXT,
-			FOREIGN KEY(metric_name) REFERENCES metrics(name)
+			FOREIGN KEY(series_id) REFERENCES metric_series(id)
 		);`,
-		`CREATE INDEX IF NOT EXISTS idx_metric_points_name_time ON metric_points(metric_name, timestamp_unix_nano);`,
+		`CREATE INDEX IF NOT EXISTS idx_metric_points_series_time ON metric_points(series_id, timestamp_unix_nano);`,
 
 		// Helper table to index Loom-specific logical entities for faster queries
 		`CREATE TABLE IF NOT EXISTS loom_traces (
@@ -105,12 +124,16 @@ type SpanRecord struct {
 }
 
 func (d *DB) InsertSpan(ctx context.Context, s SpanRecord) error {
+	return d.insertSpanTx(ctx, d.db, s)
+}
+
+func (d *DB) insertSpanTx(ctx context.Context, exec execer, s SpanRecord) error {
 	attrBytes, err := json.Marshal(s.Attributes)
 	if err != nil {
 		return err
 	}
 
-	_, err = d.db.ExecContext(ctx, `
+	_, err = exec.ExecContext(ctx, `
 		INSERT INTO spans (trace_id, span_id, parent_span_id, name, kind, start_time_unix_nano, end_time_unix_nano, attributes_json, status_code, status_message)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(trace_id, span_id) DO UPDATE SET
@@ -123,25 +146,36 @@ func (d *DB) InsertSpan(ctx context.Context, s SpanRecord) error {
 		return err
 	}
 
-	// Index trace for the explorer
+	// Index trace for the explorer ONLY if it has meaningful Loom or GenAI context
 	threadID, _ := s.Attributes["loom.thread_id"].(string)
-	if threadID == "" {
-		threadID = "unknown-" + s.TraceID[:8]
-	}
 	graphName, _ := s.Attributes["loom.graph.name"].(string)
-	if graphName == "" {
-		graphName = "external-execution"
-	}
+	isGenAI := s.Attributes["gen_ai.operation.name"] != nil
+	isLoom := threadID != "" || graphName != "" || s.Attributes["loom.node.name"] != nil
 
-	_, _ = d.db.ExecContext(ctx, `
-		INSERT INTO loom_traces (trace_id, thread_id, graph_name, start_time_unix_nano)
-		VALUES (?, ?, ?, ?)
-		ON CONFLICT(trace_id) DO UPDATE SET
-			thread_id = CASE WHEN excluded.thread_id LIKE 'unknown-%' THEN loom_traces.thread_id ELSE excluded.thread_id END,
-			graph_name = CASE WHEN excluded.graph_name = 'external-execution' THEN loom_traces.graph_name ELSE excluded.graph_name END
-	`, s.TraceID, threadID, graphName, s.StartTimeNano)
+	if isLoom || isGenAI {
+		if threadID == "" {
+			threadID = "unknown-" + s.TraceID[:8]
+		}
+		if graphName == "" {
+			graphName = "external-execution"
+		}
+
+		_, _ = exec.ExecContext(ctx, `
+			INSERT INTO loom_traces (trace_id, thread_id, graph_name, start_time_unix_nano)
+			VALUES (?, ?, ?, ?)
+			ON CONFLICT(trace_id) DO UPDATE SET
+				thread_id = CASE WHEN excluded.thread_id LIKE 'unknown-%' THEN loom_traces.thread_id ELSE excluded.thread_id END,
+				graph_name = CASE WHEN excluded.graph_name = 'external-execution' THEN loom_traces.graph_name ELSE excluded.graph_name END,
+				start_time_unix_nano = MIN(loom_traces.start_time_unix_nano, excluded.start_time_unix_nano)
+		`, s.TraceID, threadID, graphName, s.StartTimeNano)
+	}
 
 	return nil
+}
+
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
 type MetricRecord struct {
@@ -159,7 +193,11 @@ type MetricPoint struct {
 }
 
 func (d *DB) InsertMetric(ctx context.Context, m MetricRecord) error {
-	_, err := d.db.ExecContext(ctx, `
+	return d.insertMetricTx(ctx, d.db, m)
+}
+
+func (d *DB) insertMetricTx(ctx context.Context, exec execer, m MetricRecord) error {
+	_, err := exec.ExecContext(ctx, `
 		INSERT INTO metrics (name, description, unit, type)
 		VALUES (?, ?, ?, ?)
 		ON CONFLICT(name) DO UPDATE SET
@@ -171,14 +209,35 @@ func (d *DB) InsertMetric(ctx context.Context, m MetricRecord) error {
 }
 
 func (d *DB) InsertMetricPoint(ctx context.Context, p MetricPoint) error {
+	return d.insertMetricPointTx(ctx, d.db, p)
+}
+
+func (d *DB) insertMetricPointTx(ctx context.Context, exec execer, p MetricPoint) error {
 	attrBytes, err := json.Marshal(p.Attributes)
 	if err != nil {
 		return err
 	}
 
-	_, err = d.db.ExecContext(ctx, `
-		INSERT INTO metric_points (metric_name, timestamp_unix_nano, value, attributes_json)
-		VALUES (?, ?, ?, ?)
-	`, p.MetricName, p.TimestampNano, p.Value, string(attrBytes))
+	// Compute hash for efficient series lookup
+	h := sha256.New()
+	h.Write(attrBytes)
+	hashStr := hex.EncodeToString(h.Sum(nil))
+
+	// Get or create series ID
+	var seriesID int64
+	err = exec.QueryRowContext(ctx, `
+		INSERT INTO metric_series (metric_name, attributes_json, series_hash)
+		VALUES (?, ?, ?)
+		ON CONFLICT(metric_name, series_hash) DO UPDATE SET metric_name = excluded.metric_name
+		RETURNING id
+	`, p.MetricName, string(attrBytes), hashStr).Scan(&seriesID)
+	if err != nil {
+		return fmt.Errorf("failed to get series id: %w", err)
+	}
+
+	_, err = exec.ExecContext(ctx, `
+		INSERT INTO metric_points (series_id, timestamp_unix_nano, value)
+		VALUES (?, ?, ?)
+	`, seriesID, p.TimestampNano, p.Value)
 	return err
 }

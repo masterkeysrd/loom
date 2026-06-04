@@ -83,6 +83,12 @@ type traceServer struct {
 }
 
 func (s *traceServer) Export(ctx context.Context, req *tracev1.ExportTraceServiceRequest) (*tracev1.ExportTraceServiceResponse, error) {
+	tx, err := s.db.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
 	for _, resSpans := range req.ResourceSpans {
 		resAttrs := mapAttributes(resSpans.Resource.Attributes)
 		for _, scopeSpans := range resSpans.ScopeSpans {
@@ -106,11 +112,15 @@ func (s *traceServer) Export(ctx context.Context, req *tracev1.ExportTraceServic
 					}
 				}
 
-				if err := s.db.InsertSpan(ctx, record); err != nil {
-					fmt.Printf("Failed to insert span: %v\n", err)
+				if err := s.db.insertSpanTx(ctx, tx, record); err != nil {
+					return nil, fmt.Errorf("failed to insert span: %w", err)
 				}
 			}
 		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit trace transaction: %w", err)
 	}
 	return &tracev1.ExportTraceServiceResponse{}, nil
 }
@@ -121,38 +131,54 @@ type metricServer struct {
 }
 
 func (s *metricServer) Export(ctx context.Context, req *metricv1.ExportMetricsServiceRequest) (*metricv1.ExportMetricsServiceResponse, error) {
+	tx, err := s.db.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
 	for _, resMetrics := range req.ResourceMetrics {
 		for _, scopeMetrics := range resMetrics.ScopeMetrics {
 			for _, metric := range scopeMetrics.Metrics {
-				s.db.InsertMetric(ctx, MetricRecord{
+				if err := s.db.insertMetricTx(ctx, tx, MetricRecord{
 					Name:        metric.Name,
 					Description: metric.Description,
 					Unit:        metric.Unit,
 					Type:        fmt.Sprintf("%T", metric.Data),
-				})
+				}); err != nil {
+					return nil, fmt.Errorf("failed to insert metric: %w", err)
+				}
 
 				switch data := metric.Data.(type) {
 				case *mv1.Metric_Sum:
 					for _, dp := range data.Sum.DataPoints {
-						s.db.InsertMetricPoint(ctx, MetricPoint{
+						if err := s.db.insertMetricPointTx(ctx, tx, MetricPoint{
 							MetricName:    metric.Name,
 							TimestampNano: int64(dp.TimeUnixNano),
 							Value:         getDPValue(dp),
 							Attributes:    mapAttributes(dp.Attributes),
-						})
+						}); err != nil {
+							return nil, fmt.Errorf("failed to insert metric point: %w", err)
+						}
 					}
 				case *mv1.Metric_Histogram:
 					for _, dp := range data.Histogram.DataPoints {
-						s.db.InsertMetricPoint(ctx, MetricPoint{
+						if err := s.db.insertMetricPointTx(ctx, tx, MetricPoint{
 							MetricName:    metric.Name,
 							TimestampNano: int64(dp.TimeUnixNano),
 							Value:         dp.GetSum(),
 							Attributes:    mapAttributes(dp.Attributes),
-						})
+						}); err != nil {
+							return nil, fmt.Errorf("failed to insert metric point: %w", err)
+						}
 					}
 				}
 			}
 		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit metrics transaction: %w", err)
 	}
 	return &metricv1.ExportMetricsServiceResponse{}, nil
 }

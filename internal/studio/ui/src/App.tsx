@@ -13,7 +13,9 @@ import {
   Terminal,
   BrainCircuit,
   Settings,
-  Search
+  Search,
+  Globe,
+  Wrench
 } from 'lucide-react';
 import { 
   XAxis, 
@@ -27,6 +29,8 @@ import {
 import { format } from 'date-fns';
 
 function App() {
+  const [searchQuery, setSearchQuery] = useState('');
+
   return (
     <BrowserRouter>
       <div className="flex h-screen bg-[#F8FAFC] text-slate-900 w-full overflow-hidden font-sans selection:bg-indigo-100 selection:text-indigo-700">
@@ -62,6 +66,8 @@ function App() {
               <input 
                 type="text" 
                 placeholder="Quick search traces..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-full py-2 pl-10 pr-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
               />
             </div>
@@ -70,7 +76,7 @@ function App() {
           <main className="flex-1 overflow-auto">
             <Routes>
               <Route path="/" element={<Dashboard />} />
-              <Route path="/threads" element={<ThreadsList />} />
+              <Route path="/threads" element={<ThreadsList searchQuery={searchQuery} />} />
               <Route path="/threads/:threadId" element={<ThreadDetail />} />
             </Routes>
           </main>
@@ -137,7 +143,7 @@ function Dashboard() {
           icon={<Cpu className="text-indigo-600" />} 
           label="Total Threads" 
           value={stats?.total_threads || 0} 
-          trend="+12%" 
+          trend="Active" 
           color="indigo"
         />
         <StatCard 
@@ -150,54 +156,97 @@ function Dashboard() {
         <StatCard 
           icon={<Coins className="text-amber-600" />} 
           label="Token Consumption" 
-          value={stats?.total_tokens.toLocaleString() || 0} 
-          trend="~ $0.12" 
+          value={stats?.total_tokens ? stats.total_tokens.toLocaleString() : 0} 
+          trend="Total" 
           color="amber"
         />
         <StatCard 
           icon={<AlertCircle className="text-rose-600" />} 
           label="Errors" 
           value={stats?.error_count || 0} 
-          trend="None" 
+          trend={stats?.error_count > 0 ? "Issues" : "Healthy"} 
           color="rose"
         />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {metrics.map(metric => (
-          <div key={metric.name} className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 hover:border-indigo-100 transition-colors group">
-            <div className="flex items-center justify-between mb-8">
-              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest group-hover:text-indigo-600 transition-colors">
-                {metric.name.replace(/_/g, ' ')}
-              </h3>
-              <div className="p-2 bg-slate-50 rounded-lg group-hover:bg-indigo-50 transition-colors">
-                <Activity size={16} className="text-slate-400 group-hover:text-indigo-500" />
+        {metrics.map(metric => {
+          // Group data by attributes (model or node name)
+          const seriesKey = metric.name.includes('gen_ai') ? 'gen_ai.request.model' : 'loom.node.name';
+          const timeMap = new Map<string, any>();
+          const seriesNames = new Set<string>();
+
+          metric.points.forEach((p: any) => {
+            const time = format(new Date(p.timestamp_nano / 1000000), 'HH:mm:ss');
+            const name = p.attributes[seriesKey] || 'default';
+            seriesNames.add(name);
+            
+            if (!timeMap.has(time)) {
+              timeMap.set(time, { time });
+            }
+            const entry = timeMap.get(time);
+            entry[name] = (entry[name] || 0) + p.value;
+          });
+
+          const chartData = Array.from(timeMap.values()).sort((a, b) => a.time.localeCompare(b.time));
+          const sortedSeries = Array.from(seriesNames).sort();
+          const colors = ['#6366F1', '#EC4899', '#10B981', '#F59E0B', '#64748B'];
+
+          return (
+            <div key={metric.name} className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 hover:border-indigo-100 transition-colors group">
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest group-hover:text-indigo-600 transition-colors">
+                    {metric.name.replace(/\./g, ' ')}
+                  </h3>
+                  <div className="flex gap-2 mt-2">
+                    {sortedSeries.map((name, i) => (
+                      <span key={name} className="flex items-center gap-1 text-[10px] font-bold text-slate-400">
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: colors[i % colors.length] }} />
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="p-2 bg-slate-50 rounded-lg group-hover:bg-indigo-50 transition-colors">
+                  <Activity size={16} className="text-slate-400 group-hover:text-indigo-500" />
+                </div>
+              </div>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData}>
+                    <defs>
+                      {sortedSeries.map((name, i) => (
+                        <linearGradient key={name} id={`color-${name}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={colors[i % colors.length]} stopOpacity={0.1}/>
+                          <stop offset="95%" stopColor={colors[i % colors.length]} stopOpacity={0}/>
+                        </linearGradient>
+                      ))}
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                    <XAxis dataKey="time" stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
+                    <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
+                    <Tooltip 
+                      contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', padding: '12px' }}
+                    />
+                    {sortedSeries.map((name, i) => (
+                      <Area 
+                        key={name}
+                        type="monotone" 
+                        dataKey={name} 
+                        stroke={colors[i % colors.length]} 
+                        strokeWidth={3} 
+                        fillOpacity={1} 
+                        fill={`url(#color-${name})`} 
+                        stackId={metric.name.includes('usage') ? "1" : undefined}
+                      />
+                    ))}
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
             </div>
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={metric.points.map((p: any) => ({
-                  time: format(new Date(p.timestamp_nano / 1000000), 'HH:mm:ss'),
-                  value: p.value
-                }))}>
-                  <defs>
-                    <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366F1" stopOpacity={0.1}/>
-                      <stop offset="95%" stopColor="#6366F1" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                  <XAxis dataKey="time" stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', padding: '12px' }}
-                  />
-                  <Area type="monotone" dataKey="value" stroke="#6366F1" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -223,14 +272,15 @@ function StatCard({ icon, label, value, trend, color }: any) {
   );
 }
 
-function ThreadsList() {
+function ThreadsList({ searchQuery }: { searchQuery: string }) {
   const [threads, setThreads] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch('/api/threads').then(res => res.json()).then(data => {
+    const url = searchQuery ? `/api/threads?q=${encodeURIComponent(searchQuery)}` : '/api/threads';
+    fetch(url).then(res => res.json()).then(data => {
       if (data) setThreads(data);
     });
-  }, []);
+  }, [searchQuery]);
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in slide-in-from-bottom-4 duration-500">
@@ -340,12 +390,17 @@ function ThreadDetail() {
     let colorClass = "bg-indigo-500";
     let icon = <ChevronRight size={14} />;
     
-    if (span.attributes['gen_ai.operation.name']) {
+    const opName = span.attributes['gen_ai.operation.name'];
+    
+    if (opName === 'execute_tool' || span.name.includes("execute_tool") || span.attributes['gen_ai.tool.name']) {
+      colorClass = "bg-violet-600";
+      icon = <Wrench size={14} />;
+    } else if (opName) {
       colorClass = "bg-fuchsia-500";
       icon = <BrainCircuit size={14} />;
-    } else if (span.name.includes("execute_tool")) {
-      colorClass = "bg-emerald-500";
-      icon = <Terminal size={14} />;
+    } else if (span.name.startsWith("HTTP") || span.attributes['http.method']) {
+      colorClass = "bg-blue-500";
+      icon = <Globe size={14} />;
     } else if (span.name.includes("memory")) {
       colorClass = "bg-amber-500";
       icon = <Activity size={14} />;

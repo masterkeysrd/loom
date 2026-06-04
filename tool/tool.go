@@ -165,6 +165,7 @@ func AdaptHandler[In, Out any](name string, schema *jsonschema.Resolved, fn Hand
 			defer span.End()
 
 			span.SetAttributes(
+				attribute.String("gen_ai.operation.name", "execute_tool"), // Make sure OTel recognizes this as a GenAI tool span
 				telemetry.WithToolName(name),
 				attribute.String("loom.tool.type", "local"),
 			)

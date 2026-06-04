@@ -57,16 +57,21 @@ type Config struct {
 	ServiceVersion string
 	OTLPEndpoint   string // default localhost:4317
 	Insecure       bool
+	MetricInterval time.Duration // default 5 seconds
 }
 
 // Init sets up the OpenTelemetry SDK with OTLP exporters.
 // Returns a shutdown function and an error.
+// If the application already has OpenTelemetry configured globally, calling this is unnecessary.
 func Init(ctx context.Context, cfg Config) (func(context.Context) error, error) {
 	if cfg.OTLPEndpoint == "" {
 		cfg.OTLPEndpoint = "localhost:4317"
 	}
 	if cfg.ServiceName == "" {
 		cfg.ServiceName = "loom"
+	}
+	if cfg.MetricInterval == 0 {
+		cfg.MetricInterval = 5 * time.Second
 	}
 
 	res, err := resource.New(ctx,
@@ -122,7 +127,7 @@ func Init(ctx context.Context, cfg Config) (func(context.Context) error, error) 
 		Boundaries: []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10},
 	}
 
-	reader := sdkmetric.NewPeriodicReader(metricExporter)
+	reader := sdkmetric.NewPeriodicReader(metricExporter, sdkmetric.WithInterval(cfg.MetricInterval))
 	mp := sdkmetric.NewMeterProvider(
 		sdkmetric.WithResource(res),
 		sdkmetric.WithReader(reader),

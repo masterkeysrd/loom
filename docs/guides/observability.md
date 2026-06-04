@@ -32,22 +32,26 @@ The `trace` package provides a lightweight way to log the execution flow of your
 You can attach a `SessionID` to a context to group related events.
 
 ```go
-import "github.com/masterkeysrd/loom/trace"
+import "github.com/masterkeysrd/loom/telemetry"
 
-ctx = trace.WithSession(ctx, "user-session-123")
+// Initialize telemetry (usually in main)
+shutdown, _ := telemetry.Init(ctx, telemetry.Config{ServiceName: "my-agent"})
+defer shutdown(ctx)
 
-// Log a custom event
-trace.Append(ctx, "my-component", "my-stage", map[string]any{
-    "info": "something happened",
-})
+// Start a span
+ctx, span := telemetry.Start(ctx, "my-operation")
+defer span.End()
+
+// Log a custom attribute
+span.SetAttributes(telemetry.WithLoomThread("thread-123"))
 ```
 
 ### Automatic Tracing
 
-Loom's `Model` and `Graph` packages automatically emit trace events for:
-- LLM requests and chunks.
+Loom's `Model` and `Graph` packages automatically emit OpenTelemetry spans and metrics for:
+- LLM requests (using GenAI semantic conventions).
 - Node entry and exit.
-- State updates and interrupts.
+- Graph execution durations and node invocations.
 
 ### Example Log Entry
 

@@ -55,14 +55,14 @@ func migrate(db *sql.DB) error {
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_spans_trace_id ON spans(trace_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_spans_start_time ON spans(start_time_unix_nano);`,
-		
+
 		`CREATE TABLE IF NOT EXISTS metrics (
 			name TEXT PRIMARY KEY,
 			description TEXT,
 			unit TEXT,
 			type TEXT
 		);`,
-		
+
 		`CREATE TABLE IF NOT EXISTS metric_points (
 			metric_name TEXT NOT NULL,
 			timestamp_unix_nano INTEGER NOT NULL,
@@ -92,16 +92,16 @@ func migrate(db *sql.DB) error {
 }
 
 type SpanRecord struct {
-	TraceID        string `json:"trace_id"`
-	SpanID         string `json:"span_id"`
-	ParentSpanID   string `json:"parent_span_id,omitempty"`
-	Name           string `json:"name"`
-	Kind           string `json:"kind"`
-	StartTimeNano  int64  `json:"start_time_nano"`
-	EndTimeNano    int64  `json:"end_time_nano"`
-	Attributes     map[string]any `json:"attributes"`
-	StatusCode     string `json:"status_code"`
-	StatusMessage  string `json:"status_message,omitempty"`
+	TraceID       string         `json:"trace_id"`
+	SpanID        string         `json:"span_id"`
+	ParentSpanID  string         `json:"parent_span_id,omitempty"`
+	Name          string         `json:"name"`
+	Kind          string         `json:"kind"`
+	StartTimeNano int64          `json:"start_time_nano"`
+	EndTimeNano   int64          `json:"end_time_nano"`
+	Attributes    map[string]any `json:"attributes"`
+	StatusCode    string         `json:"status_code"`
+	StatusMessage string         `json:"status_message,omitempty"`
 }
 
 func (d *DB) InsertSpan(ctx context.Context, s SpanRecord) error {
@@ -123,17 +123,23 @@ func (d *DB) InsertSpan(ctx context.Context, s SpanRecord) error {
 		return err
 	}
 
-	// Index Loom-specific attributes
-	if threadID, ok := s.Attributes["loom.thread_id"].(string); ok {
-		graphName, _ := s.Attributes["loom.graph.name"].(string)
-		_, _ = d.db.ExecContext(ctx, `
-			INSERT INTO loom_traces (trace_id, thread_id, graph_name, start_time_unix_nano)
-			VALUES (?, ?, ?, ?)
-			ON CONFLICT(trace_id) DO UPDATE SET
-				thread_id = excluded.thread_id,
-				graph_name = excluded.graph_name
-		`, s.TraceID, threadID, graphName, s.StartTimeNano)
+	// Index trace for the explorer
+	threadID, _ := s.Attributes["loom.thread_id"].(string)
+	if threadID == "" {
+		threadID = "unknown-" + s.TraceID[:8]
 	}
+	graphName, _ := s.Attributes["loom.graph.name"].(string)
+	if graphName == "" {
+		graphName = "external-execution"
+	}
+
+	_, _ = d.db.ExecContext(ctx, `
+		INSERT INTO loom_traces (trace_id, thread_id, graph_name, start_time_unix_nano)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(trace_id) DO UPDATE SET
+			thread_id = CASE WHEN excluded.thread_id LIKE 'unknown-%' THEN loom_traces.thread_id ELSE excluded.thread_id END,
+			graph_name = CASE WHEN excluded.graph_name = 'external-execution' THEN loom_traces.graph_name ELSE excluded.graph_name END
+	`, s.TraceID, threadID, graphName, s.StartTimeNano)
 
 	return nil
 }
@@ -146,9 +152,9 @@ type MetricRecord struct {
 }
 
 type MetricPoint struct {
-	MetricName    string `json:"metric_name"`
-	TimestampNano int64  `json:"timestamp_nano"`
-	Value         float64 `json:"value"`
+	MetricName    string         `json:"metric_name"`
+	TimestampNano int64          `json:"timestamp_nano"`
+	Value         float64        `json:"value"`
 	Attributes    map[string]any `json:"attributes"`
 }
 

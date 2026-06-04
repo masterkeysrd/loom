@@ -1,35 +1,10 @@
-# Visualization & Observability 🔍
+# Observability
 
-Loom provides built-in tools to help you understand your graph's structure and debug its execution in real-time.
+Loom provides first-class support for observability using OpenTelemetry (OTel). This allows you to trace the execution of your agents, monitor performance, and debug complex multi-step workflows.
 
-## 1. Graph Visualization (Mermaid)
+## Quick Start
 
-Loom can automatically generate diagrams of your workflows using [Mermaid](https://mermaid.js.org/) syntax. This is incredibly useful for documentation and for verifying your graph's logic.
-
-### Generating Mermaid Code
-
-```go
-g, _ := builder.Build()
-
-// Get the raw Mermaid string
-fmt.Println(g.ToMermaid())
-
-// Get a URL to render the diagram immediately
-fmt.Println("View Diagram:", g.MermaidURL())
-```
-
-### Visualizing Edges
-- **Direct Edges**: Shown as solid arrows (`-->`).
-- **Conditional Edges**: Shown as dotted arrows (`-.->`).
-- **Route Edges**: Shown with labels for each possible path.
-
-## 2. Observability & Tracing
-
-The `trace` package provides a lightweight way to log the execution flow of your agents. By default, it writes logs to `logs/stream_chain.jsonl`.
-
-### Using the Trace Package
-
-You can attach a `SessionID` to a context to group related events.
+The easiest way to get started is to use the built-in `telemetry` package and Loom Studio.
 
 ```go
 import "github.com/masterkeysrd/loom/telemetry"
@@ -46,6 +21,24 @@ defer span.End()
 span.SetAttributes(telemetry.WithLoomThread("thread-123"))
 ```
 
+## Loom Studio
+
+Loom Studio is a built-in visualization and debugging tool for your agents. It provides a real-time dashboard for metrics and a detailed waterfall viewer for execution traces.
+
+### Running Loom Studio
+
+To start Loom Studio, run the following command in your terminal:
+
+```bash
+loom studio
+```
+
+By default, it will:
+- Open a web dashboard on `http://localhost:8080`.
+- Listen for OTLP gRPC telemetry on `localhost:4317`.
+- Listen for OTLP HTTP telemetry on `localhost:4318`.
+- Store data in a local SQLite database at `.loom/telemetry.db`.
+
 ### Automatic Tracing
 
 Loom's `Model` and `Graph` packages automatically emit OpenTelemetry spans and metrics for:
@@ -53,20 +46,28 @@ Loom's `Model` and `Graph` packages automatically emit OpenTelemetry spans and m
 - Node entry and exit.
 - Graph execution durations and node invocations.
 
-### Example Log Entry
+### Capturing Sensitive Content
 
-```json
-{
-  "timestamp": "2024-05-31T12:00:00Z",
-  "session_id": "user-session-123",
-  "component": "model",
-  "stage": "invoke_complete",
-  "data": { "message_id": "...", "metrics": { ... } }
-}
+By default, Loom does **not** record sensitive content (prompts, completion text, tool results) to protect your privacy. You can opt-in to content recording using `telemetry.WithContentRecording`:
+
+```go
+ctx = telemetry.WithContentRecording(ctx)
+// Subsequent LLM and tool calls in this context will record their payloads
 ```
 
-## 3. Best Practices
+## Production Observability
 
-- **Visualize Early**: Use `g.MermaidURL()` during development to ensure your graph matches your mental model.
-- **Session IDs**: Always use `WithSession` to make it easier to trace a single user's journey through multiple graph executions.
-- **Log Rotation**: Since Loom logs to a file, ensure you have a strategy for log rotation in production environments.
+Since Loom uses standard OpenTelemetry under the hood, you can easily point it to any OTel-compliant backend (Datadog, Honeycomb, Jaeger, etc.) by setting the standard environment variables:
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://api.honeycomb.io"
+export OTEL_EXPORTER_OTLP_HEADERS="x-honeycomb-team=your-api-key"
+```
+
+If your application already has OpenTelemetry configured, Loom will automatically use your existing `TracerProvider` and `MeterProvider` without any additional setup.
+
+## Best Practices
+
+- **Trace IDs**: Always propagate `context.Context` through your application to ensure spans are correctly parented.
+- **Attributes**: Use standard semantic conventions for custom attributes when possible to ensure compatibility with various observability tools.
+- **Sampling**: In high-throughput production environments, consider configuring a sampler to reduce the volume of telemetry data.

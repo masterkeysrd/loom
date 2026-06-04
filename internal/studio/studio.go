@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 )
 
 type Studio struct {
-	db *DB
+	db   *DB
 	otlp *OTLPReceiver
-	api *APIServer
+	api  *APIServer
 }
 
 func NewStudio(dbPath string) (*Studio, error) {
@@ -54,7 +55,11 @@ func (s *Studio) Start(ctx context.Context, otlpGRPCPort, otlpHTTPPort, apiPort 
 		defer wg.Done()
 		mux := http.NewServeMux()
 		s.api.RegisterHandlers(mux)
-		
+
+		// Serve static assets
+		staticFS := StaticAssets()
+		fileServer := http.FileServer(http.FS(staticFS))
+
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -63,12 +68,29 @@ func (s *Studio) Start(ctx context.Context, otlpGRPCPort, otlpHTTPPort, apiPort 
 				w.WriteHeader(http.StatusOK)
 				return
 			}
-			mux.ServeHTTP(w, r)
+
+			// If it's an API call, let the mux handle it
+			if strings.HasPrefix(r.URL.Path, "/api") {
+				mux.ServeHTTP(w, r)
+				return
+			}
+
+			// Check if file exists in static FS
+			f, err := staticFS.Open(strings.TrimPrefix(r.URL.Path, "/"))
+			if err == nil {
+				f.Close()
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+
+			// Fallback to index.html for SPA routing
+			r.URL.Path = "/"
+			fileServer.ServeHTTP(w, r)
 		})
 
 		fmt.Printf("Studio API listening on :%d\n", apiPort)
 		server := &http.Server{Addr: fmt.Sprintf(":%d", apiPort), Handler: handler}
-		
+
 		go func() {
 			<-ctx.Done()
 			server.Shutdown(context.Background())

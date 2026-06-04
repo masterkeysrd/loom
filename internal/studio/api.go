@@ -17,17 +17,44 @@ func NewAPIServer(db *DB) *APIServer {
 }
 
 func (s *APIServer) RegisterHandlers(mux *http.ServeMux) {
+	mux.HandleFunc("/api/stats", s.handleStats)
 	mux.HandleFunc("/api/threads", s.handleThreads)
 	mux.HandleFunc("/api/threads/", s.handleThreadDetail)
 	mux.HandleFunc("/api/metrics", s.handleMetrics)
 	mux.HandleFunc("/api/metrics/", s.handleMetricData)
 }
 
+func (s *APIServer) handleStats(w http.ResponseWriter, r *http.Request) {
+	var stats struct {
+		TotalThreads int64 `json:"total_threads"`
+		TotalSpans   int64 `json:"total_spans"`
+		TotalTokens  int64 `json:"total_tokens"`
+		ErrorCount   int64 `json:"error_count"`
+	}
+
+	_ = s.db.db.QueryRow("SELECT COUNT(DISTINCT thread_id) FROM loom_traces").Scan(&stats.TotalThreads)
+	_ = s.db.db.QueryRow("SELECT COUNT(*) FROM spans").Scan(&stats.TotalSpans)
+	_ = s.db.db.QueryRow("SELECT SUM(value) FROM metric_points WHERE metric_name = 'gen_ai.client.token.usage'").Scan(&stats.TotalTokens)
+	_ = s.db.db.QueryRow("SELECT COUNT(*) FROM spans WHERE status_code = 'Error'").Scan(&stats.ErrorCount)
+
+	json.NewEncoder(w).Encode(stats)
+}
+
 func (s *APIServer) handleThreads(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.db.Query(`
-		SELECT thread_id, graph_name, MIN(start_time_unix_nano) as start_time, COUNT(trace_id) as trace_count
-		FROM loom_traces
-		GROUP BY thread_id, graph_name
+		SELECT 
+			lt.thread_id, 
+			lt.graph_name, 
+			lt.start_time_unix_nano as start_time, 
+			(SELECT COUNT(*) FROM spans s2 WHERE s2.trace_id = lt.trace_id) as trace_count,
+			COALESCE((
+				SELECT SUM(CAST(JSON_EXTRACT(s.attributes_json, '$."gen_ai.usage.input_tokens"') AS INTEGER)) +
+				       SUM(CAST(JSON_EXTRACT(s.attributes_json, '$."gen_ai.usage.output_tokens"') AS INTEGER))
+				FROM spans s 
+				WHERE s.trace_id = lt.trace_id
+			), 0) as total_tokens
+		FROM loom_traces lt
+		GROUP BY lt.thread_id, lt.graph_name
 		ORDER BY start_time DESC
 	`)
 	if err != nil {
@@ -37,15 +64,16 @@ func (s *APIServer) handleThreads(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type Thread struct {
-		ThreadID   string `json:"thread_id"`
-		GraphName  string `json:"graph_name"`
-		StartTime  int64  `json:"start_time"`
-		TraceCount int    `json:"trace_count"`
+		ThreadID    string `json:"thread_id"`
+		GraphName   string `json:"graph_name"`
+		StartTime   int64  `json:"start_time"`
+		TraceCount  int    `json:"trace_count"`
+		TotalTokens int64  `json:"total_tokens"`
 	}
 	var threads []Thread
 	for rows.Next() {
 		var t Thread
-		if err := rows.Scan(&t.ThreadID, &t.GraphName, &t.StartTime, &t.TraceCount); err != nil {
+		if err := rows.Scan(&t.ThreadID, &t.GraphName, &t.StartTime, &t.TraceCount, &t.TotalTokens); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

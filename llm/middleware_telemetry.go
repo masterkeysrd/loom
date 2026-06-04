@@ -65,6 +65,12 @@ func TelemetryMiddleware(provider Provider) Middleware {
 					if totalTokens.TotalTokens > 0 {
 						telemetry.RecordTokenUsage(ctx, int64(totalTokens.Tokens.Input), opName, providerName, telemetry.TokenTypeInput, finalAttrs...)
 						telemetry.RecordTokenUsage(ctx, int64(totalTokens.Tokens.Output), opName, providerName, telemetry.TokenTypeOutput, finalAttrs...)
+
+						// Add usage to span attributes for better visibility in trace explorer
+						span.SetAttributes(
+							telemetry.WithInputTokens(totalTokens.Tokens.Input),
+							telemetry.WithOutputTokens(totalTokens.Tokens.Output),
+						)
 					}
 
 					span.End()

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -14,6 +16,9 @@ import (
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
 	"github.com/ollama/ollama/api"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var _ llm.Provider = (*Provider)(nil)
@@ -30,12 +35,23 @@ type Provider struct {
 // NewDefaultProvider creates a [Provider] using the Ollama client configured
 // from environment variables (OLLAMA_HOST, etc.).
 func NewDefaultProvider() (*Provider, error) {
-	client, err := api.ClientFromEnvironment()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Ollama client: %w", err)
+	host := os.Getenv("OLLAMA_HOST")
+	if host == "" {
+		host = "http://127.0.0.1:11434"
 	}
 
-	return &Provider{client: client}, nil
+	u, err := url.Parse(host)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse OLLAMA_HOST: %w", err)
+	}
+
+	httpClient := &http.Client{
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+
+	return &Provider{
+		client: api.NewClient(u, httpClient),
+	}, nil
 }
 
 // Name returns "ollama", uniquely identifying this provider in a [llm.Registry].
@@ -51,6 +67,12 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert chat request: %w", err)
 	}
+
+	// Ollama Specific Span Decoration
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(
+		attribute.String("ollama.api.type", "chat"),
+	)
 
 	{
 		file, err := os.Create(fmt.Sprintf("./logs/ollama_request_%d.json", time.Now().Unix()))

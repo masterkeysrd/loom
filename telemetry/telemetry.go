@@ -45,6 +45,7 @@ var (
 func init() {
 	tracer = otel.GetTracerProvider().Tracer("loom")
 	meter = otel.GetMeterProvider().Meter("loom")
+	_ = initInstruments()
 }
 
 type Config struct {

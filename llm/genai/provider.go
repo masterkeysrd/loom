@@ -5,12 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"net/http"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/genai"
 )
 
@@ -50,12 +54,21 @@ type Provider struct {
 
 // NewDefaultProvider creates a Google GenAI provider with default configuration, sourcing credentials from the environment.
 func NewDefaultProvider(ctx context.Context) (*Provider, error) {
-	return NewProvider(ctx, &genai.ClientConfig{})
+	return NewProvider(ctx, &genai.ClientConfig{
+		HTTPClient: &http.Client{
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		},
+	})
 }
 
 // NewProvider creates a Google GenAI provider with the given configuration. The config can be used to customize credentials,
 // timeouts, and other client options.
 func NewProvider(ctx context.Context, config *genai.ClientConfig) (*Provider, error) {
+	if config.HTTPClient == nil {
+		config.HTTPClient = &http.Client{
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		}
+	}
 	client, err := genai.NewClient(ctx, config)
 	if err != nil {
 		return nil, fmt.Errorf("genai: create client: %w", err)
@@ -77,6 +90,12 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 	if err != nil {
 		return nil, fmt.Errorf("genai: build request: %w", err)
 	}
+
+	// Gemini Specific Span Decoration
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(
+		attribute.String("genai.api.type", "generate_content"),
+	)
 
 	{
 		file, err := os.Create(fmt.Sprintf("./logs/genai_request_%d.json", time.Now().Unix()))

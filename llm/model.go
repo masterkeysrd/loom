@@ -100,13 +100,18 @@ func NewModel(provider Provider, name string, config *ModelConfig) (*Model, erro
 		}
 	}
 
-	return &Model{
+	m := &Model{
 		name:       name,
 		provider:   provider,
 		profile:    profile,
 		config:     config,
 		middleware: make([]Middleware, 0),
-	}, nil
+	}
+
+	// Apply telemetry middleware by default
+	m.middleware = append(m.middleware, TelemetryMiddleware(provider))
+
+	return m, nil
 }
 
 // BindTools registers tool definitions with the model. On every subsequent
@@ -329,8 +334,6 @@ func (m *Model) Invoke(ctx context.Context, messages []message.Message, opts ...
 		return nil, fmt.Errorf("failed to build assistant message: %w", err)
 	}
 
-	// removed legacy trace
-
 	return msg, nil
 }
 
@@ -368,8 +371,6 @@ func (m *Model) Stream(ctx context.Context, messages []message.Message, opts ...
 				chunk.Metrics.Cost = costs
 				chunk.Metrics.TotalCost = total
 			}
-
-			// removed legacy trace
 
 			if hasWriter && err == nil {
 				_ = sw.Write(ctx, message.CloneAssistantChunk(chunk))

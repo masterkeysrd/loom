@@ -4,13 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var _ llm.Provider = (*Provider)(nil)
@@ -60,7 +64,10 @@ type Provider struct {
 // NewDefaultProvider creates a [Provider] using the Anthropic client configured
 // from the ANTHROPIC_API_KEY environment variable.
 func NewDefaultProvider() (*Provider, error) {
-	client := anthropic.NewClient()
+	httpClient := &http.Client{
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+	client := anthropic.NewClient(option.WithHTTPClient(httpClient))
 	return &Provider{
 		client: &client,
 	}, nil
@@ -87,6 +94,9 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert chat request: %w", err)
 	}
+
+	// Retrieve active span (can be used for provider-specific decoration)
+	_ = trace.SpanFromContext(ctx)
 
 	{
 		file, err := os.Create(fmt.Sprintf("./logs/anthropic_request_%d.json", time.Now().Unix()))

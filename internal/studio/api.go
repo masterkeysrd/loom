@@ -48,6 +48,7 @@ type APIServer struct {
 	hub         *Hub
 	manifests   map[string]*studio.Manifest
 	connManager *ConnectionManager
+	broker      *Broker
 	mu          sync.RWMutex
 }
 
@@ -57,6 +58,7 @@ func NewAPIServer(db *DB) *APIServer {
 		hub:         NewHub(),
 		manifests:   make(map[string]*studio.Manifest),
 		connManager: NewConnectionManager(),
+		broker:      NewBroker(),
 	}
 }
 
@@ -68,6 +70,7 @@ func (s *APIServer) RegisterHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("/api/metrics/", s.handleMetricData)
 	mux.HandleFunc("/api/manifests", s.handleGetManifests)
 	mux.HandleFunc("/api/execute", s.handleExecute)
+	mux.HandleFunc("/api/stream", s.handleStream)
 	mux.HandleFunc("/control", s.handleControl)
 }
 
@@ -221,14 +224,21 @@ func (c *Client) readPump() {
 		var msg struct {
 			Type string `json:"type"`
 		}
-		if err := json.Unmarshal(message, &msg); err == nil && msg.Type == "manifest" {
-			var manifest studio.Manifest
-			if err := json.Unmarshal(message, &manifest); err == nil {
-				workerID = manifest.WorkerID
-				c.api.connManager.Add(workerID, c)
-				c.api.mu.Lock()
-				c.api.manifests[workerID] = &manifest
-				c.api.mu.Unlock()
+		if err := json.Unmarshal(message, &msg); err == nil {
+			if msg.Type == "manifest" {
+				var manifest studio.Manifest
+				if err := json.Unmarshal(message, &manifest); err == nil {
+					workerID = manifest.WorkerID
+					c.api.connManager.Add(workerID, c)
+					c.api.mu.Lock()
+					c.api.manifests[workerID] = &manifest
+					c.api.mu.Unlock()
+				}
+			}
+
+			// Publish all incoming WebSocket messages to the SSE broker
+			if workerID != "" {
+				c.api.broker.Publish(workerID, message)
 			}
 		}
 
@@ -610,5 +620,86 @@ func (s *APIServer) handleExecute(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"status":"success"}`))
 	default:
 		http.Error(w, "Worker connection buffer full", http.StatusServiceUnavailable)
+	}
+}
+
+type Broker struct {
+	mu          sync.RWMutex
+	subscribers map[string][]chan []byte
+}
+
+func NewBroker() *Broker {
+	return &Broker{
+		subscribers: make(map[string][]chan []byte),
+	}
+}
+
+func (b *Broker) Subscribe(workerID string) chan []byte {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	ch := make(chan []byte, 64)
+	b.subscribers[workerID] = append(b.subscribers[workerID], ch)
+	return ch
+}
+
+func (b *Broker) Unsubscribe(workerID string, ch chan []byte) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	subs := b.subscribers[workerID]
+	for i, sub := range subs {
+		if sub == ch {
+			b.subscribers[workerID] = append(subs[:i], subs[i+1:]...)
+			close(ch)
+			break
+		}
+	}
+}
+
+func (b *Broker) Publish(workerID string, msg []byte) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	subs, ok := b.subscribers[workerID]
+	if !ok {
+		return
+	}
+	for _, sub := range subs {
+		select {
+		case sub <- msg:
+		default:
+		}
+	}
+}
+
+func (s *APIServer) handleStream(w http.ResponseWriter, r *http.Request) {
+	workerID := r.URL.Query().Get("worker_id")
+	if workerID == "" {
+		http.Error(w, "worker_id is required", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	ch := s.broker.Subscribe(workerID)
+	defer s.broker.Unsubscribe(workerID, ch)
+
+	rc := http.NewResponseController(w)
+
+	for {
+		select {
+		case msg, ok := <-ch:
+			if !ok {
+				return
+			}
+			_, err := fmt.Fprintf(w, "data: %s\n\n", msg)
+			if err != nil {
+				return
+			}
+			rc.Flush()
+		case <-r.Context().Done():
+			return
+		}
 	}
 }

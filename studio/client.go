@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/masterkeysrd/loom/graph"
+	"github.com/masterkeysrd/loom/message"
 )
 
 // GraphOptions contains registration options for a Graph.
@@ -34,9 +35,22 @@ var (
 	registry   = make(map[string]registryEntry)
 	workerID   = uuid.New().String()
 
-	connMu     sync.Mutex
-	cancelConn context.CancelFunc
+	connMu       sync.Mutex
+	cancelConn   context.CancelFunc
+	outgoingChan chan Message
+	outgoingMu   sync.Mutex
 )
+
+func publishMessage(msg Message) {
+	outgoingMu.Lock()
+	defer outgoingMu.Unlock()
+	if outgoingChan != nil {
+		select {
+		case outgoingChan <- msg:
+		default:
+		}
+	}
+}
 
 func findMessageListFields(t reflect.Type) map[string]bool {
 	fields := make(map[string]bool)
@@ -89,6 +103,11 @@ func RegisterGraph[S graph.State[S]](g *graph.Graph[S], opts GraphOptions) {
 				}
 				prop.Extra["x-loom-content"] = "chat"
 				prop.Extra["x-loom-type"] = "message_list"
+
+				if prop.Items == nil {
+					prop.Items = &jsonschema.Schema{}
+				}
+				prop.Items.Type = "object"
 			}
 		}
 
@@ -146,12 +165,64 @@ func RegisterGraph[S graph.State[S]](g *graph.Graph[S], opts GraphOptions) {
 			}
 		}
 
-		snapshot, err := g.Execute(ctx, cmd, nil)
+		events, err := g.Stream(ctx, cmd, nil)
 		if err != nil {
 			return nil, err
 		}
 
-		return snapshot, nil
+		for ev, err := range events {
+			if err != nil {
+				continue
+			}
+
+			switch ev.Event {
+			case "on_checkpoint_saved":
+				if loc, ok := ev.Data.(graph.Location); ok {
+					if snap, err := g.Load(ctx, loc); err == nil && snap != nil {
+						checkpoint := graph.Checkpoint{
+							Location:  snap.Location,
+							Parent:    snap.Parent,
+							State:     snap.State,
+							Next:      snap.Next,
+							Timestamp: snap.CreateTime,
+						}
+						checkpointBytes, _ := json.Marshal(checkpoint)
+						publishMessage(Message{
+							Type: "on_checkpoint",
+							Data: checkpointBytes,
+						})
+					}
+				}
+			case "on_llm_chunk":
+				if chunk, ok := ev.Data.(message.AssistantChunk); ok {
+					payload := map[string]any{
+						"node":   ev.Node,
+						"source": ev.Source,
+						"chunk":  chunk,
+					}
+					payloadBytes, _ := json.Marshal(payload)
+					publishMessage(Message{
+						Type: "on_llm_chunk",
+						Data: payloadBytes,
+					})
+				}
+			case "on_tool_chunk":
+				if chunk, ok := ev.Data.(message.ToolChunk); ok {
+					payload := map[string]any{
+						"node":   ev.Node,
+						"source": ev.Source,
+						"chunk":  chunk,
+					}
+					payloadBytes, _ := json.Marshal(payload)
+					publishMessage(Message{
+						Type: "on_tool_chunk",
+						Data: payloadBytes,
+					})
+				}
+			}
+		}
+
+		return nil, nil
 	}
 
 	registry[g.Name()] = registryEntry{
@@ -239,6 +310,19 @@ func runSession(ctx context.Context, conn *websocket.Conn, wsURL string) {
 	defer conn.Close()
 
 	send := make(chan Message, 256)
+
+	outgoingMu.Lock()
+	outgoingChan = send
+	outgoingMu.Unlock()
+
+	defer func() {
+		outgoingMu.Lock()
+		if outgoingChan == send {
+			outgoingChan = nil
+		}
+		outgoingMu.Unlock()
+	}()
+
 	sessionCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 

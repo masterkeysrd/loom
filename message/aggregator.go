@@ -100,7 +100,10 @@ func (a *AssistantAggregator) upsert(incoming Block) {
 				return
 			}
 		}
-		a.blocks = append(a.blocks, incoming)
+		// Store an independent copy so that mutations to a.blocks[n].Text
+		// (e.g. by a sibling aggregator sharing the same *TextBlock pointer)
+		// do not affect the block owned by this aggregator, and vice-versa.
+		a.blocks = append(a.blocks, &TextBlock{Text: incoming.Text})
 	case *ThinkingBlock:
 		if len(a.blocks) > 0 {
 			last := a.blocks[len(a.blocks)-1]
@@ -109,7 +112,8 @@ func (a *AssistantAggregator) upsert(incoming Block) {
 				return
 			}
 		}
-		a.blocks = append(a.blocks, incoming)
+		// Same defensive copy as TextBlock above.
+		a.blocks = append(a.blocks, &ThinkingBlock{Thinking: incoming.Thinking})
 	case *ToolCallChunk:
 		pt, ok := a.pendingCalls[incoming.Index]
 		if !ok {

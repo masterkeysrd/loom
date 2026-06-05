@@ -14,6 +14,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/masterkeysrd/loom/graph"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/stream"
 )
 
 // GraphOptions contains registration options for a Graph.
@@ -88,6 +89,12 @@ func findMessageListFields(t reflect.Type) map[string]bool {
 func RegisterGraph[S graph.State[S]](g *graph.Graph[S], opts GraphOptions) {
 	registryMu.Lock()
 	defer registryMu.Unlock()
+
+	// Wrap checkpointer to publish checkpoints to studio UI
+	original := g.Checkpointer()
+	if _, ok := original.(*studioCheckpointer); !ok {
+		g.SetCheckpointer(&studioCheckpointer{original: original})
+	}
 
 	// Generate input schema for the state
 	var inputSchema *jsonschema.Schema
@@ -238,6 +245,8 @@ func RegisterGraph[S graph.State[S]](g *graph.Graph[S], opts GraphOptions) {
 func Connect(ctx context.Context, wsURL string) error {
 	connMu.Lock()
 	defer connMu.Unlock()
+
+	stream.SetGlobalWriter(&studioGlobalStreamWriter{})
 
 	if cancelConn != nil {
 		cancelConn()
@@ -467,4 +476,67 @@ func buildGraphManifestFromEntry(name string, entry registryEntry) (GraphManifes
 	}
 
 	return gm, nil
+}
+
+type studioCheckpointer struct {
+	original graph.Checkpointer
+}
+
+func (sc *studioCheckpointer) Load(ctx context.Context, loc graph.Location) (*graph.Checkpoint, error) {
+	if sc.original == nil {
+		return nil, graph.ErrCheckpointNotFound
+	}
+	return sc.original.Load(ctx, loc)
+}
+
+func (sc *studioCheckpointer) Record(ctx context.Context, cp graph.Checkpoint) error {
+	var err error
+	if sc.original != nil {
+		err = sc.original.Record(ctx, cp)
+	}
+
+	cpBytes, _ := json.Marshal(cp)
+	publishMessage(Message{
+		Type: "on_checkpoint",
+		Data: cpBytes,
+	})
+
+	return err
+}
+
+type studioGlobalStreamWriter struct{}
+
+func (sw *studioGlobalStreamWriter) Write(ctx context.Context, data any) error {
+	execCtx, ok := graph.ExecutionCtxFromContext(ctx)
+	if !ok {
+		return nil
+	}
+	metadata, _ := stream.MetadataFromContext(ctx)
+
+	switch v := data.(type) {
+	case message.AssistantChunk:
+		payload := map[string]any{
+			"node":   execCtx.NodeName,
+			"source": metadata.Source,
+			"chunk":  v,
+		}
+		payloadBytes, _ := json.Marshal(payload)
+		publishMessage(Message{
+			Type: "on_llm_chunk",
+			Data: payloadBytes,
+		})
+	case message.ToolChunk:
+		payload := map[string]any{
+			"node":   execCtx.NodeName,
+			"source": metadata.Source,
+			"chunk":  v,
+		}
+		payloadBytes, _ := json.Marshal(payload)
+		publishMessage(Message{
+			Type: "on_tool_chunk",
+			Data: payloadBytes,
+		})
+	}
+
+	return nil
 }

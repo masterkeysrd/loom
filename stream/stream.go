@@ -16,6 +16,13 @@ type (
 	metadataKey struct{}
 )
 
+var globalWriter Writer
+
+// SetGlobalWriter sets a fallback writer that will be used when no writer is found in the context.
+func SetGlobalWriter(w Writer) {
+	globalWriter = w
+}
+
 // Metadata carries information about the source of a stream write.
 type Metadata struct {
 	// Source identifies the component emitting the data (e.g. "tool:calculator", "llm:gpt-4").
@@ -36,6 +43,9 @@ func WithWriter(ctx context.Context, w Writer) context.Context {
 // WriterFromContext retrieves the [Writer] from ctx.
 func WriterFromContext(ctx context.Context) (Writer, bool) {
 	w, ok := ctx.Value(writerKey{}).(Writer)
+	if !ok && globalWriter != nil {
+		return globalWriter, true
+	}
 	return w, ok
 }
 

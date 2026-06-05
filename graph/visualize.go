@@ -25,11 +25,11 @@ func (g *Graph[S]) ToMermaid() string {
 	for _, name := range nodeNames {
 		switch name {
 		case START:
-			sb.WriteString(fmt.Sprintf("  %s((START))\n", START))
+			fmt.Fprintf(&sb, "  %s((START))\n", START)
 		case END:
-			sb.WriteString(fmt.Sprintf("  %s((END))\n", END))
+			fmt.Fprintf(&sb, "  %s((END))\n", END)
 		default:
-			sb.WriteString(fmt.Sprintf("  %s[%s]\n", name, name))
+			fmt.Fprintf(&sb, "  %s[%s]\n", name, name)
 		}
 	}
 
@@ -46,7 +46,7 @@ func (g *Graph[S]) ToMermaid() string {
 		for _, edge := range edges {
 			// Use reflection to inspect the underlying edge type
 			v := reflect.ValueOf(edge)
-			for v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface {
+			for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
 				v = v.Elem()
 			}
 
@@ -55,10 +55,10 @@ func (g *Graph[S]) ToMermaid() string {
 
 			if strings.Contains(typeStr, "SimpleEdge") {
 				next := v.FieldByName("Next").String()
-				sb.WriteString(fmt.Sprintf("  %s --> %s\n", from, next))
+				fmt.Fprintf(&sb, "  %s --> %s\n", from, next)
 			} else if strings.Contains(typeStr, "ConditionalEdge") {
 				next := v.FieldByName("Next").String()
-				sb.WriteString(fmt.Sprintf("  %s -. [conditional] .-> %s\n", from, next))
+				fmt.Fprintf(&sb, "  %s -. [conditional] .-> %s\n", from, next)
 			} else if strings.Contains(typeStr, "RouteEdge") {
 				routes := v.FieldByName("Routes")
 				if routes.Kind() == reflect.Map {
@@ -70,12 +70,12 @@ func (g *Graph[S]) ToMermaid() string {
 
 					for _, key := range keys {
 						to := routes.MapIndex(key).String()
-						sb.WriteString(fmt.Sprintf("  %s -- %v --> %s\n", from, key.Interface(), to))
+						fmt.Fprintf(&sb, "  %s -- %v --> %s\n", from, key.Interface(), to)
 					}
 				}
 			} else {
 				// Fallback for custom edge types
-				sb.WriteString(fmt.Sprintf("  %s -- unknown edge --> ???\n", from))
+				fmt.Fprintf(&sb, "  %s -- unknown edge --> ???\n", from)
 			}
 		}
 	}

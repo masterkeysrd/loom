@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/masterkeysrd/loom/stream"
+	"github.com/masterkeysrd/loom/telemetry"
 )
 
 // START is the reserved name for the virtual entry node of every graph.
@@ -78,6 +79,19 @@ func (g *Graph[State]) Execute(ctx context.Context, input Command[State], loc *L
 		snapshot.Next = []string{START}
 	}
 
+	currentStep := 0
+	if len(snapshot.Metadata) > 0 {
+		var meta CheckpointMetadata
+		if err := json.Unmarshal(snapshot.Metadata, &meta); err == nil {
+			currentStep = meta.Step
+		}
+	}
+
+	var initialBeforeState State
+	if any(snapshot.State) != nil {
+		initialBeforeState = snapshot.State.Copy()
+	}
+
 	if input != nil {
 		// Make a copy of the state before applying the input command, to prevent
 		snapshot.State = input.Apply(snapshot.State.Copy())
@@ -86,6 +100,8 @@ func (g *Graph[State]) Execute(ctx context.Context, input Command[State], loc *L
 	rec := newRecorder(g.name)
 	ctx, rec = rec.startGraph(ctx, snapshot.Location)
 	defer func() { rec.endGraph(ctx, nil) }() // Normal end if no error returned early
+
+	isFirstLoop := true
 
 	for !snapshot.IsDone() {
 		nodes, err := g.getNodes(snapshot.Next)
@@ -101,18 +117,50 @@ func (g *Graph[State]) Execute(ctx context.Context, input Command[State], loc *L
 		nodeName := snapshot.Next[0]
 		node := nodes[0]
 
-		cmd, err := g.executeNode(ctx, rec, nodeName, node, snapshot)
+		// Start node execution span using the pre-transition location
+		nodeCtx, span := rec.startNode(ctx, nodeName, snapshot.Location)
+		startTime := time.Now()
+
+		execCtx := WithExecutionCtx(nodeCtx, ExecutionCtx{
+			GraphName: g.name,
+			NodeName:  nodeName,
+			Location:  snapshot.Location,
+		})
+
+		cmd, err := node.Execute(execCtx, snapshot.State.Copy())
 		if err != nil {
-			return snapshot, err
+			rec.endNode(ctx, nodeName, span, startTime, err)
+			return snapshot, fmt.Errorf("failed to execute node: %w", err)
 		}
 
 		var interrupt bool
+		var beforeState State
+		if isFirstLoop && currentStep == 0 {
+			beforeState = initialBeforeState
+		} else {
+			beforeState = snapshot.State.Copy()
+		}
+		isFirstLoop = false
+
 		snapshot, interrupt, err = g.transition(snapshot, cmd)
 		if err != nil {
+			rec.endNode(ctx, nodeName, span, startTime, err)
 			return snapshot, fmt.Errorf("failed to transition to next nodes: %w", err)
 		}
 
-		if err := g.recordCheckpoint(ctx, snapshot); err != nil {
+		// Update the span's checkpoint attribute to the post-transition checkpoint ID
+		span.SetAttributes(telemetry.WithLoomCheckpoint(snapshot.Location.CheckpointID))
+
+		// End the node execution span normally
+		rec.endNode(ctx, nodeName, span, startTime, nil)
+
+		currentStep++
+		source := "loop"
+		if nodeName == START {
+			source = "input"
+		}
+
+		if err := g.recordCheckpoint(ctx, &snapshot, beforeState, nodeName, source, currentStep); err != nil {
 			return snapshot, fmt.Errorf("failed to store checkpoint: %w", err)
 		}
 
@@ -122,26 +170,6 @@ func (g *Graph[State]) Execute(ctx context.Context, input Command[State], loc *L
 	}
 
 	return snapshot, nil
-}
-
-func (g *Graph[State]) executeNode(ctx context.Context, rec *recorder, name string, node Node[State], snapshot Snapshot[State]) (Command[State], error) {
-	nodeCtx, span := rec.startNode(ctx, name)
-	startTime := time.Now()
-
-	execCtx := WithExecutionCtx(nodeCtx, ExecutionCtx{
-		GraphName: g.name,
-		NodeName:  name,
-		Location:  snapshot.Location,
-	})
-
-	cmd, err := node.Execute(execCtx, snapshot.State.Copy())
-
-	rec.endNode(ctx, name, span, startTime, err)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute node: %w", err)
-	}
-
-	return cmd, nil
 }
 
 // Stream is the streaming variant of [Graph.Execute].
@@ -201,28 +229,13 @@ func (g *Graph[State]) Load(ctx context.Context, loc Location) (*Snapshot[State]
 		return nil, ErrCheckpointNotFound
 	}
 
+	data, err := json.Marshal(checkpoint.State)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal checkpoint state map: %w", err)
+	}
 	var state State
-	switch v := checkpoint.State.(type) {
-	case State:
-		state = v
-	case []byte:
-		if err := json.Unmarshal(v, &state); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal checkpoint state: %w", err)
-		}
-	case json.RawMessage:
-		if err := json.Unmarshal(v, &state); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal checkpoint state: %w", err)
-		}
-	default:
-		// Try to marshal whatever we got back to JSON and then unmarshal it into the state struct.
-		// This handles cases where the checkpointer might return a map[string]any or another intermediate form.
-		data, err := json.Marshal(v)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal unknown checkpoint state type %T: %w", v, err)
-		}
-		if err := json.Unmarshal(data, &state); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal checkpoint state from JSON: %w", err)
-		}
+	if err := json.Unmarshal(data, &state); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal checkpoint state: %w", err)
 	}
 
 	return &Snapshot[State]{
@@ -231,6 +244,7 @@ func (g *Graph[State]) Load(ctx context.Context, loc Location) (*Snapshot[State]
 		Location:   checkpoint.Location,
 		Parent:     checkpoint.Parent,
 		CreateTime: checkpoint.Timestamp,
+		Metadata:   checkpoint.Metadata,
 	}, nil
 }
 
@@ -324,17 +338,53 @@ const CheckpointSavedEvent = "on_checkpoint_saved"
 // [Checkpointer]. If no checkpointer is set, the call is a no-op.
 // After persisting, it emits a [CheckpointSavedEvent] on the [stream.Writer]
 // stored in ctx (if any).
-func (g *Graph[State]) recordCheckpoint(ctx context.Context, snapshot Snapshot[State]) error {
+func (g *Graph[State]) recordCheckpoint(ctx context.Context, snapshot *Snapshot[State], beforeState State, nodeName string, source string, step int) error {
 	if g.checkpointer == nil {
 		return nil // No checkpointer, skip storing
 	}
 
+	beforeChannels, err := DecomposeState(beforeState)
+	if err != nil {
+		return fmt.Errorf("failed to decompose before state: %w", err)
+	}
+	afterChannels, err := DecomposeState(snapshot.State)
+	if err != nil {
+		return fmt.Errorf("failed to decompose after state: %w", err)
+	}
+
+	writes := make(map[string]any)
+	for name, afterData := range afterChannels {
+		beforeData, exists := beforeChannels[name]
+		if !exists || string(beforeData) != string(afterData) {
+			var val any
+			if err := json.Unmarshal(afterData, &val); err != nil {
+				return err
+			}
+			writes[name] = val
+		}
+	}
+
+	meta := CheckpointMetadata{
+		Node:   nodeName,
+		Source: source,
+		Writes: writes,
+		Step:   step,
+	}
+
+	metaBytes, err := json.Marshal(meta)
+	if err != nil {
+		return fmt.Errorf("failed to marshal checkpoint metadata: %w", err)
+	}
+
+	snapshot.Metadata = metaBytes
+
 	checkpoint := Checkpoint{
 		Location:  snapshot.Location,
 		Parent:    snapshot.Parent,
-		State:     snapshot.State,
+		State:     afterChannels,
 		Next:      snapshot.Next,
 		Timestamp: snapshot.CreateTime,
+		Metadata:  metaBytes,
 	}
 
 	if err := g.checkpointer.Record(ctx, checkpoint); err != nil {
@@ -393,3 +443,5 @@ func (n *endNode[State]) Execute(ctx context.Context, state State) (Command[Stat
 type State[T any] interface {
 	Copy() T
 }
+
+

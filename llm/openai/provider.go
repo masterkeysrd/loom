@@ -8,6 +8,7 @@ import (
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/stream"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -72,6 +73,16 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 	params, err := toChatCompletionNewParams(request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert chat request: %w", err)
+	}
+
+	if sw, ok := stream.WriterFromContext(ctx); ok {
+		_ = sw.Write(ctx, stream.Event{
+			Name: "on_llm_request",
+			Data: map[string]any{
+				"provider": "openai",
+				"payload":  params,
+			},
+		})
 	}
 
 	// OpenAI Specific Span Decoration

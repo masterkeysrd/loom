@@ -354,14 +354,14 @@ func (m *Model) Stream(ctx context.Context, messages []message.Message, opts ...
 		streamer = m.middleware[i](streamer)
 	}
 
-	resp, err := streamer(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
 	sw, hasWriter := stream.WriterFromContext(ctx)
 	if hasWriter {
 		ctx = stream.WithMetadata(ctx, stream.Metadata{Source: "llm:" + m.profile.Name})
+	}
+
+	resp, err := streamer(ctx, req)
+	if err != nil {
+		return nil, err
 	}
 
 	return func(yield func(message.AssistantChunk, error) bool) {

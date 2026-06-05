@@ -28,7 +28,9 @@ type registryEntry struct {
 	displayName string
 	commands    []any
 	inputSchema *jsonschema.Schema
-	execute     func(ctx context.Context, cmdName string, payload []byte) (any, error)
+	execute     func(ctx context.Context, cmdName string, payload []byte, loc *graph.Location) (any, error)
+	load        func(ctx context.Context, loc graph.Location) (any, error)
+	history     func(ctx context.Context, threadID string, ns string) ([]graph.Checkpoint, error)
 }
 
 var (
@@ -121,7 +123,7 @@ func RegisterGraph[S graph.State[S]](g *graph.Graph[S], opts GraphOptions) {
 		InspectSchema(inputSchema)
 	}
 
-	executeFunc := func(ctx context.Context, cmdName string, payload []byte) (any, error) {
+	executeFunc := func(ctx context.Context, cmdName string, payload []byte, loc *graph.Location) (any, error) {
 		var cmd graph.Command[S]
 
 		if cmdName == "" {
@@ -172,7 +174,13 @@ func RegisterGraph[S graph.State[S]](g *graph.Graph[S], opts GraphOptions) {
 			}
 		}
 
-		events, err := g.Stream(ctx, cmd, nil)
+		if loc == nil {
+			loc = &graph.Location{
+				ThreadID:     uuid.New().String(),
+				CheckpointID: uuid.New().String(),
+			}
+		}
+		events, err := g.Stream(ctx, cmd, loc)
 		if err != nil {
 			return nil, err
 		}
@@ -186,12 +194,17 @@ func RegisterGraph[S graph.State[S]](g *graph.Graph[S], opts GraphOptions) {
 			case "on_checkpoint_saved":
 				if loc, ok := ev.Data.(graph.Location); ok {
 					if snap, err := g.Load(ctx, loc); err == nil && snap != nil {
+						decomposed, err := graph.DecomposeState(snap.State)
+						if err != nil {
+							continue
+						}
 						checkpoint := graph.Checkpoint{
 							Location:  snap.Location,
 							Parent:    snap.Parent,
-							State:     snap.State,
+							State:     decomposed,
 							Next:      snap.Next,
 							Timestamp: snap.CreateTime,
+							Metadata:  snap.Metadata,
 						}
 						checkpointBytes, _ := json.Marshal(checkpoint)
 						publishMessage(Message{
@@ -200,6 +213,17 @@ func RegisterGraph[S graph.State[S]](g *graph.Graph[S], opts GraphOptions) {
 						})
 					}
 				}
+			case "on_llm_request":
+				payload := map[string]any{
+					"node":    ev.Node,
+					"source":  ev.Source,
+					"request": ev.Data,
+				}
+				payloadBytes, _ := json.Marshal(payload)
+				publishMessage(Message{
+					Type: "on_llm_request",
+					Data: payloadBytes,
+				})
 			case "on_llm_chunk":
 				if chunk, ok := ev.Data.(message.AssistantChunk); ok {
 					payload := map[string]any{
@@ -238,6 +262,67 @@ func RegisterGraph[S graph.State[S]](g *graph.Graph[S], opts GraphOptions) {
 		commands:    opts.Commands,
 		inputSchema: inputSchema,
 		execute:     executeFunc,
+		load: func(ctx context.Context, loc graph.Location) (any, error) {
+			snap, err := g.Load(ctx, loc)
+			if err != nil {
+				return nil, err
+			}
+			return snap.State, nil
+		},
+		history: func(ctx context.Context, threadID string, ns string) ([]graph.Checkpoint, error) {
+			cp := g.Checkpointer()
+			if cp == nil {
+				return nil, fmt.Errorf("no checkpointer configured")
+			}
+
+			// We need to unwrap studioCheckpointer if present
+			type unwrapper interface {
+				Unwrap() graph.Checkpointer
+			}
+			actualCP := cp
+			for {
+				if uw, ok := actualCP.(unwrapper); ok {
+					actualCP = uw.Unwrap()
+				} else if sc, ok := actualCP.(*studioCheckpointer); ok {
+					actualCP = sc.original
+				} else {
+					break
+				}
+			}
+
+			if actualCP == nil {
+				return nil, fmt.Errorf("no checkpointer configured")
+			}
+
+			var list []graph.Checkpoint
+			// Start with the latest checkpoint (empty CheckpointID)
+			loc := graph.Location{
+				ThreadID:     threadID,
+				CheckpointNS: ns,
+			}
+
+			for {
+				checkpoint, err := actualCP.Load(ctx, loc)
+				if err != nil {
+					return nil, err
+				}
+				if checkpoint == nil {
+					break
+				}
+				list = append(list, *checkpoint)
+				if checkpoint.Parent == nil || checkpoint.Parent.CheckpointID == "" {
+					break
+				}
+				loc = *checkpoint.Parent
+			}
+
+			// Reverse the list to make it chronological
+			for i, j := 0, len(list)-1; i < j; i, j = i+1, j-1 {
+				list[i], list[j] = list[j], list[i]
+			}
+
+			return list, nil
+		},
 	}
 }
 
@@ -387,10 +472,13 @@ func runSession(ctx context.Context, conn *websocket.Conn, wsURL string) {
 }
 
 type ExecutePayload struct {
-	WorkerID    string          `json:"worker_id"`
-	GraphID     string          `json:"graph_id"`
-	CommandName string          `json:"command_name"`
-	Payload     json.RawMessage `json:"payload"`
+	WorkerID     string          `json:"worker_id"`
+	GraphID      string          `json:"graph_id"`
+	CommandName  string          `json:"command_name"`
+	Payload      json.RawMessage `json:"payload"`
+	ThreadID     string          `json:"thread_id,omitempty"`
+	CheckpointID string          `json:"checkpoint_id,omitempty"`
+	CheckpointNS string          `json:"checkpoint_ns,omitempty"`
 }
 
 func handleIncomingMessage(ctx context.Context, msg Message, send chan<- Message) {
@@ -408,7 +496,95 @@ func handleIncomingMessage(ctx context.Context, msg Message, send chan<- Message
 		}
 
 		go func() {
-			_, _ = entry.execute(ctx, execPayload.CommandName, execPayload.Payload)
+			var loc *graph.Location
+			if execPayload.ThreadID != "" {
+				loc = &graph.Location{
+					ThreadID:     execPayload.ThreadID,
+					CheckpointID: execPayload.CheckpointID,
+					CheckpointNS: execPayload.CheckpointNS,
+				}
+			}
+			_, _ = entry.execute(ctx, execPayload.CommandName, execPayload.Payload, loc)
+		}()
+	} else if msg.Type == "load_checkpoint" {
+		var payload struct {
+			GraphID      string `json:"graph_id"`
+			ThreadID     string `json:"thread_id"`
+			CheckpointID string `json:"checkpoint_id"`
+			CheckpointNS string `json:"checkpoint_ns"`
+		}
+		if err := json.Unmarshal(msg.Data, &payload); err != nil {
+			return
+		}
+
+		registryMu.RLock()
+		entry, ok := registry[payload.GraphID]
+		registryMu.RUnlock()
+		if !ok {
+			return
+		}
+
+		go func() {
+			loc := graph.Location{
+				ThreadID:     payload.ThreadID,
+				CheckpointID: payload.CheckpointID,
+				CheckpointNS: payload.CheckpointNS,
+			}
+			state, err := entry.load(ctx, loc)
+			if err != nil {
+				errPayload := map[string]string{"error": err.Error()}
+				errBytes, _ := json.Marshal(errPayload)
+				send <- Message{
+					Type:          "on_checkpoint_loaded",
+					CorrelationID: msg.CorrelationID,
+					Data:          errBytes,
+				}
+				return
+			}
+
+			stateBytes, _ := json.Marshal(state)
+			send <- Message{
+				Type:          "on_checkpoint_loaded",
+				CorrelationID: msg.CorrelationID,
+				Data:          stateBytes,
+			}
+		}()
+	} else if msg.Type == "load_checkpoint_history" {
+		var payload struct {
+			GraphID      string `json:"graph_id"`
+			ThreadID     string `json:"thread_id"`
+			CheckpointNS string `json:"checkpoint_ns"`
+		}
+		if err := json.Unmarshal(msg.Data, &payload); err != nil {
+			return
+		}
+
+		registryMu.RLock()
+		entry, ok := registry[payload.GraphID]
+		registryMu.RUnlock()
+		if !ok {
+			return
+		}
+
+		go func() {
+			historyList, err := entry.history(ctx, payload.ThreadID, payload.CheckpointNS)
+			if err != nil {
+				errPayload := map[string]string{"error": err.Error()}
+				errBytes, _ := json.Marshal(errPayload)
+				send <- Message{
+					Type:          "on_checkpoint_history_loaded",
+					CorrelationID: msg.CorrelationID,
+					Data:          errBytes,
+				}
+				return
+			}
+
+			historyBytes, _ := json.Marshal(historyList)
+			send <- Message{
+				Type:          "on_checkpoint_history_loaded",
+				CorrelationID: msg.CorrelationID,
+				Data:          historyBytes,
+			}
 		}()
 	}
 }
@@ -482,6 +658,10 @@ type studioCheckpointer struct {
 	original graph.Checkpointer
 }
 
+func (sc *studioCheckpointer) Unwrap() graph.Checkpointer {
+	return sc.original
+}
+
 func (sc *studioCheckpointer) Load(ctx context.Context, loc graph.Location) (*graph.Checkpoint, error) {
 	if sc.original == nil {
 		return nil, graph.ErrCheckpointNotFound
@@ -536,6 +716,19 @@ func (sw *studioGlobalStreamWriter) Write(ctx context.Context, data any) error {
 			Type: "on_tool_chunk",
 			Data: payloadBytes,
 		})
+	case stream.Event:
+		if v.Name == "on_llm_request" {
+			payload := map[string]any{
+				"node":    execCtx.NodeName,
+				"source":  metadata.Source,
+				"request": v.Data,
+			}
+			payloadBytes, _ := json.Marshal(payload)
+			publishMessage(Message{
+				Type: "on_llm_request",
+				Data: payloadBytes,
+			})
+		}
 	}
 
 	return nil

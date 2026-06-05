@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
   ChevronRight,
@@ -29,10 +29,15 @@ import {
 
 export function ThreadDetail() {
   const { threadId } = useParams();
+  const navigate = useNavigate();
   const [spans, setSpans] = useState<Span[]>([]);
   const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  const [checkpointState, setCheckpointState] = useState<any | null>(null);
+  const [fetchingState, setFetchingState] = useState(false);
+  const [stateError, setStateError] = useState<string | null>(null);
 
   const fetchSpans = useCallback(() => {
     setLoading(true);
@@ -50,6 +55,60 @@ export function ThreadDetail() {
   }, [fetchSpans]);
 
   const selectedSpan = useMemo(() => spans.find(s => s.span_id === selectedSpanId), [spans, selectedSpanId]);
+
+  useEffect(() => {
+    if (!selectedSpan || !selectedSpan.name.startsWith("loom.node.execute")) {
+      setCheckpointState(null);
+      setStateError(null);
+      return;
+    }
+
+    const rootSpan = spans.find(s => s.name.startsWith("loom.graph.execute"));
+    const graphId = (selectedSpan.attributes['loom.graph.name'] as string) || (rootSpan?.attributes['loom.graph.name'] as string);
+    const threadIdAttr = (selectedSpan.attributes['loom.thread_id'] as string) || threadId || "";
+    const checkpointId = selectedSpan.attributes['loom.checkpoint_id'] as string;
+    const checkpointNS = (selectedSpan.attributes['loom.namespace'] as string) || "";
+
+    if (!graphId || !checkpointId) {
+      setCheckpointState(null);
+      setStateError("Missing graph_name or checkpoint_id attribute on span");
+      return;
+    }
+
+    setFetchingState(true);
+    setStateError(null);
+    setCheckpointState(null);
+
+    fetch(`/api/state?graph_id=${encodeURIComponent(graphId)}&thread_id=${encodeURIComponent(threadIdAttr)}&checkpoint_id=${encodeURIComponent(checkpointId)}&checkpoint_ns=${encodeURIComponent(checkpointNS)}`)
+      .then(async res => {
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || "Failed to fetch checkpoint state");
+        }
+        return res.json();
+      })
+      .then(data => {
+        setCheckpointState(data);
+      })
+      .catch(err => {
+        console.error(err);
+        setStateError(err.message || "Error fetching checkpoint state");
+      })
+      .finally(() => {
+        setFetchingState(false);
+      });
+  }, [selectedSpan, threadId]);
+
+  const handleForkState = () => {
+    if (!checkpointState || !selectedSpan) return;
+    const graphId = selectedSpan.attributes['loom.graph.name'] as string;
+    navigate('/playground', { 
+      state: { 
+        forkState: checkpointState,
+        graphId: graphId
+      } 
+    });
+  };
 
   const childrenMap = useMemo(() => {
     const map = new Map<string, Span[]>();
@@ -235,7 +294,19 @@ export function ThreadDetail() {
                   </span>
                   <span className="text-[10px] font-mono text-slate-500">{selectedSpan.span_id}</span>
                 </div>
-                <h3 className="text-xl font-bold text-slate-900 leading-tight break-all">{selectedSpan.name}</h3>
+                <div className="flex items-start justify-between gap-4">
+                  <h3 className="text-xl font-bold text-slate-900 leading-tight break-all flex-1">{selectedSpan.name}</h3>
+                  {selectedSpan.name.startsWith("loom.node.execute") && checkpointState && (
+                    <button
+                      onClick={handleForkState}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-600/10 transition-all hover:scale-105 active:scale-95 shrink-0"
+                      title="Fork graph state from this checkpoint and go to Playground"
+                    >
+                      <GitGraph size={12} />
+                      Fork State
+                    </button>
+                  )}
+                </div>
               </header>
 
               {/* Quick Info */}
@@ -247,8 +318,29 @@ export function ThreadDetail() {
               </div>
 
               {/* Payload Preview */}
-              <InspectorCard title="Payload & Arguments" icon={<Code size={16} />}>
-                {(selectedSpan.attributes['gen_ai.system_instructions'] || selectedSpan.attributes['gen_ai.input.messages'] || selectedSpan.attributes['gen_ai.output.messages']) ? (
+              <InspectorCard title="Payload & State" icon={<Code size={16} />}>
+                {selectedSpan.name.startsWith("loom.node.execute") ? (
+                  <div className="space-y-4">
+                    {fetchingState && (
+                      <div className="flex items-center justify-center py-6 gap-2 text-xs text-slate-500">
+                        <RefreshCcw size={12} className="animate-spin text-indigo-500" />
+                        Fetching state from worker...
+                      </div>
+                    )}
+                    {stateError && (
+                      <div className="text-xs text-rose-500 py-4 text-center bg-rose-50 border border-rose-100 rounded-xl font-medium">
+                        {stateError}
+                      </div>
+                    )}
+                    {checkpointState && (
+                      <CollapsiblePayload 
+                        title="Graph State (at Checkpoint)" 
+                        content={JSON.stringify(checkpointState, null, 2)} 
+                        theme="emerald" 
+                      />
+                    )}
+                  </div>
+                ) : (selectedSpan.attributes['gen_ai.system_instructions'] || selectedSpan.attributes['gen_ai.input.messages'] || selectedSpan.attributes['gen_ai.output.messages']) ? (
                   <div className="space-y-4">
                     {!!selectedSpan.attributes['gen_ai.system_instructions'] && (
                       <CollapsiblePayload 

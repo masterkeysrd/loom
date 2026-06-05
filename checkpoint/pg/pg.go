@@ -7,8 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"reflect"
-	"strings"
 	"time"
 
 	"github.com/masterkeysrd/loom/graph"
@@ -89,11 +87,8 @@ func (c *Checkpointer) Record(ctx context.Context, checkpoint graph.Checkpoint) 
 	}
 	defer tx.Rollback()
 
-	// 1. Decompose state into channels
-	channels, err := decomposeState(checkpoint.State)
-	if err != nil {
-		return fmt.Errorf("decompose state: %w", err)
-	}
+	// 1. State is already decomposed
+	channels := checkpoint.State
 
 	// 2. Save blobs and writes
 	for channel, value := range channels {
@@ -197,20 +192,14 @@ func (c *Checkpointer) Load(ctx context.Context, location graph.Location) (*grap
 	}
 	defer rows.Close()
 
-	stateMap := make(map[string]json.RawMessage)
+	stateMap := make(map[string][]byte)
 	for rows.Next() {
 		var channel, blobID string
 		var value []byte
 		if err := rows.Scan(&channel, &blobID, &value); err != nil {
 			return nil, err
 		}
-		stateMap[channel] = json.RawMessage(value)
-	}
-
-	// 3. Marshal the state map back to JSON
-	finalState, err := json.Marshal(stateMap)
-	if err != nil {
-		return nil, err
+		stateMap[channel] = value
 	}
 
 	checkpoint := &graph.Checkpoint{
@@ -219,7 +208,7 @@ func (c *Checkpointer) Load(ctx context.Context, location graph.Location) (*grap
 			CheckpointNS: checkpointNS,
 			CheckpointID: checkpointID,
 		},
-		State:     json.RawMessage(finalState),
+		State:     stateMap,
 		Next:      meta.Next,
 		Timestamp: meta.Timestamp,
 		Metadata:  metadataBytes,
@@ -236,50 +225,7 @@ func (c *Checkpointer) Load(ctx context.Context, location graph.Location) (*grap
 	return checkpoint, nil
 }
 
-func decomposeState(state any) (map[string][]byte, error) {
-	if state == nil {
-		return nil, nil
-	}
 
-	v := reflect.ValueOf(state)
-	for v.Kind() == reflect.Ptr {
-		v = v.Elem()
-	}
-
-	if v.Kind() != reflect.Struct {
-		data, err := json.Marshal(state)
-		if err != nil {
-			return nil, err
-		}
-		return map[string][]byte{"__root__": data}, nil
-	}
-
-	channels := make(map[string][]byte)
-	t := v.Type()
-	for i := 0; i < v.NumField(); i++ {
-		field := t.Field(i)
-		if field.PkgPath != "" {
-			continue
-		}
-
-		name := field.Name
-		if tag := field.Tag.Get("json"); tag != "" && tag != "-" {
-			parts := strings.Split(tag, ",")
-			if parts[0] != "" {
-				name = parts[0]
-			}
-		}
-
-		val := v.Field(i).Interface()
-		data, err := json.Marshal(val)
-		if err != nil {
-			return nil, fmt.Errorf("marshal field %q: %w", field.Name, err)
-		}
-		channels[name] = data
-	}
-
-	return channels, nil
-}
 
 func hashValue(data []byte) string {
 	sum := sha256.Sum256(data)

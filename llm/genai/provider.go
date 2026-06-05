@@ -10,6 +10,7 @@ import (
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/stream"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -87,6 +88,20 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 	contents, config, err := toGenerateContentArgs(request)
 	if err != nil {
 		return nil, fmt.Errorf("genai: build request: %w", err)
+	}
+
+	if sw, ok := stream.WriterFromContext(ctx); ok {
+		_ = sw.Write(ctx, stream.Event{
+			Name: "on_llm_request",
+			Data: map[string]any{
+				"provider": "google-genai",
+				"payload": map[string]any{
+					"model":    request.Model,
+					"contents": contents,
+					"config":   config,
+				},
+			},
+		})
 	}
 
 	// Gemini Specific Span Decoration

@@ -42,13 +42,16 @@ func (r *recorder) endGraph(ctx context.Context, err error) {
 	r.span.End()
 }
 
-func (r *recorder) startNode(ctx context.Context, nodeName string) (context.Context, telemetry.Span) {
+func (r *recorder) startNode(ctx context.Context, nodeName string, loc Location) (context.Context, telemetry.Span) {
 	telemetry.RecordNodeInvocation(ctx, telemetry.WithLoomGraph(r.graphName), telemetry.WithLoomNode(nodeName))
 
 	ctx, span := telemetry.Start(ctx, "loom.node.execute "+nodeName, trace.WithSpanKind(trace.SpanKindInternal))
 	span.SetAttributes(
 		telemetry.WithLoomGraph(r.graphName),
 		telemetry.WithLoomNode(nodeName),
+		telemetry.WithLoomThread(loc.ThreadID),
+		telemetry.WithLoomCheckpoint(loc.CheckpointID),
+		attribute.String("loom.namespace", loc.CheckpointNS),
 	)
 	return ctx, span
 }

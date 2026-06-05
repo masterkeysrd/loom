@@ -10,6 +10,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/stream"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -90,6 +91,16 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 	body, err := toMessageNewParams(request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert chat request: %w", err)
+	}
+
+	if sw, ok := stream.WriterFromContext(ctx); ok {
+		_ = sw.Write(ctx, stream.Event{
+			Name: "on_llm_request",
+			Data: map[string]any{
+				"provider": "anthropic",
+				"payload":  body,
+			},
+		})
 	}
 
 	// Retrieve active span (can be used for provider-specific decoration)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,6 +38,38 @@ var (
 	cancelConn context.CancelFunc
 )
 
+func findMessageListFields(t reflect.Type) map[string]bool {
+	fields := make(map[string]bool)
+	if t.Kind() != reflect.Struct {
+		return fields
+	}
+
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		isMsgList := false
+		if f.Type.Kind() == reflect.Slice {
+			elem := f.Type.Elem()
+			if (elem.Kind() == reflect.Interface && elem.Name() == "Message" && strings.HasSuffix(elem.PkgPath(), "/message")) ||
+				(f.Type.Name() == "MessageList" && strings.HasSuffix(f.Type.PkgPath(), "/message")) {
+				isMsgList = true
+			}
+		}
+
+		if isMsgList {
+			jsonName := f.Name
+			if tag := f.Tag.Get("json"); tag != "" {
+				parts := strings.Split(tag, ",")
+				if parts[0] != "" && parts[0] != "-" {
+					jsonName = parts[0]
+				}
+			}
+			fields[jsonName] = true
+		}
+	}
+
+	return fields
+}
+
 // RegisterGraph saves the graph instance and its options into the global registry.
 func RegisterGraph[S graph.State[S]](g *graph.Graph[S], opts GraphOptions) {
 	registryMu.Lock()
@@ -46,6 +79,19 @@ func RegisterGraph[S graph.State[S]](g *graph.Graph[S], opts GraphOptions) {
 	var inputSchema *jsonschema.Schema
 	if schema, err := jsonschema.For[S](nil); err == nil {
 		inputSchema = schema
+
+		// Set semantic flags for message list properties
+		msgListFields := findMessageListFields(reflect.TypeOf((*S)(nil)).Elem())
+		for name, prop := range inputSchema.Properties {
+			if msgListFields[name] {
+				if prop.Extra == nil {
+					prop.Extra = make(map[string]any)
+				}
+				prop.Extra["x-loom-content"] = "chat"
+				prop.Extra["x-loom-type"] = "message_list"
+			}
+		}
+
 		InspectSchema(inputSchema)
 	}
 

@@ -16,6 +16,7 @@ import (
 	"github.com/masterkeysrd/loom/llm"
 	loomollama "github.com/masterkeysrd/loom/llm/ollama"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/studio"
 	"github.com/masterkeysrd/loom/telemetry"
 	"github.com/masterkeysrd/loom/tool"
 	_ "modernc.org/sqlite"
@@ -161,6 +162,18 @@ func main() {
 	builder.AddEdge("Tools", "Agent") // Loop back to Agent
 
 	agentGraph, _ := builder.WithName("ShellAgent").Build()
+
+	// 2.1 Studio Discovery
+	// Connect to Studio and register our graph so it appears in the Playground.
+	studio.RegisterGraph(agentGraph, studio.GraphOptions{
+		DisplayName: "Shell Agent",
+	})
+
+	if err := studio.Connect(ctx, "ws://localhost:8080/control"); err != nil {
+		log.Printf("Warning: failed to connect to Loom Studio: %v (Is it running?)", err)
+	} else {
+		fmt.Println("Connected to Loom Studio.")
+	}
 
 	// 3. REPL Loop
 	scanner := bufio.NewScanner(os.Stdin)

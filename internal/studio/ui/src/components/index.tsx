@@ -185,3 +185,7 @@ export function DetailBadge({
     </div>
   );
 }
+
+export { Mermaid } from './Mermaid';
+
+

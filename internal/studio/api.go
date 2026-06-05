@@ -8,19 +8,55 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/masterkeysrd/loom/studio"
 )
 
+type ConnectionManager struct {
+	mu          sync.RWMutex
+	connections map[string]*websocket.Conn
+}
+
+func NewConnectionManager() *ConnectionManager {
+	return &ConnectionManager{
+		connections: make(map[string]*websocket.Conn),
+	}
+}
+
+func (cm *ConnectionManager) Add(workerID string, conn *websocket.Conn) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	cm.connections[workerID] = conn
+}
+
+func (cm *ConnectionManager) Remove(workerID string) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	delete(cm.connections, workerID)
+}
+
+func (cm *ConnectionManager) Get(workerID string) *websocket.Conn {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.connections[workerID]
+}
+
 type APIServer struct {
-	db  *DB
-	hub *Hub
+	db          *DB
+	hub         *Hub
+	manifests   map[string]*studio.Manifest
+	connManager *ConnectionManager
+	mu          sync.RWMutex
 }
 
 func NewAPIServer(db *DB) *APIServer {
 	return &APIServer{
-		db:  db,
-		hub: NewHub(),
+		db:          db,
+		hub:         NewHub(),
+		manifests:   make(map[string]*studio.Manifest),
+		connManager: NewConnectionManager(),
 	}
 }
 
@@ -30,7 +66,21 @@ func (s *APIServer) RegisterHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("/api/threads/", s.handleThreadDetail)
 	mux.HandleFunc("/api/metrics", s.handleMetrics)
 	mux.HandleFunc("/api/metrics/", s.handleMetricData)
+	mux.HandleFunc("/api/manifests", s.handleGetManifests)
 	mux.HandleFunc("/control", s.handleControl)
+}
+
+func (s *APIServer) handleGetManifests(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var manifests []*studio.Manifest
+	for _, m := range s.manifests {
+		manifests = append(manifests, m)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(manifests)
 }
 
 var upgrader = websocket.Upgrader{
@@ -46,7 +96,7 @@ func (s *APIServer) handleControl(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	client := &Client{hub: s.hub, conn: conn, send: make(chan []byte, 256)}
+	client := &Client{hub: s.hub, conn: conn, send: make(chan []byte, 256), api: s}
 	s.hub.register <- client
 
 	// Allow collection of memory referenced by the caller by doing all work in
@@ -121,6 +171,12 @@ func (h *Hub) Broadcast(msg any) {
 	h.broadcast <- data
 }
 
+const (
+	writeWait  = 10 * time.Second
+	pongWait   = 60 * time.Second
+	pingPeriod = (pongWait * 9) / 10
+)
+
 // Client is a middleman between the websocket connection and the hub.
 type Client struct {
 	hub *Hub
@@ -130,29 +186,65 @@ type Client struct {
 
 	// Buffered channel of outbound messages.
 	send chan []byte
+
+	// Reference to APIServer for manifest storage
+	api *APIServer
 }
 
 func (c *Client) readPump() {
+	var workerID string
 	defer func() {
+		if workerID != "" {
+			c.api.connManager.Remove(workerID)
+			c.api.mu.Lock()
+			delete(c.api.manifests, workerID)
+			c.api.mu.Unlock()
+		}
 		c.hub.unregister <- c
 		c.conn.Close()
 	}()
+
+	c.conn.SetReadDeadline(time.Now().Add(pongWait))
+	c.conn.SetPongHandler(func(string) error {
+		c.conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+
 	for {
 		_, message, err := c.conn.ReadMessage()
 		if err != nil {
 			break
 		}
+
+		// Try to parse as a manifest message
+		var msg struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(message, &msg); err == nil && msg.Type == "manifest" {
+			var manifest studio.Manifest
+			if err := json.Unmarshal(message, &manifest); err == nil {
+				workerID = manifest.WorkerID
+				c.api.connManager.Add(workerID, c.conn)
+				c.api.mu.Lock()
+				c.api.manifests[workerID] = &manifest
+				c.api.mu.Unlock()
+			}
+		}
+
 		c.hub.broadcast <- message
 	}
 }
 
 func (c *Client) writePump() {
+	ticker := time.NewTicker(pingPeriod)
 	defer func() {
+		ticker.Stop()
 		c.conn.Close()
 	}()
 	for {
 		select {
 		case message, ok := <-c.send:
+			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
 				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
@@ -172,6 +264,11 @@ func (c *Client) writePump() {
 			}
 
 			if err := w.Close(); err != nil {
+				return
+			}
+		case <-ticker.C:
+			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
 		}

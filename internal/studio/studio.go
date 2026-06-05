@@ -32,21 +32,27 @@ func (s *Studio) Start(ctx context.Context, otlpGRPCPort, otlpHTTPPort, apiPort 
 	errCh := make(chan error, 3)
 
 	// Start OTLP gRPC Receiver
-	wg.Go(func() {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 		if err := s.otlp.StartGRPC(otlpGRPCPort); err != nil {
 			errCh <- fmt.Errorf("OTLP gRPC receiver failed: %w", err)
 		}
-	})
+	}()
 
 	// Start OTLP HTTP Receiver
-	wg.Go(func() {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 		if err := s.otlp.StartHTTP(otlpHTTPPort); err != nil {
 			errCh <- fmt.Errorf("OTLP HTTP receiver failed: %w", err)
 		}
-	})
+	}()
 
 	// Start API Server
-	wg.Go(func() {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 		mux := http.NewServeMux()
 		s.api.RegisterHandlers(mux)
 
@@ -57,7 +63,7 @@ func (s *Studio) Start(ctx context.Context, otlpGRPCPort, otlpHTTPPort, apiPort 
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			w.Header().Set("Access-Control-Allow-Headers", "Type, Content-Type")
 			if r.Method == "OPTIONS" {
 				w.WriteHeader(http.StatusOK)
 				return
@@ -93,7 +99,7 @@ func (s *Studio) Start(ctx context.Context, otlpGRPCPort, otlpHTTPPort, apiPort 
 		if err := server.ListenAndServe(); err != http.ErrServerClosed {
 			errCh <- fmt.Errorf("API server failed: %w", err)
 		}
-	})
+	}()
 
 	// Wait for context cancellation or error
 	select {

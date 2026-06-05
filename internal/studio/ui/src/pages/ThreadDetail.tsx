@@ -248,7 +248,7 @@ export function ThreadDetail() {
 
               {/* Payload Preview */}
               <InspectorCard title="Payload & Arguments" icon={<Code size={16} />}>
-                {Boolean(selectedSpan.attributes['gen_ai.system_instructions'] || selectedSpan.attributes['gen_ai.input.messages'] || selectedSpan.attributes['gen_ai.output.messages']) ? (
+                {(selectedSpan.attributes['gen_ai.system_instructions'] || selectedSpan.attributes['gen_ai.input.messages'] || selectedSpan.attributes['gen_ai.output.messages']) ? (
                   <div className="space-y-4">
                     {!!selectedSpan.attributes['gen_ai.system_instructions'] && (
                       <CollapsiblePayload 
@@ -272,7 +272,7 @@ export function ThreadDetail() {
                       />
                     )}
                   </div>
-                ) : Boolean(selectedSpan.attributes['gen_ai.tool.call.arguments'] || selectedSpan.attributes['gen_ai.tool.call.result']) ? (
+                ) : (selectedSpan.attributes['gen_ai.tool.call.arguments'] || selectedSpan.attributes['gen_ai.tool.call.result']) ? (
                   <div className="space-y-4">
                     {!!selectedSpan.attributes['gen_ai.tool.call.arguments'] && (
                       <CollapsiblePayload 

@@ -1,20 +1,67 @@
-import { useState, useEffect } from 'react';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { useState, useEffect, useRef, useMemo, useCallback, createContext, useContext } from 'react';
 import { Network, Server, Play, BrainCircuit, MessageSquare, Terminal, Activity, Layers } from 'lucide-react';
 import Form from '@rjsf/core';
 import validator from '@rjsf/validator-ajv8';
 import type { Manifest, GraphManifest } from '../types';
 import { Mermaid, DetailBadge } from '../components';
 
+const ChatInputContext = createContext<{
+  chatInput: string;
+  setChatInput: (val: string) => void;
+  triggerSubmit: () => void;
+} | null>(null);
+
+interface TraceTreeItem {
+  id: string;
+  type: 'thread' | 'node' | 'llm' | 'tool';
+  name: string;
+  timestamp: string;
+  nodeName?: string;
+  threadId?: string;
+  checkpointId?: string;
+  state?: any;
+  content?: string;
+  details?: any;
+  children: TraceTreeItem[];
+}
+
 // Custom RJSF Field for Chat/Message Lists
 const MessageListField = (props: any) => {
   const { value = [], onChange } = props;
-  const [inputText, setInputText] = useState('');
+  const chatContext = useContext(ChatInputContext);
+  const { chatInput, setChatInput, triggerSubmit } = chatContext || {};
 
   const handleSend = () => {
-    if (!inputText.trim()) return;
-    const newMessage = { role: 'user', content: inputText };
+    if (!chatInput || !chatInput.trim()) return;
+    const newMessage = { 
+      role: 'user', 
+      content: [
+        {
+          kind: 'text',
+          text: chatInput
+        }
+      ]
+    };
     onChange([...value, newMessage]);
-    setInputText('');
+    if (triggerSubmit) {
+      triggerSubmit();
+    }
+  };
+
+  const renderMessageContent = (content: any) => {
+    if (typeof content === 'string') {
+      return content;
+    }
+    if (Array.isArray(content)) {
+      return content.map((block: any, idx: number) => {
+        if (block && block.kind === 'text') {
+          return <div key={idx}>{block.text}</div>;
+        }
+        return null;
+      });
+    }
+    return JSON.stringify(content);
   };
 
   return (
@@ -39,7 +86,7 @@ const MessageListField = (props: any) => {
                     : 'bg-slate-100 text-slate-800 rounded-tl-none shadow-sm'
                 }`}
               >
-                {msg.content}
+                {renderMessageContent(msg.content)}
               </div>
             </div>
           ))
@@ -48,8 +95,8 @@ const MessageListField = (props: any) => {
       <div className="flex gap-2">
         <input
           type="text"
-          value={inputText}
-          onChange={e => setInputText(e.target.value)}
+          value={chatInput || ''}
+          onChange={e => setChatInput?.(e.target.value)}
           onKeyDown={e => {
             if (e.key === 'Enter') {
               e.preventDefault();
@@ -87,8 +134,12 @@ const CustomFieldTemplate = (props: any) => {
   );
 };
 
-const customFields = {
-  messageListField: MessageListField
+const customWidgets = {
+  messageListWidget: MessageListField
+};
+
+const customTemplates = {
+  FieldTemplate: CustomFieldTemplate
 };
 
 export function Playground() {
@@ -96,6 +147,34 @@ export function Playground() {
   const [loading, setLoading] = useState(true);
   const [selectedGraph, setSelectedGraph] = useState<GraphManifest | null>(null);
   const [selectedCommand, setSelectedCommand] = useState<string>('__raw_state__');
+  
+  // Real-time trace tree and highlighting states
+  const [tree, setTree] = useState<TraceTreeItem[]>([]);
+  const [activeNode, setActiveNode] = useState<string | null>(null);
+  const [selectedTraceItem, setSelectedTraceItem] = useState<TraceTreeItem | null>(null);
+  
+  // Shared state to allow single-click execute / send
+  const [chatInput, setChatInput] = useState('');
+  const [formData, setFormData] = useState<any>({});
+  const formRef = useRef<any>(null);
+
+  const triggerSubmit = useCallback(() => {
+    if (formRef.current) {
+      setTimeout(() => {
+        formRef.current.submit();
+      }, 50);
+    }
+  }, []);
+
+  const chatContextValue = useMemo(() => ({ chatInput, setChatInput, triggerSubmit }), [chatInput, triggerSubmit]);
+
+  const [prevKey, setPrevKey] = useState<string>('');
+  const currentKey = `${selectedGraph?.id || ''}-${selectedCommand}`;
+  if (currentKey !== prevKey) {
+    setPrevKey(currentKey);
+    setFormData({});
+    setChatInput('');
+  }
 
   useEffect(() => {
     fetch('/api/manifests')
@@ -109,41 +188,219 @@ export function Playground() {
       });
   }, []);
 
-  const getFormSchema = () => {
+  // EventSource stream setup
+  useEffect(() => {
+    if (!selectedGraph) return;
+    const manifest = manifests.find(m => m.graphs.some(g => g.id === selectedGraph.id));
+    if (!manifest) return;
+
+    const eventSource = new EventSource(`/api/stream?worker_id=${manifest.worker_id}`);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'on_checkpoint') {
+          const cp = msg.data;
+          const threadId = cp.location.thread_id;
+          const checkpointId = cp.location.checkpoint_id;
+          const nextNode = cp.next?.[0] || '';
+          const timestamp = new Date(cp.timestamp).toLocaleTimeString();
+
+          if (cp.next && cp.next.length > 0) {
+            setActiveNode(cp.next[0]);
+          } else {
+            setActiveNode('__END__');
+          }
+
+          if (cp.state) {
+            setFormData(cp.state);
+          }
+
+          setTree(prev => {
+            const newPrev = [...prev];
+            let threadNode = newPrev.find(n => n.type === 'thread' && n.id === threadId);
+            if (!threadNode) {
+              threadNode = {
+                id: threadId,
+                type: 'thread',
+                name: `Graph Run (Thread ${threadId.substring(0, 8)})`,
+                timestamp,
+                threadId,
+                children: []
+              };
+              newPrev.push(threadNode);
+            }
+
+            const isDuplicate = threadNode.children.some(c => c.id === checkpointId);
+            if (!isDuplicate) {
+              const nodeNode: TraceTreeItem = {
+                id: checkpointId,
+                type: 'node',
+                name: nextNode === '__END__' ? 'Node: END' : `Node: ${nextNode || 'START'}`,
+                nodeName: nextNode,
+                timestamp,
+                checkpointId,
+                state: cp.state,
+                children: []
+              };
+              threadNode.children.push(nodeNode);
+            }
+
+            return newPrev;
+          });
+        } 
+        
+        else if (msg.type === 'on_llm_chunk') {
+          const { node, source, chunk } = msg.data;
+          if (!chunk || !chunk.delta) return;
+
+          setTree(prev => {
+            if (prev.length === 0) return prev;
+            const newPrev = JSON.parse(JSON.stringify(prev));
+            const threadNode = newPrev[newPrev.length - 1];
+
+            const nodeNode = [...threadNode.children].reverse().find((c: TraceTreeItem) => c.type === 'node' && c.nodeName === node);
+            if (nodeNode) {
+              let llmNode = nodeNode.children.find((c: TraceTreeItem) => c.type === 'llm' && c.name === source);
+              if (!llmNode) {
+                llmNode = {
+                  id: `llm-${Math.random()}`,
+                  type: 'llm',
+                  name: source || 'LLM Call',
+                  timestamp: new Date().toLocaleTimeString(),
+                  content: '',
+                  children: []
+                };
+                nodeNode.children.push(llmNode);
+              }
+              llmNode.content = (llmNode.content || '') + (chunk.delta.content || '');
+            }
+            return newPrev;
+          });
+        } 
+        
+        else if (msg.type === 'on_tool_chunk') {
+          const { node, source, chunk } = msg.data;
+          if (!chunk) return;
+
+          setTree(prev => {
+            if (prev.length === 0) return prev;
+            const newPrev = JSON.parse(JSON.stringify(prev));
+            const threadNode = newPrev[newPrev.length - 1];
+
+            const nodeNode = [...threadNode.children].reverse().find((c: TraceTreeItem) => c.type === 'node' && c.nodeName === node);
+            if (nodeNode) {
+              let toolNode = nodeNode.children.find((c: TraceTreeItem) => c.type === 'tool' && c.name === source);
+              if (!toolNode) {
+                toolNode = {
+                  id: `tool-${Math.random()}`,
+                  type: 'tool',
+                  name: source || 'Tool Call',
+                  timestamp: new Date().toLocaleTimeString(),
+                  content: '',
+                  children: []
+                };
+                nodeNode.children.push(toolNode);
+              }
+              if (chunk.output) {
+                toolNode.content = (toolNode.content || '') + chunk.output;
+              }
+            }
+            return newPrev;
+          });
+        }
+      } catch (err) {
+        console.error('Failed to parse SSE event:', err);
+      }
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [selectedGraph, manifests]);
+
+  const getFormSchema = useCallback(() => {
     if (selectedCommand === '__raw_state__') {
       return selectedGraph?.input_schema || {};
     }
     const cmd = selectedGraph?.commands.find(c => c.name === selectedCommand);
     return cmd?.schema || {};
-  };
+  }, [selectedGraph, selectedCommand]);
 
-  const getUiSchema = (schema: any) => {
+  const getUiSchema = useCallback((schema: any) => {
     const uiSchema: any = {};
     if (schema && schema.properties) {
       Object.keys(schema.properties).forEach(key => {
         const prop = schema.properties[key];
         if (prop['x-loom-type'] === 'message_list' || prop['x-loom-content'] === 'chat') {
           uiSchema[key] = {
-            'ui:field': 'messageListField'
+            'ui:widget': 'messageListWidget',
+            'ui:options': {
+              label: false
+            }
           };
         }
       });
     }
     return uiSchema;
-  };
+  }, []);
 
-  const handleSubmit = ({ formData }: any) => {
+  const formSchema = useMemo(() => getFormSchema(), [getFormSchema]);
+  const uiSchema = useMemo(() => getUiSchema(formSchema), [formSchema, getUiSchema]);
+
+  const handleSubmit = useCallback(({ formData: submittedFormData }: any) => {
     if (!selectedGraph) return;
     const manifest = manifests.find(m => m.graphs.some(g => g.id === selectedGraph.id));
     if (!manifest) return;
 
     const cmdName = selectedCommand === '__raw_state__' ? '' : selectedCommand;
 
+    // Deep copy formData to prevent mutation issues
+    const finalPayload = JSON.parse(JSON.stringify(submittedFormData || {}));
+
+    // Automatically append any unsent chatInput to the message list field
+    if (chatInput && chatInput.trim()) {
+      const messageListKey = Object.keys(formSchema.properties || {}).find(key => {
+        const prop = (formSchema.properties as any)[key];
+        return prop["x-loom-type"] === "message_list" || prop["x-loom-content"] === "chat";
+      });
+
+      if (messageListKey) {
+        const messages = finalPayload[messageListKey] || [];
+        const lastMsg = messages[messages.length - 1];
+        
+        let lastMsgText = "";
+        if (lastMsg) {
+          if (typeof lastMsg.content === "string") {
+            lastMsgText = lastMsg.content;
+          } else if (Array.isArray(lastMsg.content)) {
+            lastMsgText = lastMsg.content.map((b: any) => b.text || "").join("");
+          }
+        }
+
+        // Only append if it's not already the last message to avoid duplication
+        if (!lastMsg || lastMsgText !== chatInput) {
+          messages.push({ 
+            role: "user", 
+            content: [
+              {
+                kind: "text",
+                text: chatInput
+              }
+            ]
+          });
+          finalPayload[messageListKey] = messages;
+        }
+      }
+      
+      setChatInput("");
+    }
+
     const payload = {
       worker_id: manifest.worker_id,
       graph_id: selectedGraph.id,
       command_name: cmdName,
-      payload: formData,
+      payload: finalPayload,
     };
 
     fetch('/api/execute', {
@@ -164,6 +421,37 @@ export function Playground() {
         console.error(err);
         alert('Error triggering execution');
       });
+  }, [selectedGraph, manifests, selectedCommand, formSchema, chatInput]);
+
+  const renderTreeNode = (item: TraceTreeItem, depth: number) => {
+    const isSelected = selectedTraceItem?.id === item.id;
+    return (
+      <div key={item.id} className="space-y-1">
+        <div 
+          onClick={() => setSelectedTraceItem(item)}
+          className={`flex items-center gap-2 py-2.5 px-4 rounded-xl cursor-pointer transition-all ${
+            isSelected 
+              ? 'bg-indigo-600 text-white font-bold' 
+              : 'hover:bg-slate-800 text-slate-300'
+          }`}
+          style={{ paddingLeft: `${depth * 16 + 12}px` }}
+        >
+          {item.type === 'thread' && <Layers size={14} className="text-indigo-400" />}
+          {item.type === 'node' && <BrainCircuit size={14} className="text-emerald-400" />}
+          {item.type === 'llm' && <MessageSquare size={14} className="text-amber-400" />}
+          {item.type === 'tool' && <Terminal size={14} className="text-rose-400" />}
+          
+          <span className="flex-1 truncate">{item.name}</span>
+          {item.content && (
+            <span className="text-[10px] text-slate-400 truncate max-w-[200px] italic">
+              {item.content}
+            </span>
+          )}
+          <span className="text-[10px] opacity-60 text-slate-500">{item.timestamp}</span>
+        </div>
+        {item.children.map(child => renderTreeNode(child, depth + 1))}
+      </div>
+    );
   };
 
   if (loading) {
@@ -173,9 +461,6 @@ export function Playground() {
       </div>
     );
   }
-
-  const formSchema = getFormSchema();
-  const uiSchema = getUiSchema(formSchema);
 
   return (
     <div className="h-full flex overflow-hidden">
@@ -244,7 +529,7 @@ export function Playground() {
       <div className="flex-1 bg-[#F8FAFC] overflow-hidden flex flex-col">
         {selectedGraph ? (
           <>
-            <header className="p-8 bg-white border-b border-slate-200 flex items-center justify-between">
+            <header className="p-8 bg-white border-b border-slate-200 flex items-center justify-between shadow-sm z-10">
               <div>
                 <div className="flex items-center gap-3 mb-1">
                   <BrainCircuit className="text-indigo-600" size={24} />
@@ -259,14 +544,57 @@ export function Playground() {
             </header>
 
             <div className="flex-1 flex overflow-hidden">
-              {/* Topology Panel */}
-              <div className="flex-1 overflow-auto p-8 border-r border-slate-200 bg-white">
-                <div className="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6">
-                  <Network size={14} />
-                  Graph Topology
+              {/* Left/Center Panel: Topology & Trace Tree */}
+              <div className="flex-1 overflow-hidden flex flex-col border-r border-slate-200 bg-white">
+                {/* Top Half: Graph Topology */}
+                <div className="flex-1 overflow-auto p-8 border-b border-slate-200 min-h-[300px] flex flex-col">
+                  <div className="flex items-center justify-between mb-4 shrink-0">
+                    <div className="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                      <Network size={14} />
+                      Graph Topology
+                    </div>
+                    {activeNode && (
+                      <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full uppercase tracking-widest animate-pulse border border-indigo-100">
+                        Active Node: {activeNode === '__END__' ? 'END' : activeNode}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex-1 flex items-center justify-center min-h-[200px] border-2 border-dashed border-slate-100 rounded-3xl p-8 bg-slate-50/30 overflow-auto">
+                    <Mermaid chart={selectedGraph.mermaid_diagram} activeNode={activeNode} />
+                  </div>
                 </div>
-                <div className="flex items-center justify-center min-h-[400px] border-2 border-dashed border-slate-100 rounded-3xl p-8 bg-slate-50/30">
-                  <Mermaid chart={selectedGraph.mermaid_diagram} />
+
+                {/* Bottom Half: Live Trace Tree */}
+                <div className="h-96 overflow-hidden p-8 bg-slate-950 text-slate-100 flex flex-col">
+                  <div className="flex items-center justify-between mb-4 shrink-0">
+                    <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      <Terminal size={14} className="text-indigo-400" />
+                      Live execution stream (SSE)
+                    </div>
+                    {tree.length > 0 && (
+                      <button 
+                        onClick={() => { setTree([]); setActiveNode(null); setSelectedTraceItem(null); }}
+                        className="text-[9px] font-black text-slate-400 hover:text-white uppercase tracking-widest border border-slate-800 px-3 py-1.5 rounded-xl transition-all"
+                      >
+                        Clear Trace
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex-1 overflow-auto font-mono text-xs space-y-2 pr-2">
+                    {tree.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-slate-500 py-12">
+                        <Terminal size={24} className="mb-2 opacity-50" />
+                        <p className="italic text-center text-xs">Waiting for execution trigger...</p>
+                      </div>
+                    ) : (
+                      tree.map(node => (
+                        <div key={node.id} className="space-y-1">
+                          {renderTreeNode(node, 0)}
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -306,21 +634,26 @@ export function Playground() {
                   
                   <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
                     {/* RJSF Dynamic Form */}
-                    <Form
-                      schema={formSchema}
-                      uiSchema={uiSchema}
-                      fields={customFields}
-                      templates={{ FieldTemplate: CustomFieldTemplate }}
-                      validator={validator}
-                      onSubmit={handleSubmit}
-                    >
-                      <button 
-                        type="submit" 
-                        className="w-full flex items-center justify-center gap-2 mt-4 px-6 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all active:scale-95"
+                    <ChatInputContext.Provider value={chatContextValue}>
+                      <Form
+                        ref={formRef}
+                        schema={formSchema}
+                        uiSchema={uiSchema}
+                        widgets={customWidgets}
+                        templates={customTemplates}
+                        validator={validator}
+                        onSubmit={handleSubmit}
+                        formData={formData}
+                        onChange={e => setFormData(e.formData)}
                       >
-                        <Play size={14} fill="currentColor" /> TRIGGER EXECUTION
-                      </button>
-                    </Form>
+                        <button 
+                          type="submit" 
+                          className="w-full flex items-center justify-center gap-2 mt-4 px-6 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all active:scale-95"
+                        >
+                          <Play size={14} fill="currentColor" /> TRIGGER EXECUTION
+                        </button>
+                      </Form>
+                    </ChatInputContext.Provider>
                   </div>
                 </div>
               </div>

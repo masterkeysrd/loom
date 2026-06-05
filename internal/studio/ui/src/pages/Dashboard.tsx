@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { Cpu, BrainCircuit, Clock, Coins, Activity, AlertCircle } from 'lucide-react';

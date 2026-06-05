@@ -12,13 +12,13 @@ func (s MockState) Copy() MockState { return MockState{} }
 
 func TestToMermaid(t *testing.T) {
 	builder := New[MockState]()
-	builder.AddNode("node1", NodeFunc[MockState](func(ctx context.Context, s MockState) (Command[MockState], error) {
+	builder.AddNode("node1", NodeFunc(func(ctx context.Context, s MockState) (Command[MockState], error) {
 		return nil, nil
 	}))
-	builder.AddNode("node2", NodeFunc[MockState](func(ctx context.Context, s MockState) (Command[MockState], error) {
+	builder.AddNode("node2", NodeFunc(func(ctx context.Context, s MockState) (Command[MockState], error) {
 		return nil, nil
 	}))
-	builder.AddNode("node3", NodeFunc[MockState](func(ctx context.Context, s MockState) (Command[MockState], error) {
+	builder.AddNode("node3", NodeFunc(func(ctx context.Context, s MockState) (Command[MockState], error) {
 		return nil, nil
 	}))
 

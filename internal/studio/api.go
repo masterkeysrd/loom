@@ -16,19 +16,19 @@ import (
 
 type ConnectionManager struct {
 	mu          sync.RWMutex
-	connections map[string]*websocket.Conn
+	connections map[string]*Client
 }
 
 func NewConnectionManager() *ConnectionManager {
 	return &ConnectionManager{
-		connections: make(map[string]*websocket.Conn),
+		connections: make(map[string]*Client),
 	}
 }
 
-func (cm *ConnectionManager) Add(workerID string, conn *websocket.Conn) {
+func (cm *ConnectionManager) Add(workerID string, client *Client) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
-	cm.connections[workerID] = conn
+	cm.connections[workerID] = client
 }
 
 func (cm *ConnectionManager) Remove(workerID string) {
@@ -37,7 +37,7 @@ func (cm *ConnectionManager) Remove(workerID string) {
 	delete(cm.connections, workerID)
 }
 
-func (cm *ConnectionManager) Get(workerID string) *websocket.Conn {
+func (cm *ConnectionManager) Get(workerID string) *Client {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return cm.connections[workerID]
@@ -67,6 +67,7 @@ func (s *APIServer) RegisterHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("/api/metrics", s.handleMetrics)
 	mux.HandleFunc("/api/metrics/", s.handleMetricData)
 	mux.HandleFunc("/api/manifests", s.handleGetManifests)
+	mux.HandleFunc("/api/execute", s.handleExecute)
 	mux.HandleFunc("/control", s.handleControl)
 }
 
@@ -224,7 +225,7 @@ func (c *Client) readPump() {
 			var manifest studio.Manifest
 			if err := json.Unmarshal(message, &manifest); err == nil {
 				workerID = manifest.WorkerID
-				c.api.connManager.Add(workerID, c.conn)
+				c.api.connManager.Add(workerID, c)
 				c.api.mu.Lock()
 				c.api.manifests[workerID] = &manifest
 				c.api.mu.Unlock()
@@ -559,4 +560,55 @@ func (s *APIServer) handleMetricData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(points)
+}
+
+func (s *APIServer) handleExecute(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		WorkerID    string          `json:"worker_id"`
+		GraphID     string          `json:"graph_id"`
+		CommandName string          `json:"command_name"`
+		Payload     json.RawMessage `json:"payload"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		return
+	}
+
+	client := s.connManager.Get(req.WorkerID)
+	if client == nil {
+		http.Error(w, "Worker offline", http.StatusBadRequest)
+		return
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		http.Error(w, "Failed to marshal request", http.StatusInternalServerError)
+		return
+	}
+
+	msg := studio.Message{
+		Type: "execute",
+		Data: data,
+	}
+
+	msgBytes, err := json.Marshal(msg)
+	if err != nil {
+		http.Error(w, "Failed to marshal message", http.StatusInternalServerError)
+		return
+	}
+
+	select {
+	case client.send <- msgBytes:
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"success"}`))
+	default:
+		http.Error(w, "Worker connection buffer full", http.StatusServiceUnavailable)
+	}
 }

@@ -1,12 +1,101 @@
 import { useState, useEffect } from 'react';
-import { Network, Server, Play, BrainCircuit, MessageSquare, Code, Terminal, Activity } from 'lucide-react';
+import { Network, Server, Play, BrainCircuit, MessageSquare, Terminal, Activity, Layers } from 'lucide-react';
+import Form from '@rjsf/core';
+import validator from '@rjsf/validator-ajv8';
 import type { Manifest, GraphManifest } from '../types';
 import { Mermaid, DetailBadge } from '../components';
+
+// Custom RJSF Field for Chat/Message Lists
+const MessageListField = (props: any) => {
+  const { value = [], onChange } = props;
+  const [inputText, setInputText] = useState('');
+
+  const handleSend = () => {
+    if (!inputText.trim()) return;
+    const newMessage = { role: 'user', content: inputText };
+    onChange([...value, newMessage]);
+    setInputText('');
+  };
+
+  return (
+    <div className="space-y-4 border border-slate-200 rounded-3xl p-6 bg-slate-50/50">
+      <div className="text-xs font-black text-slate-500 uppercase tracking-widest pl-1">Conversation History</div>
+      <div className="max-h-60 overflow-y-auto space-y-3 p-3 bg-white border border-slate-200 rounded-2xl shadow-inner">
+        {value.length === 0 ? (
+          <div className="text-slate-400 text-xs italic text-center py-6">No messages yet.</div>
+        ) : (
+          value.map((msg: any, idx: number) => (
+            <div 
+              key={idx} 
+              className={`flex flex-col max-w-[85%] ${msg.role === 'user' ? 'ml-auto items-end' : 'mr-auto items-start'}`}
+            >
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 px-1">
+                {msg.role}
+              </span>
+              <div 
+                className={`p-3 rounded-2xl text-xs font-medium leading-relaxed ${
+                  msg.role === 'user' 
+                    ? 'bg-indigo-600 text-white rounded-tr-none shadow-sm' 
+                    : 'bg-slate-100 text-slate-800 rounded-tl-none shadow-sm'
+                }`}
+              >
+                {msg.content}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={inputText}
+          onChange={e => setInputText(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              handleSend();
+            }
+          }}
+          placeholder="Type a user message..."
+          className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
+        />
+        <button
+          type="button"
+          onClick={handleSend}
+          className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black transition-all active:scale-95 shadow-md shadow-indigo-500/10"
+        >
+          Send
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// Custom Field Template to make forms look premium and clean
+const CustomFieldTemplate = (props: any) => {
+  const { id, classNames, label, required, children, errors, help } = props;
+  return (
+    <div className={`space-y-1 mb-4 ${classNames}`}>
+      <label htmlFor={id} className="block text-xs font-black text-slate-700 uppercase tracking-wider pl-1">
+        {label}
+        {required ? <span className="text-red-500 ml-1">*</span> : null}
+      </label>
+      {children}
+      {errors && <div className="text-xs text-red-500 pl-1 mt-1">{errors}</div>}
+      {help && <div className="text-[10px] text-slate-400 pl-1 mt-0.5">{help}</div>}
+    </div>
+  );
+};
+
+const customFields = {
+  messageListField: MessageListField
+};
 
 export function Playground() {
   const [manifests, setManifests] = useState<Manifest[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedGraph, setSelectedGraph] = useState<GraphManifest | null>(null);
+  const [selectedCommand, setSelectedCommand] = useState<string>('__raw_state__');
 
   useEffect(() => {
     fetch('/api/manifests')
@@ -20,6 +109,63 @@ export function Playground() {
       });
   }, []);
 
+  const getFormSchema = () => {
+    if (selectedCommand === '__raw_state__') {
+      return selectedGraph?.input_schema || {};
+    }
+    const cmd = selectedGraph?.commands.find(c => c.name === selectedCommand);
+    return cmd?.schema || {};
+  };
+
+  const getUiSchema = (schema: any) => {
+    const uiSchema: any = {};
+    if (schema && schema.properties) {
+      Object.keys(schema.properties).forEach(key => {
+        const prop = schema.properties[key];
+        if (prop['x-loom-type'] === 'message_list' || prop['x-loom-content'] === 'chat') {
+          uiSchema[key] = {
+            'ui:field': 'messageListField'
+          };
+        }
+      });
+    }
+    return uiSchema;
+  };
+
+  const handleSubmit = ({ formData }: any) => {
+    if (!selectedGraph) return;
+    const manifest = manifests.find(m => m.graphs.some(g => g.id === selectedGraph.id));
+    if (!manifest) return;
+
+    const cmdName = selectedCommand === '__raw_state__' ? '' : selectedCommand;
+
+    const payload = {
+      worker_id: manifest.worker_id,
+      graph_id: selectedGraph.id,
+      command_name: cmdName,
+      payload: formData,
+    };
+
+    fetch('/api/execute', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    })
+      .then(res => {
+        if (res.ok) {
+          alert('Execution triggered successfully!');
+        } else {
+          res.text().then(text => alert(`Failed to trigger execution: ${text}`));
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        alert('Error triggering execution');
+      });
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -27,6 +173,9 @@ export function Playground() {
       </div>
     );
   }
+
+  const formSchema = getFormSchema();
+  const uiSchema = getUiSchema(formSchema);
 
   return (
     <div className="h-full flex overflow-hidden">
@@ -58,7 +207,10 @@ export function Playground() {
                   {manifest.graphs.map(graph => (
                     <button
                       key={graph.id}
-                      onClick={() => setSelectedGraph(graph)}
+                      onClick={() => {
+                        setSelectedGraph(graph);
+                        setSelectedCommand('__raw_state__');
+                      }}
                       className={`w-full text-left p-4 rounded-2xl border transition-all duration-200 group relative overflow-hidden ${
                         selectedGraph?.id === graph.id
                           ? 'bg-indigo-50 border-indigo-200 ring-1 ring-indigo-100'
@@ -103,9 +255,6 @@ export function Playground() {
               <div className="flex gap-4">
                 <DetailBadge label="Commands" value={selectedGraph.commands.length} icon={<Terminal size={12} />} color="slate" />
                 <DetailBadge label="Type" value="Graph" icon={<Activity size={12} />} color="indigo" />
-                <button className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl text-sm font-black shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 transition-all active:scale-95">
-                  <Play size={16} fill="currentColor" /> RUN GRAPH
-                </button>
               </div>
             </header>
 
@@ -125,32 +274,53 @@ export function Playground() {
               <div className="w-[480px] overflow-auto p-8 space-y-8 bg-[#F8FAFC]">
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">
-                    <MessageSquare size={14} />
-                    Schema Discovery
+                    <Layers size={14} />
+                    Target Selection
                   </div>
-                  <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-6">
-                    <div>
-                      <div className="text-xs font-bold text-slate-900 mb-2">Input Schema (State)</div>
-                      <pre className="text-[10px] bg-slate-900 text-slate-300 p-4 rounded-2xl font-mono leading-relaxed overflow-auto max-h-48">
-                        {JSON.stringify(selectedGraph.input_schema, null, 2)}
-                      </pre>
+                  
+                  {/* Select Dropdown */}
+                  <div className="relative">
+                    <select
+                      value={selectedCommand}
+                      onChange={e => setSelectedCommand(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-2xl py-3.5 px-4 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all appearance-none cursor-pointer shadow-sm"
+                    >
+                      <option value="__raw_state__">Execute Graph (Raw State)</option>
+                      {selectedGraph.commands.map(cmd => (
+                        <option key={cmd.name} value={cmd.name}>
+                          Command: {cmd.name}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                      ▼
                     </div>
-                    {selectedGraph.commands.length > 0 && (
-                      <div className="space-y-4 pt-4 border-t border-slate-100">
-                        <div className="text-xs font-bold text-slate-900">Available Commands</div>
-                        {selectedGraph.commands.map(cmd => (
-                          <div key={cmd.name} className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Code size={14} className="text-indigo-500" />
-                              <span className="text-xs font-black text-slate-700">{cmd.name}</span>
-                            </div>
-                            <pre className="text-[9px] text-slate-500 font-mono overflow-auto max-h-32">
-                              {JSON.stringify(cmd.schema, null, 2)}
-                            </pre>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">
+                    <MessageSquare size={14} />
+                    Execution Input
+                  </div>
+                  
+                  <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
+                    {/* RJSF Dynamic Form */}
+                    <Form
+                      schema={formSchema}
+                      uiSchema={uiSchema}
+                      fields={customFields}
+                      templates={{ FieldTemplate: CustomFieldTemplate }}
+                      validator={validator}
+                      onSubmit={handleSubmit}
+                    >
+                      <button 
+                        type="submit" 
+                        className="w-full flex items-center justify-center gap-2 mt-4 px-6 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all active:scale-95"
+                      >
+                        <Play size={14} fill="currentColor" /> TRIGGER EXECUTION
+                      </button>
+                    </Form>
                   </div>
                 </div>
               </div>

@@ -69,8 +69,8 @@ func (s *Studio) Start(ctx context.Context, otlpGRPCPort, otlpHTTPPort, apiPort 
 				return
 			}
 
-			// If it's an API call, let the mux handle it
-			if strings.HasPrefix(r.URL.Path, "/api") {
+			// If it's an API call or control endpoint, let the mux handle it
+			if strings.HasPrefix(r.URL.Path, "/api") || r.URL.Path == "/control" {
 				mux.ServeHTTP(w, r)
 				return
 			}

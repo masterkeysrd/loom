@@ -252,7 +252,16 @@ export function Playground() {
         
         else if (msg.type === 'on_llm_chunk') {
           const { node, source, chunk } = msg.data;
-          if (!chunk || !chunk.delta) return;
+          if (!chunk) return;
+
+          let textDelta = '';
+          if (chunk.delta?.content) {
+            textDelta = chunk.delta.content;
+          } else if (Array.isArray(chunk.content)) {
+            textDelta = chunk.content.map((b: any) => b.text || '').join('');
+          } else if (typeof chunk.content === 'string') {
+            textDelta = chunk.content;
+          }
 
           setTree(prev => {
             if (prev.length === 0) return prev;
@@ -273,7 +282,7 @@ export function Playground() {
                 };
                 nodeNode.children.push(llmNode);
               }
-              llmNode.content = (llmNode.content || '') + (chunk.delta.content || '');
+              llmNode.content = (llmNode.content || '') + textDelta;
             }
             return newPrev;
           });
@@ -282,6 +291,17 @@ export function Playground() {
         else if (msg.type === 'on_tool_chunk') {
           const { node, source, chunk } = msg.data;
           if (!chunk) return;
+
+          let textDelta = '';
+          if (chunk.output) {
+            textDelta = chunk.output;
+          } else if (chunk.content) {
+            if (Array.isArray(chunk.content)) {
+              textDelta = chunk.content.map((b: any) => b.text || '').join('');
+            } else if (typeof chunk.content === 'string') {
+              textDelta = chunk.content;
+            }
+          }
 
           setTree(prev => {
             if (prev.length === 0) return prev;
@@ -302,8 +322,8 @@ export function Playground() {
                 };
                 nodeNode.children.push(toolNode);
               }
-              if (chunk.output) {
-                toolNode.content = (toolNode.content || '') + chunk.output;
+              if (textDelta) {
+                toolNode.content = (toolNode.content || '') + textDelta;
               }
             }
             return newPrev;

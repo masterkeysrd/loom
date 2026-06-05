@@ -37,6 +37,16 @@ func (g *Graph[S]) Name() string {
 	return g.name
 }
 
+// Checkpointer returns the checkpointer of the graph.
+func (g *Graph[S]) Checkpointer() Checkpointer {
+	return g.checkpointer
+}
+
+// SetCheckpointer sets the checkpointer of the graph.
+func (g *Graph[S]) SetCheckpointer(cp Checkpointer) {
+	g.checkpointer = cp
+}
+
 // Execute runs the graph to completion (or until an interrupt) and returns
 // the resulting [Snapshot].
 //

@@ -2,6 +2,7 @@ package studio
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/masterkeysrd/loom/graph"
+	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/stream"
 )
 
 type TestState struct {
@@ -139,5 +142,127 @@ func TestRegisterAndConnect(t *testing.T) {
 	}
 	if gm.Commands[0].Name != "TestCommand" {
 		t.Errorf("Expected command name to be TestCommand, got %s", gm.Commands[0].Name)
+	}
+}
+
+type mockCheckpointer struct {
+	recorded []graph.Checkpoint
+}
+
+func (m *mockCheckpointer) Load(ctx context.Context, loc graph.Location) (*graph.Checkpoint, error) {
+	return nil, nil
+}
+
+func (m *mockCheckpointer) Record(ctx context.Context, cp graph.Checkpoint) error {
+	m.recorded = append(m.recorded, cp)
+	return nil
+}
+
+func TestStudioCheckpointerAndGlobalStreamWriter(t *testing.T) {
+	ch := make(chan Message, 10)
+	outgoingMu.Lock()
+	outgoingChan = ch
+	outgoingMu.Unlock()
+	defer func() {
+		outgoingMu.Lock()
+		outgoingChan = nil
+		outgoingMu.Unlock()
+	}()
+
+	// 1. Test studioCheckpointer wrapping and record
+	mockCP := &mockCheckpointer{}
+	sc := &studioCheckpointer{original: mockCP}
+
+	cp := graph.Checkpoint{
+		Location: graph.Location{
+			ThreadID:     "t1",
+			CheckpointNS: "ns1",
+			CheckpointID: "c1",
+		},
+		State: 42,
+	}
+
+	ctx := context.Background()
+	err := sc.Record(ctx, cp)
+	if err != nil {
+		t.Fatalf("Failed to record checkpoint: %v", err)
+	}
+
+	if len(mockCP.recorded) != 1 {
+		t.Errorf("Expected 1 recorded checkpoint in mock, got %d", len(mockCP.recorded))
+	}
+
+	select {
+	case msg := <-ch:
+		if msg.Type != "on_checkpoint" {
+			t.Errorf("Expected msg.Type to be 'on_checkpoint', got %s", msg.Type)
+		}
+		var receivedCP graph.Checkpoint
+		if err := json.Unmarshal(msg.Data, &receivedCP); err != nil {
+			t.Fatalf("Failed to unmarshal received checkpoint: %v", err)
+		}
+		if receivedCP.Location.ThreadID != "t1" {
+			t.Errorf("Expected thread ID 't1', got %s", receivedCP.Location.ThreadID)
+		}
+	default:
+		t.Fatal("Expected checkpoint event to be published, but got none")
+	}
+
+	// 2. Test studioGlobalStreamWriter
+	writer := &studioGlobalStreamWriter{}
+	stream.SetGlobalWriter(writer)
+	defer stream.SetGlobalWriter(nil)
+
+	// Write without ExecutionCtx should not publish anything
+	sw, ok := stream.WriterFromContext(ctx)
+	if !ok {
+		t.Fatal("Expected stream.Writer to be found since global is set")
+	}
+	err = sw.Write(ctx, message.AssistantChunk{
+		Content: []message.Block{&message.TextBlock{Text: "hello"}},
+	})
+	if err != nil {
+		t.Errorf("Write failed: %v", err)
+	}
+	select {
+	case <-ch:
+		t.Error("Did not expect any message when no ExecutionCtx is set in context")
+	default:
+	}
+
+	// Write with ExecutionCtx should publish
+	execCtx := graph.WithExecutionCtx(ctx, graph.ExecutionCtx{
+		GraphName: "G",
+		NodeName:  "N",
+		Location: graph.Location{
+			ThreadID: "t1",
+		},
+	})
+
+	sw, ok = stream.WriterFromContext(execCtx)
+	if !ok {
+		t.Fatal("Expected stream.Writer to be found since global is set")
+	}
+	err = sw.Write(execCtx, message.AssistantChunk{
+		Content: []message.Block{&message.TextBlock{Text: "hello"}},
+	})
+	if err != nil {
+		t.Errorf("Write failed: %v", err)
+	}
+
+	select {
+	case msg := <-ch:
+		if msg.Type != "on_llm_chunk" {
+			t.Errorf("Expected msg.Type to be 'on_llm_chunk', got %s", msg.Type)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(msg.Data, &payload); err != nil {
+			t.Fatalf("Failed to unmarshal received chunk: %v", err)
+		}
+		if payload["node"] != "N" {
+			t.Errorf("Expected node 'N', got %v", payload["node"])
+		}
+	default:
+		t.Fatal("Expected LLM chunk to be published")
 	}
 }

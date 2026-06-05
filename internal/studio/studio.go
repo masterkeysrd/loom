@@ -32,27 +32,21 @@ func (s *Studio) Start(ctx context.Context, otlpGRPCPort, otlpHTTPPort, apiPort 
 	errCh := make(chan error, 3)
 
 	// Start OTLP gRPC Receiver
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		if err := s.otlp.StartGRPC(otlpGRPCPort); err != nil {
 			errCh <- fmt.Errorf("OTLP gRPC receiver failed: %w", err)
 		}
-	}()
+	})
 
 	// Start OTLP HTTP Receiver
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		if err := s.otlp.StartHTTP(otlpHTTPPort); err != nil {
 			errCh <- fmt.Errorf("OTLP HTTP receiver failed: %w", err)
 		}
-	}()
+	})
 
 	// Start API Server
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		mux := http.NewServeMux()
 		s.api.RegisterHandlers(mux)
 
@@ -99,7 +93,7 @@ func (s *Studio) Start(ctx context.Context, otlpGRPCPort, otlpHTTPPort, apiPort 
 		if err := server.ListenAndServe(); err != http.ErrServerClosed {
 			errCh <- fmt.Errorf("API server failed: %w", err)
 		}
-	}()
+	})
 
 	// Wait for context cancellation or error
 	select {

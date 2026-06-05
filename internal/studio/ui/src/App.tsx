@@ -1,21 +1,13 @@
 import { useState } from 'react';
+import { LayoutDashboard, List, Activity, Settings, Search, PanelLeftClose, PanelLeftOpen, BrainCircuit, Play } from 'lucide-react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  List, 
-  Activity, 
-  BrainCircuit,
-  Settings,
-  Search,
-  PanelLeftClose,
-  PanelLeftOpen
-} from 'lucide-react';
 
 import { SidebarLink } from './components';
 import { Dashboard } from './pages/Dashboard';
 import { ThreadsList } from './pages/ThreadsList';
 import { ThreadDetail } from './pages/ThreadDetail';
 import { MetricsExplorer } from './pages/MetricsExplorer';
+import { Playground } from './pages/Playground';
 
 function App() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -44,6 +36,7 @@ function App() {
           
           <nav className="flex-1 px-4 space-y-1">
             <SidebarLink to="/" icon={<LayoutDashboard size={18} />} label="Overview" collapsed={sidebarCollapsed} />
+            <SidebarLink to="/playground" icon={<Play size={18} />} label="Playground" collapsed={sidebarCollapsed} />
             <SidebarLink to="/threads" icon={<List size={18} />} label="Trace Explorer" collapsed={sidebarCollapsed} />
             <SidebarLink to="/metrics" icon={<Activity size={18} />} label="Metrics" collapsed={sidebarCollapsed} />
           </nav>
@@ -81,6 +74,7 @@ function App() {
           <main className="flex-1 overflow-auto">
             <Routes>
               <Route path="/" element={<Dashboard />} />
+              <Route path="/playground" element={<Playground />} />
               <Route path="/threads" element={<ThreadsList searchQuery={searchQuery} />} />
               <Route path="/threads/:threadId" element={<ThreadDetail />} />
               <Route path="/metrics" element={<MetricsExplorer />} />

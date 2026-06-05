@@ -32,6 +32,11 @@ type Graph[S State[S]] struct {
 	checkpointer Checkpointer
 }
 
+// Name returns the name of the graph.
+func (g *Graph[S]) Name() string {
+	return g.name
+}
+
 // Execute runs the graph to completion (or until an interrupt) and returns
 // the resulting [Snapshot].
 //

@@ -2,37 +2,339 @@ package studio
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"reflect"
+	"sync"
 	"time"
 
+	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/masterkeysrd/loom/graph"
 )
 
-// Connect dials the Studio control WebSocket and handles heartbeats to keep the connection alive.
-// This is used by client applications to establish a bidirectional channel.
-func Connect(ctx context.Context, wsURL string) (*websocket.Conn, error) {
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, wsURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to studio: %w", err)
+// GraphOptions contains registration options for a Graph.
+type GraphOptions struct {
+	DisplayName string
+	Commands    []any // Struct instances that represent custom commands
+}
+
+type registryEntry struct {
+	graph       any
+	displayName string
+	commands    []any
+	inputSchema *jsonschema.Schema
+	execute     func(ctx context.Context, cmdName string, payload []byte) (any, error)
+}
+
+var (
+	registryMu sync.RWMutex
+	registry   = make(map[string]registryEntry)
+	workerID   = uuid.New().String()
+
+	connMu     sync.Mutex
+	cancelConn context.CancelFunc
+)
+
+// RegisterGraph saves the graph instance and its options into the global registry.
+func RegisterGraph[S graph.State[S]](g *graph.Graph[S], opts GraphOptions) {
+	registryMu.Lock()
+	defer registryMu.Unlock()
+
+	// Generate input schema for the state
+	var inputSchema *jsonschema.Schema
+	if schema, err := jsonschema.For[S](nil); err == nil {
+		inputSchema = schema
+		InspectSchema(inputSchema)
 	}
 
-	// Start heartbeat goroutine
+	executeFunc := func(ctx context.Context, cmdName string, payload []byte) (any, error) {
+		var cmd graph.Command[S]
+
+		if cmdName == "" {
+			var parsedState S
+			if err := json.Unmarshal(payload, &parsedState); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal state: %w", err)
+			}
+			cmd = graph.Update[S](func(s S) S {
+				return parsedState
+			})
+		} else {
+			var foundCmd any
+			for _, registeredCmd := range opts.Commands {
+				t := reflect.TypeOf(registeredCmd)
+				if t.Kind() == reflect.Ptr {
+					t = t.Elem()
+				}
+				if t.Name() == cmdName {
+					foundCmd = registeredCmd
+					break
+				}
+			}
+
+			if foundCmd == nil {
+				return nil, fmt.Errorf("unknown command: %s", cmdName)
+			}
+
+			t := reflect.TypeOf(foundCmd)
+			isPtr := t.Kind() == reflect.Ptr
+			if isPtr {
+				t = t.Elem()
+			}
+
+			val := reflect.New(t)
+			if err := json.Unmarshal(payload, val.Interface()); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal command payload: %w", err)
+			}
+
+			var ok bool
+			if isPtr {
+				cmd, ok = val.Interface().(graph.Command[S])
+			} else {
+				cmd, ok = val.Elem().Interface().(graph.Command[S])
+			}
+
+			if !ok {
+				return nil, fmt.Errorf("command %s does not implement graph.Command", cmdName)
+			}
+		}
+
+		snapshot, err := g.Execute(ctx, cmd, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		return snapshot, nil
+	}
+
+	registry[g.Name()] = registryEntry{
+		graph:       g,
+		displayName: opts.DisplayName,
+		commands:    opts.Commands,
+		inputSchema: inputSchema,
+		execute:     executeFunc,
+	}
+}
+
+// Connect dials the Studio control WebSocket and handles heartbeats to keep the connection alive.
+func Connect(ctx context.Context, wsURL string) error {
+	connMu.Lock()
+	defer connMu.Unlock()
+
+	if cancelConn != nil {
+		cancelConn()
+	}
+
+	sessionCtx, cancel := context.WithCancel(ctx)
+	cancelConn = cancel
+
+	dialer := websocket.DefaultDialer
+	conn, _, err := dialer.DialContext(sessionCtx, wsURL, nil)
+	if err != nil {
+		go reconnectLoop(sessionCtx, wsURL)
+		return err
+	}
+
+	manifest, err := buildManifest(workerID)
+	if err != nil {
+		conn.Close()
+		go reconnectLoop(sessionCtx, wsURL)
+		return fmt.Errorf("failed to build manifest: %w", err)
+	}
+
+	if err := conn.WriteJSON(manifest); err != nil {
+		conn.Close()
+		go reconnectLoop(sessionCtx, wsURL)
+		return fmt.Errorf("failed to send manifest: %w", err)
+	}
+
+	go runSession(sessionCtx, conn, wsURL)
+	return nil
+}
+
+func reconnectLoop(ctx context.Context, wsURL string) {
+	backoff := 1 * time.Second
+	maxBackoff := 60 * time.Second
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+			dialer := websocket.DefaultDialer
+			conn, _, err := dialer.DialContext(ctx, wsURL, nil)
+			if err != nil {
+				backoff = backoff * 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+				continue
+			}
+
+			manifest, err := buildManifest(workerID)
+			if err != nil {
+				conn.Close()
+				continue
+			}
+
+			if err := conn.WriteJSON(manifest); err != nil {
+				conn.Close()
+				continue
+			}
+
+			runSession(ctx, conn, wsURL)
+			return
+		}
+	}
+}
+
+func runSession(ctx context.Context, conn *websocket.Conn, wsURL string) {
+	defer conn.Close()
+
+	send := make(chan Message, 256)
+	sessionCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 		for {
 			select {
-			case <-ticker.C:
-				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+			case msg, ok := <-send:
+				if !ok {
+					conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 					return
 				}
-			case <-ctx.Done():
+				if err := conn.WriteJSON(msg); err != nil {
+					cancel()
+					return
+				}
+			case <-ticker.C:
+				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+					cancel()
+					return
+				}
+			case <-sessionCtx.Done():
 				conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-				conn.Close()
 				return
 			}
 		}
 	}()
 
-	return conn, nil
+	conn.SetPongHandler(func(string) error {
+		return nil
+	})
+
+	for {
+		var msg Message
+		err := conn.ReadJSON(&msg)
+		if err != nil {
+			break
+		}
+
+		handleIncomingMessage(ctx, msg, send)
+	}
+
+	cancel()
+	conn.Close()
+
+	select {
+	case <-ctx.Done():
+		return
+	default:
+		go reconnectLoop(ctx, wsURL)
+	}
+}
+
+type ExecutePayload struct {
+	WorkerID    string          `json:"worker_id"`
+	GraphID     string          `json:"graph_id"`
+	CommandName string          `json:"command_name"`
+	Payload     json.RawMessage `json:"payload"`
+}
+
+func handleIncomingMessage(ctx context.Context, msg Message, send chan<- Message) {
+	if msg.Type == "execute" {
+		var execPayload ExecutePayload
+		if err := json.Unmarshal(msg.Data, &execPayload); err != nil {
+			return
+		}
+
+		registryMu.RLock()
+		entry, ok := registry[execPayload.GraphID]
+		registryMu.RUnlock()
+		if !ok {
+			return
+		}
+
+		go func() {
+			_, _ = entry.execute(ctx, execPayload.CommandName, execPayload.Payload)
+		}()
+	}
+}
+
+func buildManifest(wID string) (*Manifest, error) {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+
+	m := &Manifest{
+		Type:     "manifest",
+		WorkerID: wID,
+		Graphs:   make([]GraphManifest, 0, len(registry)),
+	}
+
+	for name, entry := range registry {
+		gm, err := buildGraphManifestFromEntry(name, entry)
+		if err != nil {
+			return nil, err
+		}
+		m.Graphs = append(m.Graphs, gm)
+	}
+
+	return m, nil
+}
+
+func buildGraphManifestFromEntry(name string, entry registryEntry) (GraphManifest, error) {
+	v := reflect.ValueOf(entry.graph)
+	if v.Kind() != reflect.Ptr || v.IsNil() {
+		return GraphManifest{}, fmt.Errorf("graph must be a non-nil pointer")
+	}
+
+	mermaidMethod := v.MethodByName("ToMermaid")
+	if !mermaidMethod.IsValid() {
+		return GraphManifest{}, fmt.Errorf("graph does not have a ToMermaid() method")
+	}
+	mermaidVal := mermaidMethod.Call(nil)
+
+	commands := make([]CommandDefinition, 0, len(entry.commands))
+	for _, cmd := range entry.commands {
+		t := reflect.TypeOf(cmd)
+		if t.Kind() == reflect.Ptr {
+			t = t.Elem()
+		}
+		cmdName := t.Name()
+		schema, err := jsonschema.ForType(t, nil)
+		if err != nil {
+			return GraphManifest{}, fmt.Errorf("failed to generate schema for command %s: %w", cmdName, err)
+		}
+		InspectSchema(schema)
+		commands = append(commands, CommandDefinition{
+			Name:   cmdName,
+			Schema: schema,
+		})
+	}
+
+	gm := GraphManifest{
+		ID:             name,
+		Name:           entry.displayName,
+		MermaidDiagram: mermaidVal[0].String(),
+		InputSchema:    entry.inputSchema,
+		Commands:       commands,
+	}
+	if gm.Name == "" {
+		gm.Name = name
+	}
+
+	return gm, nil
 }

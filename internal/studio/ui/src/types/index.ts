@@ -43,3 +43,21 @@ export interface DashboardStats {
   llm_call_count: number;
   p50_latency: number;
 }
+
+export interface Manifest {
+  worker_id: string;
+  graphs: GraphManifest[];
+}
+
+export interface GraphManifest {
+  id: string;
+  name: string;
+  mermaid_diagram: string;
+  input_schema: any;
+  commands: CommandDefinition[];
+}
+
+export interface CommandDefinition {
+  name: string;
+  schema: any;
+}

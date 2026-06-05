@@ -30,6 +30,7 @@ type CommandDefinition struct {
 
 // Message represents a generic message sent over the control channel.
 type Message struct {
-	Type string          `json:"type"`
-	Data json.RawMessage `json:"data"`
+	Type          string          `json:"type"`
+	CorrelationID string          `json:"correlation_id,omitempty"`
+	Data          json.RawMessage `json:"data"`
 }

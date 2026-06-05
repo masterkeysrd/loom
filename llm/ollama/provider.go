@@ -14,6 +14,7 @@ import (
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/stream"
 	"github.com/ollama/ollama/api"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/attribute"
@@ -67,6 +68,16 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 	ollamaRequest, err := toChatRequest(request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert chat request: %w", err)
+	}
+
+	if sw, ok := stream.WriterFromContext(ctx); ok {
+		_ = sw.Write(ctx, stream.Event{
+			Name: "on_llm_request",
+			Data: map[string]any{
+				"provider": "ollama",
+				"payload":  ollamaRequest,
+			},
+		})
 	}
 
 	// Ollama Specific Span Decoration

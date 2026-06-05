@@ -179,7 +179,7 @@ func TestStudioCheckpointerAndGlobalStreamWriter(t *testing.T) {
 			CheckpointNS: "ns1",
 			CheckpointID: "c1",
 		},
-		State: 42,
+		State: map[string][]byte{"__root__": []byte("42")},
 	}
 
 	ctx := context.Background()

@@ -1,6 +1,9 @@
 package graph
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Location is a composite key that uniquely identifies a single checkpoint
 // within a thread. All three fields are required for point-in-time lookups;
@@ -20,11 +23,12 @@ type Location struct {
 // time. It is the value type exchanged between [Graph.Execute], the
 // [Checkpointer], and callers resuming a paused graph.
 type Snapshot[S State[S]] struct {
-	State      S         `json:"state"`
-	Next       []string  `json:"next"`
-	Location   Location  `json:"location"`
-	Parent     *Location `json:"parent,omitempty"`
-	CreateTime time.Time `json:"create_time"`
+	State      S               `json:"state"`
+	Next       []string        `json:"next"`
+	Location   Location        `json:"location"`
+	Parent     *Location       `json:"parent,omitempty"`
+	CreateTime time.Time       `json:"create_time"`
+	Metadata   json.RawMessage `json:"metadata,omitempty"`
 }
 
 func (s Snapshot[State]) Copy() Snapshot[State] {
@@ -39,6 +43,11 @@ func (s Snapshot[State]) Copy() Snapshot[State] {
 	if s.Parent != nil {
 		parent := *s.Parent
 		cp.Parent = &parent
+	}
+
+	if len(s.Metadata) > 0 {
+		cp.Metadata = make(json.RawMessage, len(s.Metadata))
+		copy(cp.Metadata, s.Metadata)
 	}
 
 	return cp

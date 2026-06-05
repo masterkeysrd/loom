@@ -21,6 +21,14 @@ type TestState struct {
 	Tags    []string `json:"tags"`
 }
 
+func marshalStateMap(m map[string][]byte) ([]byte, error) {
+	raw := make(map[string]json.RawMessage, len(m))
+	for k, v := range m {
+		raw[k] = json.RawMessage(v)
+	}
+	return json.Marshal(raw)
+}
+
 func TestCheckpointer(t *testing.T) {
 	dsn := os.Getenv("POSTGRES_DSN")
 	if dsn == "" {
@@ -49,9 +57,14 @@ func TestCheckpointer(t *testing.T) {
 		CheckpointID: uuid.Must(uuid.NewV7()).String(),
 	}
 
+	channels1, err := graph.DecomposeState(state1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	cp1 := graph.Checkpoint{
 		Location:  loc1,
-		State:     state1,
+		State:     channels1,
 		Next:      []string{"node-2"},
 		Timestamp: time.Now().UTC().Truncate(time.Second),
 	}
@@ -70,7 +83,11 @@ func TestCheckpointer(t *testing.T) {
 	}
 
 	var loadedState1 TestState
-	if err := json.Unmarshal(loaded1.State.(json.RawMessage), &loadedState1); err != nil {
+	stateBytes1, err := marshalStateMap(loaded1.State)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(stateBytes1, &loadedState1); err != nil {
 		t.Fatalf("failed to unmarshal state1: %v", err)
 	}
 
@@ -87,10 +104,15 @@ func TestCheckpointer(t *testing.T) {
 		CheckpointID: uuid.Must(uuid.NewV7()).String(),
 	}
 
+	channels2, err := graph.DecomposeState(state2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	cp2 := graph.Checkpoint{
 		Location:  loc2,
 		Parent:    &loc1,
-		State:     state2,
+		State:     channels2,
 		Next:      []string{"node-3"},
 		Timestamp: time.Now().UTC().Truncate(time.Second),
 	}
@@ -106,7 +128,11 @@ func TestCheckpointer(t *testing.T) {
 	}
 
 	var loadedState2 TestState
-	if err := json.Unmarshal(loaded2.State.(json.RawMessage), &loadedState2); err != nil {
+	stateBytes2, err := marshalStateMap(loaded2.State)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(stateBytes2, &loadedState2); err != nil {
 		t.Fatalf("failed to unmarshal state2: %v", err)
 	}
 

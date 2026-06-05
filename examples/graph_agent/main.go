@@ -25,7 +25,6 @@ import (
 // AgentState holds the conversation history and status for our graph.
 type AgentState struct {
 	Messages message.MessageList `json:"messages"`
-	NextNode string              `json:"-"` // Used for routing
 }
 
 // Copy satisfies the graph.State interface.
@@ -35,8 +34,38 @@ func (s AgentState) Copy() AgentState {
 	copy(msgs, s.Messages)
 	return AgentState{
 		Messages: msgs,
-		NextNode: s.NextNode,
 	}
+}
+
+// AddMessageCmd is a custom command to append a message to the conversation history.
+type AddMessageCmd struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+// Apply implements graph.Command.
+func (c AddMessageCmd) Apply(s AgentState) AgentState {
+	var msg message.Message
+	switch strings.ToLower(c.Role) {
+	case "user":
+		msg = &message.User{
+			Content: message.Content{&message.TextBlock{Text: c.Content}},
+		}
+	case "assistant":
+		msg = &message.Assistant{
+			Content: message.Content{&message.TextBlock{Text: c.Content}},
+		}
+	case "system":
+		msg = &message.System{
+			Content: message.Content{&message.TextBlock{Text: c.Content}},
+		}
+	default:
+		msg = &message.User{
+			Content: message.Content{&message.TextBlock{Text: c.Content}},
+		}
+	}
+	s.Messages = append(s.Messages, msg)
+	return s
 }
 
 func main() {
@@ -95,7 +124,7 @@ func main() {
 	builder.WithCheckpointer(cp)
 
 	// Node: Agent (LLM Call)
-	builder.AddNode("Agent", graph.NodeFunc[AgentState](func(ctx context.Context, state AgentState) (graph.Command[AgentState], error) {
+	builder.AddNode("Agent", graph.NodeFunc(func(ctx context.Context, state AgentState) (graph.Command[AgentState], error) {
 		fmt.Println("\n[Node: Agent] Calling LLM...")
 		resp, err := model.Invoke(ctx, state.Messages)
 		if err != nil {
@@ -106,24 +135,14 @@ func main() {
 			fmt.Printf("\nAssistant: %s\n", text)
 		}
 
-		// Determine if we should go to tools or end
-		nextNode := graph.END
-		for _, block := range resp.GetContent() {
-			if _, ok := block.(*message.ToolCall); ok {
-				nextNode = "Tools"
-				break
-			}
-		}
-
 		return graph.Update[AgentState](func(s AgentState) AgentState {
 			s.Messages = append(s.Messages, resp)
-			s.NextNode = nextNode
 			return s
 		}), nil
 	}))
 
 	// Node: Tools (Tool Execution)
-	builder.AddNode("Tools", graph.NodeFunc[AgentState](func(ctx context.Context, state AgentState) (graph.Command[AgentState], error) {
+	builder.AddNode("Tools", graph.NodeFunc(func(ctx context.Context, state AgentState) (graph.Command[AgentState], error) {
 		fmt.Println("[Node: Tools] Executing Tool Calls...")
 		lastMsg := state.Messages[len(state.Messages)-1]
 		var toolResults []message.Message
@@ -154,7 +173,16 @@ func main() {
 	// Define Edges
 	builder.AddEdge(graph.START, "Agent")
 	builder.AddRouteEdge("Agent", func(s AgentState) (string, error) {
-		return s.NextNode, nil
+		if len(s.Messages) == 0 {
+			return graph.END, nil
+		}
+		lastMsg := s.Messages[len(s.Messages)-1]
+		for _, block := range lastMsg.GetContent() {
+			if _, ok := block.(*message.ToolCall); ok {
+				return "Tools", nil
+			}
+		}
+		return graph.END, nil
 	}, map[string]string{
 		"Tools":   "Tools",
 		graph.END: graph.END,
@@ -167,6 +195,9 @@ func main() {
 	// Connect to Studio and register our graph so it appears in the Playground.
 	studio.RegisterGraph(agentGraph, studio.GraphOptions{
 		DisplayName: "Shell Agent",
+		Commands: []any{
+			AddMessageCmd{},
+		},
 	})
 
 	if err := studio.Connect(ctx, "ws://localhost:8080/control"); err != nil {

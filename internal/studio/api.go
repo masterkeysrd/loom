@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/masterkeysrd/loom/studio"
 )
@@ -44,21 +45,24 @@ func (cm *ConnectionManager) Get(workerID string) *Client {
 }
 
 type APIServer struct {
-	db          *DB
-	hub         *Hub
-	manifests   map[string]*studio.Manifest
-	connManager *ConnectionManager
-	broker      *Broker
-	mu          sync.RWMutex
+	db               *DB
+	hub              *Hub
+	manifests        map[string]*studio.Manifest
+	connManager      *ConnectionManager
+	broker           *Broker
+	mu               sync.RWMutex
+	pendingResponses map[string]chan []byte
+	pendingMu        sync.Mutex
 }
 
 func NewAPIServer(db *DB) *APIServer {
 	return &APIServer{
-		db:          db,
-		hub:         NewHub(),
-		manifests:   make(map[string]*studio.Manifest),
-		connManager: NewConnectionManager(),
-		broker:      NewBroker(),
+		db:               db,
+		hub:              NewHub(),
+		manifests:        make(map[string]*studio.Manifest),
+		connManager:      NewConnectionManager(),
+		broker:           NewBroker(),
+		pendingResponses: make(map[string]chan []byte),
 	}
 }
 
@@ -70,6 +74,7 @@ func (s *APIServer) RegisterHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("/api/metrics/", s.handleMetricData)
 	mux.HandleFunc("/api/manifests", s.handleGetManifests)
 	mux.HandleFunc("/api/execute", s.handleExecute)
+	mux.HandleFunc("/api/state", s.handleGetState)
 	mux.HandleFunc("/api/stream", s.handleStream)
 	mux.HandleFunc("/control", s.handleControl)
 }
@@ -222,7 +227,9 @@ func (c *Client) readPump() {
 
 		// Try to parse as a manifest message
 		var msg struct {
-			Type string `json:"type"`
+			Type          string          `json:"type"`
+			CorrelationID string          `json:"correlation_id"`
+			Data          json.RawMessage `json:"data"`
 		}
 		if err := json.Unmarshal(message, &msg); err == nil {
 			if msg.Type == "manifest" {
@@ -233,6 +240,13 @@ func (c *Client) readPump() {
 					c.api.mu.Lock()
 					c.api.manifests[workerID] = &manifest
 					c.api.mu.Unlock()
+				}
+			} else if msg.Type == "on_checkpoint_loaded" || msg.Type == "on_checkpoint_history_loaded" {
+				c.api.pendingMu.Lock()
+				ch, ok := c.api.pendingResponses[msg.CorrelationID]
+				c.api.pendingMu.Unlock()
+				if ok {
+					ch <- msg.Data
 				}
 			}
 
@@ -403,6 +417,11 @@ func (s *APIServer) handleThreadDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	threadID := parts[3]
+
+	if len(parts) >= 5 && parts[4] == "checkpoints" {
+		s.handleThreadCheckpoints(w, r, threadID)
+		return
+	}
 
 	// Get all trace IDs for this thread
 	rows, err := s.db.db.Query("SELECT trace_id FROM loom_traces WHERE thread_id = ?", threadID)
@@ -579,10 +598,13 @@ func (s *APIServer) handleExecute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		WorkerID    string          `json:"worker_id"`
-		GraphID     string          `json:"graph_id"`
-		CommandName string          `json:"command_name"`
-		Payload     json.RawMessage `json:"payload"`
+		WorkerID     string          `json:"worker_id"`
+		GraphID      string          `json:"graph_id"`
+		CommandName  string          `json:"command_name"`
+		Payload      json.RawMessage `json:"payload"`
+		ThreadID     string          `json:"thread_id,omitempty"`
+		CheckpointID string          `json:"checkpoint_id,omitempty"`
+		CheckpointNS string          `json:"checkpoint_ns,omitempty"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -618,6 +640,112 @@ func (s *APIServer) handleExecute(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"success"}`))
+	default:
+		http.Error(w, "Worker connection buffer full", http.StatusServiceUnavailable)
+	}
+}
+
+func (s *APIServer) handleGetState(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	graphID := r.URL.Query().Get("graph_id")
+	threadID := r.URL.Query().Get("thread_id")
+	checkpointID := r.URL.Query().Get("checkpoint_id")
+	checkpointNS := r.URL.Query().Get("checkpoint_ns")
+
+	if graphID == "" || threadID == "" {
+		http.Error(w, "Missing required query parameters: graph_id, thread_id", http.StatusBadRequest)
+		return
+	}
+
+	// Find worker holding this graph
+	s.mu.RLock()
+	var workerID string
+	for wID, manifest := range s.manifests {
+		for _, g := range manifest.Graphs {
+			if g.ID == graphID {
+				workerID = wID
+				break
+			}
+		}
+		if workerID != "" {
+			break
+		}
+	}
+	s.mu.RUnlock()
+
+	if workerID == "" {
+		http.Error(w, "No active worker found for graph "+graphID, http.StatusNotFound)
+		return
+	}
+
+	client := s.connManager.Get(workerID)
+	if client == nil {
+		http.Error(w, "Worker offline", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Generate correlation ID
+	correlationID, err := uuid.NewV7()
+	if err != nil {
+		http.Error(w, "Failed to generate correlation ID", http.StatusInternalServerError)
+		return
+	}
+	corrStr := correlationID.String()
+
+	// Create and register response channel
+	ch := make(chan []byte, 1)
+	s.pendingMu.Lock()
+	s.pendingResponses[corrStr] = ch
+	s.pendingMu.Unlock()
+
+	defer func() {
+		s.pendingMu.Lock()
+		delete(s.pendingResponses, corrStr)
+		s.pendingMu.Unlock()
+	}()
+
+	// Construct request message
+	reqPayload := map[string]string{
+		"graph_id":      graphID,
+		"thread_id":     threadID,
+		"checkpoint_id": checkpointID,
+		"checkpoint_ns": checkpointNS,
+	}
+	reqData, _ := json.Marshal(reqPayload)
+
+	msg := studio.Message{
+		Type:          "load_checkpoint",
+		CorrelationID: corrStr,
+		Data:          reqData,
+	}
+	msgBytes, err := json.Marshal(msg)
+	if err != nil {
+		http.Error(w, "Failed to marshal request message", http.StatusInternalServerError)
+		return
+	}
+
+	// Send request over WebSocket to worker
+	select {
+	case client.send <- msgBytes:
+		// Wait for response with timeout
+		select {
+		case respData := <-ch:
+			// Check if response contains an error
+			var errCheck map[string]string
+			if err := json.Unmarshal(respData, &errCheck); err == nil && errCheck["error"] != "" {
+				http.Error(w, errCheck["error"], http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write(respData)
+		case <-time.After(5 * time.Second):
+			http.Error(w, "Timeout waiting for worker response", http.StatusGatewayTimeout)
+		}
 	default:
 		http.Error(w, "Worker connection buffer full", http.StatusServiceUnavailable)
 	}
@@ -701,5 +829,90 @@ func (s *APIServer) handleStream(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		}
+	}
+}
+
+func (s *APIServer) handleThreadCheckpoints(w http.ResponseWriter, r *http.Request, threadID string) {
+	graphID := r.URL.Query().Get("graph_id")
+	checkpointNS := r.URL.Query().Get("checkpoint_ns")
+
+	if graphID == "" {
+		http.Error(w, "Missing required query parameter: graph_id", http.StatusBadRequest)
+		return
+	}
+
+	// Find worker holding this graph
+	s.mu.RLock()
+	var workerID string
+	for wID, manifest := range s.manifests {
+		for _, g := range manifest.Graphs {
+			if g.ID == graphID {
+				workerID = wID
+				break
+			}
+		}
+		if workerID != "" {
+			break
+		}
+	}
+	s.mu.RUnlock()
+
+	if workerID == "" {
+		http.Error(w, "No active worker found for graph "+graphID, http.StatusNotFound)
+		return
+	}
+
+	client := s.connManager.Get(workerID)
+	if client == nil {
+		http.Error(w, "Worker offline", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Generate correlation ID
+	correlationID, err := uuid.NewV7()
+	if err != nil {
+		http.Error(w, "Failed to generate correlation ID", http.StatusInternalServerError)
+		return
+	}
+	corrStr := correlationID.String()
+
+	// Create and register response channel
+	ch := make(chan []byte, 1)
+	s.pendingMu.Lock()
+	s.pendingResponses[corrStr] = ch
+	s.pendingMu.Unlock()
+
+	defer func() {
+		s.pendingMu.Lock()
+		delete(s.pendingResponses, corrStr)
+		s.pendingMu.Unlock()
+	}()
+
+	payload := map[string]string{
+		"graph_id":      graphID,
+		"thread_id":     threadID,
+		"checkpoint_ns": checkpointNS,
+	}
+	payloadBytes, _ := json.Marshal(payload)
+
+	msg := studio.Message{
+		Type:          "load_checkpoint_history",
+		CorrelationID: corrStr,
+		Data:          payloadBytes,
+	}
+
+	msgBytes, _ := json.Marshal(msg)
+	select {
+	case client.send <- msgBytes:
+		// Wait for response
+		select {
+		case resp := <-ch:
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(resp)
+		case <-r.Context().Done():
+			http.Error(w, "Request timed out", http.StatusRequestTimeout)
+		}
+	default:
+		http.Error(w, "Worker connection buffer full", http.StatusServiceUnavailable)
 	}
 }

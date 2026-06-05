@@ -1,8 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import mermaid from 'mermaid';
 
 mermaid.initialize({
-  startOnLoad: true,
+  startOnLoad: false,
   theme: 'base',
   themeVariables: {
     primaryColor: '#6366f1',
@@ -24,18 +24,38 @@ interface MermaidProps {
 }
 
 export const Mermaid: React.FC<MermaidProps> = ({ chart, className }) => {
-  const ref = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [svg, setSvg] = useState<string>('');
 
   useEffect(() => {
-    if (ref.current && chart) {
-      ref.current.removeAttribute('data-processed');
-      mermaid.contentLoaded();
-    }
+    if (!chart) return;
+
+    let isMounted = true;
+    const id = `mermaid-${Math.random().toString(36).substring(2, 9)}`;
+
+    const renderChart = async () => {
+      try {
+        const { svg: renderedSvg } = await mermaid.render(id, chart);
+        if (isMounted) {
+          setSvg(renderedSvg);
+        }
+      } catch (err) {
+        console.error('Mermaid render error:', err);
+      }
+    };
+
+    renderChart();
+
+    return () => {
+      isMounted = false;
+    };
   }, [chart]);
 
   return (
-    <div className={`mermaid ${className}`} ref={ref}>
-      {chart}
-    </div>
+    <div
+      ref={containerRef}
+      className={className}
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
   );
 };

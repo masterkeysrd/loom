@@ -7,14 +7,21 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
+
+	"github.com/gorilla/websocket"
 )
 
 type APIServer struct {
-	db *DB
+	db  *DB
+	hub *Hub
 }
 
 func NewAPIServer(db *DB) *APIServer {
-	return &APIServer{db: db}
+	return &APIServer{
+		db:  db,
+		hub: NewHub(),
+	}
 }
 
 func (s *APIServer) RegisterHandlers(mux *http.ServeMux) {
@@ -23,6 +30,152 @@ func (s *APIServer) RegisterHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("/api/threads/", s.handleThreadDetail)
 	mux.HandleFunc("/api/metrics", s.handleMetrics)
 	mux.HandleFunc("/api/metrics/", s.handleMetricData)
+	mux.HandleFunc("/control", s.handleControl)
+}
+
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		return true // Allow all origins for studio
+	},
+}
+
+func (s *APIServer) handleControl(w http.ResponseWriter, r *http.Request) {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	client := &Client{hub: s.hub, conn: conn, send: make(chan []byte, 256)}
+	s.hub.register <- client
+
+	// Allow collection of memory referenced by the caller by doing all work in
+	// new goroutines.
+	go client.writePump()
+	go client.readPump()
+}
+
+// Hub maintains the set of active clients and broadcasts messages to the
+// clients.
+type Hub struct {
+	// Registered clients.
+	clients map[*Client]bool
+
+	// Inbound messages from the clients.
+	broadcast chan []byte
+
+	// Register requests from the clients.
+	register chan *Client
+
+	// Unregister requests from clients.
+	unregister chan *Client
+
+	mu sync.RWMutex
+}
+
+func NewHub() *Hub {
+	h := &Hub{
+		broadcast:  make(chan []byte),
+		register:   make(chan *Client),
+		unregister: make(chan *Client),
+		clients:    make(map[*Client]bool),
+	}
+	go h.run()
+	return h
+}
+
+func (h *Hub) run() {
+	for {
+		select {
+		case client := <-h.register:
+			h.mu.Lock()
+			h.clients[client] = true
+			h.mu.Unlock()
+		case client := <-h.unregister:
+			h.mu.Lock()
+			if _, ok := h.clients[client]; ok {
+				delete(h.clients, client)
+				close(client.send)
+			}
+			h.mu.Unlock()
+		case message := <-h.broadcast:
+			h.mu.RLock()
+			for client := range h.clients {
+				select {
+				case client.send <- message:
+				default:
+					// If we can't send, assume the client is dead
+					go func(c *Client) { h.unregister <- c }(client)
+				}
+			}
+			h.mu.RUnlock()
+		}
+	}
+}
+
+func (h *Hub) Broadcast(msg any) {
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return
+	}
+	h.broadcast <- data
+}
+
+// Client is a middleman between the websocket connection and the hub.
+type Client struct {
+	hub *Hub
+
+	// The websocket connection.
+	conn *websocket.Conn
+
+	// Buffered channel of outbound messages.
+	send chan []byte
+}
+
+func (c *Client) readPump() {
+	defer func() {
+		c.hub.unregister <- c
+		c.conn.Close()
+	}()
+	for {
+		_, message, err := c.conn.ReadMessage()
+		if err != nil {
+			break
+		}
+		c.hub.broadcast <- message
+	}
+}
+
+func (c *Client) writePump() {
+	defer func() {
+		c.conn.Close()
+	}()
+	for {
+		select {
+		case message, ok := <-c.send:
+			if !ok {
+				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
+
+			w, err := c.conn.NextWriter(websocket.TextMessage)
+			if err != nil {
+				return
+			}
+			w.Write(message)
+
+			// Add queued messages to the current websocket message.
+			n := len(c.send)
+			for i := 0; i < n; i++ {
+				w.Write([]byte{'\n'})
+				w.Write(<-c.send)
+			}
+
+			if err := w.Close(); err != nil {
+				return
+			}
+		}
+	}
 }
 
 func (s *APIServer) handleStats(w http.ResponseWriter, r *http.Request) {

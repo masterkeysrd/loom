@@ -165,11 +165,11 @@ type Config struct {
 	Elicitation ElicitationProvider `json:"-"`
 
 	// Callbacks for dynamic updates from the server
-	OnToolsChanged     func(ctx context.Context) `json:"-"`
-	OnPromptsChanged   func(ctx context.Context) `json:"-"`
-	OnResourcesChanged func(ctx context.Context) `json:"-"`
-	OnResourceUpdated  func(ctx context.Context, uri string) `json:"-"`
-	OnLogMessage       func(ctx context.Context, level string, logger string, data any) `json:"-"`
+	OnToolsChanged     func(ctx context.Context)                                                             `json:"-"`
+	OnPromptsChanged   func(ctx context.Context)                                                             `json:"-"`
+	OnResourcesChanged func(ctx context.Context)                                                             `json:"-"`
+	OnResourceUpdated  func(ctx context.Context, uri string)                                                 `json:"-"`
+	OnLogMessage       func(ctx context.Context, level string, logger string, data any)                      `json:"-"`
 	OnProgress         func(ctx context.Context, token any, progress float64, total float64, message string) `json:"-"`
 }
 

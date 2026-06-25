@@ -225,8 +225,6 @@ func (c *Checkpointer) Load(ctx context.Context, location graph.Location) (*grap
 	return checkpoint, nil
 }
 
-
-
 func hashValue(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])

@@ -33,6 +33,70 @@ type Icon struct {
 	Theme    string
 }
 
+// PromptArgument describes an argument that a prompt can accept.
+type PromptArgument struct {
+	Name        string
+	Title       string
+	Description string
+	Required    bool
+}
+
+// Prompt represents a prompt or prompt template offered by the server.
+type Prompt struct {
+	Name        string
+	Title       string
+	Description string
+	Arguments   []PromptArgument
+	Icons       []Icon
+	Meta        map[string]any
+}
+
+// Annotations provides optional hints to the client.
+type Annotations struct {
+	Audience     []string
+	LastModified string
+	Priority     float64
+}
+
+// Resource represents a specific resource available on the server.
+type Resource struct {
+	Name        string
+	Title       string
+	Description string
+	MIMEType    string
+	Size        int64
+	URI         string
+	Icons       []Icon
+	Meta        map[string]any
+	Annotations *Annotations
+}
+
+// ResourceTemplate represents a template for a parameterized resource.
+type ResourceTemplate struct {
+	Name        string
+	Title       string
+	Description string
+	MIMEType    string
+	URITemplate string
+	Icons       []Icon
+	Meta        map[string]any
+	Annotations *Annotations
+}
+
+// CompleteReference represents the context for an autocompletion request.
+type CompleteReference struct {
+	Type string // "ref/prompt" or "ref/resource"
+	Name string // Used when Type is "ref/prompt"
+	URI  string // Used when Type is "ref/resource"
+}
+
+// CompleteResult holds the autocomplete suggestions from the server.
+type CompleteResult struct {
+	Values  []string
+	HasMore bool
+	Total   int
+}
+
 // ServerInfo represents the initialization metadata from an MCP server.
 type ServerInfo struct {
 	Name            string
@@ -104,6 +168,9 @@ type Config struct {
 	OnToolsChanged     func(ctx context.Context) `json:"-"`
 	OnPromptsChanged   func(ctx context.Context) `json:"-"`
 	OnResourcesChanged func(ctx context.Context) `json:"-"`
+	OnResourceUpdated  func(ctx context.Context, uri string) `json:"-"`
+	OnLogMessage       func(ctx context.Context, level string, logger string, data any) `json:"-"`
+	OnProgress         func(ctx context.Context, token any, progress float64, total float64, message string) `json:"-"`
 }
 
 // AuthProvider defines a standard interface for generating an MCP OAuthHandler.
@@ -190,6 +257,21 @@ func NewClient(config Config) *Client {
 	if config.OnResourcesChanged != nil {
 		opts.ResourceListChangedHandler = func(ctx context.Context, _ *mcp.ResourceListChangedRequest) {
 			config.OnResourcesChanged(ctx)
+		}
+	}
+	if config.OnResourceUpdated != nil {
+		opts.ResourceUpdatedHandler = func(ctx context.Context, req *mcp.ResourceUpdatedNotificationRequest) {
+			config.OnResourceUpdated(ctx, req.Params.URI)
+		}
+	}
+	if config.OnLogMessage != nil {
+		opts.LoggingMessageHandler = func(ctx context.Context, req *mcp.LoggingMessageRequest) {
+			config.OnLogMessage(ctx, string(req.Params.Level), req.Params.Logger, req.Params.Data)
+		}
+	}
+	if config.OnProgress != nil {
+		opts.ProgressNotificationHandler = func(ctx context.Context, req *mcp.ProgressNotificationClientRequest) {
+			config.OnProgress(ctx, req.Params.ProgressToken, req.Params.Progress, req.Params.Total, req.Params.Message)
 		}
 	}
 
@@ -394,13 +476,11 @@ func (c *Client) Tools(ctx context.Context) ([]*tool.Tool, error) {
 		return nil, err
 	}
 
-	res, err := session.ListTools(ctx, &mcp.ListToolsParams{})
-	if err != nil {
-		return nil, err
-	}
-
 	var tools []*tool.Tool
-	for _, t := range res.Tools {
+	for t, err := range session.Tools(ctx, &mcp.ListToolsParams{}) {
+		if err != nil {
+			return nil, err
+		}
 		lt, err := c.adaptTool(t)
 		if err != nil {
 			return nil, err
@@ -408,6 +488,130 @@ func (c *Client) Tools(ctx context.Context) ([]*tool.Tool, error) {
 		tools = append(tools, lt)
 	}
 	return tools, nil
+}
+
+// Prompts retrieves the list of prompts available on the MCP server.
+func (c *Client) Prompts(ctx context.Context) ([]Prompt, error) {
+	session, err := c.getSession(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var prompts []Prompt
+	for p, err := range session.Prompts(ctx, &mcp.ListPromptsParams{}) {
+		if err != nil {
+			return nil, err
+		}
+		prompt := Prompt{
+			Name:        p.Name,
+			Title:       p.Title,
+			Description: p.Description,
+			Meta:        p.Meta,
+		}
+		for _, arg := range p.Arguments {
+			prompt.Arguments = append(prompt.Arguments, PromptArgument{
+				Name:        arg.Name,
+				Title:       arg.Title,
+				Description: arg.Description,
+				Required:    arg.Required,
+			})
+		}
+		for _, icon := range p.Icons {
+			prompt.Icons = append(prompt.Icons, Icon{
+				Source:   icon.Source,
+				MIMEType: icon.MIMEType,
+				Sizes:    icon.Sizes,
+				Theme:    string(icon.Theme),
+			})
+		}
+		prompts = append(prompts, prompt)
+	}
+	return prompts, nil
+}
+
+// mapAnnotations converts MCP annotations to Loom annotations.
+func mapAnnotations(a *mcp.Annotations) *Annotations {
+	if a == nil {
+		return nil
+	}
+	var audience []string
+	for _, r := range a.Audience {
+		audience = append(audience, string(r))
+	}
+	return &Annotations{
+		Audience:     audience,
+		LastModified: a.LastModified,
+		Priority:     a.Priority,
+	}
+}
+
+// Resources retrieves the list of resources available on the MCP server.
+func (c *Client) Resources(ctx context.Context) ([]Resource, error) {
+	session, err := c.getSession(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var resources []Resource
+	for r, err := range session.Resources(ctx, &mcp.ListResourcesParams{}) {
+		if err != nil {
+			return nil, err
+		}
+		resource := Resource{
+			Name:        r.Name,
+			Title:       r.Title,
+			Description: r.Description,
+			MIMEType:    r.MIMEType,
+			Size:        r.Size,
+			URI:         r.URI,
+			Meta:        r.Meta,
+			Annotations: mapAnnotations(r.Annotations),
+		}
+		for _, icon := range r.Icons {
+			resource.Icons = append(resource.Icons, Icon{
+				Source:   icon.Source,
+				MIMEType: icon.MIMEType,
+				Sizes:    icon.Sizes,
+				Theme:    string(icon.Theme),
+			})
+		}
+		resources = append(resources, resource)
+	}
+	return resources, nil
+}
+
+// ResourceTemplates retrieves the list of resource templates available on the MCP server.
+func (c *Client) ResourceTemplates(ctx context.Context) ([]ResourceTemplate, error) {
+	session, err := c.getSession(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var templates []ResourceTemplate
+	for rt, err := range session.ResourceTemplates(ctx, &mcp.ListResourceTemplatesParams{}) {
+		if err != nil {
+			return nil, err
+		}
+		template := ResourceTemplate{
+			Name:        rt.Name,
+			Title:       rt.Title,
+			Description: rt.Description,
+			MIMEType:    rt.MIMEType,
+			URITemplate: rt.URITemplate,
+			Meta:        rt.Meta,
+			Annotations: mapAnnotations(rt.Annotations),
+		}
+		for _, icon := range rt.Icons {
+			template.Icons = append(template.Icons, Icon{
+				Source:   icon.Source,
+				MIMEType: icon.MIMEType,
+				Sizes:    icon.Sizes,
+				Theme:    string(icon.Theme),
+			})
+		}
+		templates = append(templates, template)
+	}
+	return templates, nil
 }
 
 // GetResources retrieves resources from the server using the pooled session.
@@ -418,11 +622,10 @@ func (c *Client) GetResources(ctx context.Context, uris []string) (message.Conte
 	}
 
 	if len(uris) == 0 {
-		res, err := session.ListResources(ctx, &mcp.ListResourcesParams{})
-		if err != nil {
-			return nil, err
-		}
-		for _, r := range res.Resources {
+		for r, err := range session.Resources(ctx, &mcp.ListResourcesParams{}) {
+			if err != nil {
+				return nil, err
+			}
 			uris = append(uris, r.URI)
 		}
 	}
@@ -440,6 +643,62 @@ func (c *Client) GetResources(ctx context.Context, uris []string) (message.Conte
 		}
 	}
 	return content, nil
+}
+
+// SubscribeResource subscribes to updates for a specific resource URI.
+func (c *Client) SubscribeResource(ctx context.Context, uri string) error {
+	session, err := c.getSession(ctx)
+	if err != nil {
+		return err
+	}
+	return session.Subscribe(ctx, &mcp.SubscribeParams{URI: uri})
+}
+
+// UnsubscribeResource unsubscribes from updates for a specific resource URI.
+func (c *Client) UnsubscribeResource(ctx context.Context, uri string) error {
+	session, err := c.getSession(ctx)
+	if err != nil {
+		return err
+	}
+	return session.Unsubscribe(ctx, &mcp.UnsubscribeParams{URI: uri})
+}
+
+// SetLoggingLevel configures the logging level the server should send to the client.
+func (c *Client) SetLoggingLevel(ctx context.Context, level string) error {
+	session, err := c.getSession(ctx)
+	if err != nil {
+		return err
+	}
+	return session.SetLoggingLevel(ctx, &mcp.SetLoggingLevelParams{Level: mcp.LoggingLevel(level)})
+}
+
+// Complete requests autocomplete suggestions from the server for prompts or resource templates.
+func (c *Client) Complete(ctx context.Context, ref CompleteReference, argName string, argValue string) (*CompleteResult, error) {
+	session, err := c.getSession(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := session.Complete(ctx, &mcp.CompleteParams{
+		Ref: &mcp.CompleteReference{
+			Type: ref.Type,
+			Name: ref.Name,
+			URI:  ref.URI,
+		},
+		Argument: mcp.CompleteParamsArgument{
+			Name:  argName,
+			Value: argValue,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &CompleteResult{
+		Values:  res.Completion.Values,
+		HasMore: res.Completion.HasMore,
+		Total:   res.Completion.Total,
+	}, nil
 }
 
 // GetPrompt retrieves a prompt from the server using the pooled session.
@@ -738,6 +997,33 @@ func (m *MultiClient) Tools(ctx context.Context, serverName string) ([]*tool.Too
 	return c.Tools(ctx)
 }
 
+// Prompts retrieves the list of prompts available on the named MCP server.
+func (m *MultiClient) Prompts(ctx context.Context, serverName string) ([]Prompt, error) {
+	c, ok := m.clients[serverName]
+	if !ok {
+		return nil, fmt.Errorf("server %q not found", serverName)
+	}
+	return c.Prompts(ctx)
+}
+
+// Resources retrieves the list of resources available on the named MCP server.
+func (m *MultiClient) Resources(ctx context.Context, serverName string) ([]Resource, error) {
+	c, ok := m.clients[serverName]
+	if !ok {
+		return nil, fmt.Errorf("server %q not found", serverName)
+	}
+	return c.Resources(ctx)
+}
+
+// ResourceTemplates retrieves the list of resource templates available on the named MCP server.
+func (m *MultiClient) ResourceTemplates(ctx context.Context, serverName string) ([]ResourceTemplate, error) {
+	c, ok := m.clients[serverName]
+	if !ok {
+		return nil, fmt.Errorf("server %q not found", serverName)
+	}
+	return c.ResourceTemplates(ctx)
+}
+
 // GetResources retrieves resources from the named MCP server using a pooled session.
 func (m *MultiClient) GetResources(ctx context.Context, serverName string, uris []string) (message.Content, error) {
 	c, ok := m.clients[serverName]
@@ -745,6 +1031,42 @@ func (m *MultiClient) GetResources(ctx context.Context, serverName string, uris 
 		return nil, fmt.Errorf("server %q not found", serverName)
 	}
 	return c.GetResources(ctx, uris)
+}
+
+// SubscribeResource subscribes to updates for a specific resource URI on the named MCP server.
+func (m *MultiClient) SubscribeResource(ctx context.Context, serverName string, uri string) error {
+	c, ok := m.clients[serverName]
+	if !ok {
+		return fmt.Errorf("server %q not found", serverName)
+	}
+	return c.SubscribeResource(ctx, uri)
+}
+
+// UnsubscribeResource unsubscribes from updates for a specific resource URI on the named MCP server.
+func (m *MultiClient) UnsubscribeResource(ctx context.Context, serverName string, uri string) error {
+	c, ok := m.clients[serverName]
+	if !ok {
+		return fmt.Errorf("server %q not found", serverName)
+	}
+	return c.UnsubscribeResource(ctx, uri)
+}
+
+// SetLoggingLevel configures the logging level for the named MCP server.
+func (m *MultiClient) SetLoggingLevel(ctx context.Context, serverName string, level string) error {
+	c, ok := m.clients[serverName]
+	if !ok {
+		return fmt.Errorf("server %q not found", serverName)
+	}
+	return c.SetLoggingLevel(ctx, level)
+}
+
+// Complete requests autocomplete suggestions from the named MCP server.
+func (m *MultiClient) Complete(ctx context.Context, serverName string, ref CompleteReference, argName string, argValue string) (*CompleteResult, error) {
+	c, ok := m.clients[serverName]
+	if !ok {
+		return nil, fmt.Errorf("server %q not found", serverName)
+	}
+	return c.Complete(ctx, ref, argName, argValue)
 }
 
 // GetPrompt retrieves a prompt from the named MCP server using a pooled session.

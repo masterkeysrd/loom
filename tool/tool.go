@@ -104,6 +104,12 @@ type ContentProvider interface {
 	ToolContent() message.Content
 }
 
+// Validator is an optional interface that tool input types can implement
+// to provide custom business logic validation beyond JSON schema constraints.
+type Validator interface {
+	Validate() error
+}
+
 // Error represents a functional error that should be reported to the LLM.
 // Returning this from a tool handler will result in a Tool message with IsError=true.
 type Error struct {
@@ -129,6 +135,7 @@ type Tool struct {
 	Handler    ToolHandler
 
 	resolvedInputSchema *jsonschema.Resolved
+	structValidator     func(map[string]any) error
 }
 
 // Option is a functional option applied to a [Tool] after construction.
@@ -152,7 +159,32 @@ func (t *Tool) Validate(args map[string]any) error {
 	if err := t.resolvedInputSchema.Validate(args); err != nil {
 		return &ValidationError{ToolName: t.Definition.Name, Err: err}
 	}
+	if t.structValidator != nil {
+		if err := t.structValidator(args); err != nil {
+			return &ValidationError{ToolName: t.Definition.Name, Err: err}
+		}
+	}
 	return nil
+}
+
+func buildStructValidator[In any]() func(map[string]any) error {
+	return func(args map[string]any) error {
+		var input In
+		data, err := json.Marshal(args)
+		if err != nil {
+			return fmt.Errorf("failed to marshal args: %w", err)
+		}
+		if err := json.Unmarshal(data, &input); err != nil {
+			return fmt.Errorf("failed to decode args into input type: %w", err)
+		}
+		if v, ok := any(input).(Validator); ok {
+			return v.Validate()
+		}
+		if v, ok := any(&input).(Validator); ok {
+			return v.Validate()
+		}
+		return nil
+	}
 }
 
 // AdaptHandler wraps a typed [HandlerFunc] into a [ToolHandler] by:
@@ -176,6 +208,16 @@ func AdaptHandler[In, Out any](name, desc string, schema *jsonschema.Resolved, f
 		}
 		if err := json.Unmarshal(data, &input); err != nil {
 			return nil, fmt.Errorf("tool %q: failed to decode args into input type: %w", name, err)
+		}
+
+		if v, ok := any(input).(Validator); ok {
+			if err := v.Validate(); err != nil {
+				return nil, &ValidationError{ToolName: name, Err: err}
+			}
+		} else if v, ok := any(&input).(Validator); ok {
+			if err := v.Validate(); err != nil {
+				return nil, &ValidationError{ToolName: name, Err: err}
+			}
 		}
 
 		return func(yield func(message.ToolChunk, error) bool) {
@@ -265,6 +307,16 @@ func AdaptStreamHandler[In any](name, desc string, schema *jsonschema.Resolved, 
 			return nil, fmt.Errorf("tool %q: failed to decode args into input type: %w", name, err)
 		}
 
+		if v, ok := any(input).(Validator); ok {
+			if err := v.Validate(); err != nil {
+				return nil, &ValidationError{ToolName: name, Err: err}
+			}
+		} else if v, ok := any(&input).(Validator); ok {
+			if err := v.Validate(); err != nil {
+				return nil, &ValidationError{ToolName: name, Err: err}
+			}
+		}
+
 		return func(yield func(message.ToolChunk, error) bool) {
 			// Span name MUST be execute_tool {gen_ai.tool.name}
 			ctx, span := telemetry.Start(ctx, "execute_tool "+name, trace.WithSpanKind(trace.SpanKindInternal))
@@ -344,6 +396,7 @@ func New[In, Out any](name, title, description string, handler HandlerFunc[In, O
 		},
 		Handler:             AdaptHandler(name, description, resolvedInput, handler),
 		resolvedInputSchema: resolvedInput,
+		structValidator:     buildStructValidator[In](),
 	}
 	for _, opt := range opts {
 		opt(def)
@@ -374,6 +427,7 @@ func NewStreaming[In any](name, title, description string, handler StreamHandler
 		},
 		Handler:             AdaptStreamHandler(name, description, resolvedInput, handler),
 		resolvedInputSchema: resolvedInput,
+		structValidator:     buildStructValidator[In](),
 	}
 	for _, opt := range opts {
 		opt(def)

@@ -11,7 +11,7 @@ import (
 )
 
 func TestMapContent(t *testing.T) {
-	s := &SessionClient{}
+	c := &Client{}
 
 	mcpContent := []mcp.Content{
 		&mcp.TextContent{Text: "hello"},
@@ -23,7 +23,7 @@ func TestMapContent(t *testing.T) {
 		},
 	}
 
-	content, isError := s.mapContent(mcpContent)
+	content, isError := c.mapContent(mcpContent)
 	if isError {
 		t.Errorf("expected isError to be false")
 	}
@@ -46,7 +46,7 @@ func TestMapContent(t *testing.T) {
 }
 
 func TestStructuredContentMapping(t *testing.T) {
-	s := &SessionClient{}
+	c := &Client{}
 
 	// mock MCP CallToolResult with StructuredContent
 	mcpRes := &mcp.CallToolResult{
@@ -60,7 +60,7 @@ func TestStructuredContentMapping(t *testing.T) {
 	// but we can test that mapContent works as expected if we had a way to call it.
 	// Actually, I just updated createHandler to pass StructuredContent.
 
-	content, _ := s.mapContent(mcpRes.Content)
+	content, _ := c.mapContent(mcpRes.Content)
 	chunk := message.ToolChunk{
 		Content:           content,
 		StructuredContent: mcpRes.StructuredContent,
@@ -72,14 +72,14 @@ func TestStructuredContentMapping(t *testing.T) {
 }
 
 func TestMapMessages(t *testing.T) {
-	s := &SessionClient{}
+	c := &Client{}
 	mcpMessages := []*mcp.PromptMessage{
 		{Role: "user", Content: &mcp.TextContent{Text: "user msg"}},
 		{Role: "assistant", Content: &mcp.TextContent{Text: "assistant msg"}},
 		{Role: "system", Content: &mcp.TextContent{Text: "system msg"}},
 	}
 
-	messages := s.mapMessages(mcpMessages)
+	messages := c.mapMessages(mcpMessages)
 	if len(messages) != 3 {
 		t.Errorf("expected 3 messages, got %d", len(messages))
 	}
@@ -138,9 +138,9 @@ func TestHeaderRoundTripper(t *testing.T) {
 }
 
 func TestClientSessionError(t *testing.T) {
-	// Test that Session returns error for unsupported transport
+	// Test that getSession returns error for unsupported transport
 	client := NewClient(Config{Transport: "invalid"})
-	_, err := client.Session(context.Background())
+	_, err := client.Tools(context.Background())
 	if err == nil {
 		t.Errorf("expected error for invalid transport")
 	}

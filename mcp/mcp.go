@@ -25,6 +25,54 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// Icon provides a visual identifier for a server.
+type Icon struct {
+	Source   string
+	MIMEType string
+	Sizes    []string
+	Theme    string
+}
+
+// ServerInfo represents the initialization metadata from an MCP server.
+type ServerInfo struct {
+	Name            string
+	Title           string
+	Version         string
+	WebsiteURL      string
+	Icons           []Icon
+	ProtocolVersion string
+	Instructions    string
+	Meta            map[string]any
+	Capabilities    ServerCapabilities
+}
+
+// ServerCapabilities describes the capabilities a server supports.
+type ServerCapabilities struct {
+	Experimental map[string]any
+	Extensions   map[string]any
+	Completions  bool
+	Logging      bool
+	Prompts      *PromptCapabilities
+	Resources    *ResourceCapabilities
+	Tools        *ToolCapabilities
+}
+
+// PromptCapabilities describes the server's support for prompts.
+type PromptCapabilities struct {
+	ListChanged bool
+}
+
+// ResourceCapabilities describes the server's support for resources.
+type ResourceCapabilities struct {
+	ListChanged bool
+	Subscribe   bool
+}
+
+// ToolCapabilities describes the server's support for tools.
+type ToolCapabilities struct {
+	ListChanged bool
+}
+
 // Status represents the current connection state of an MCP server.
 type Status string
 
@@ -250,7 +298,7 @@ func (c *Client) Close() error {
 		err = c.mcpSession.Close()
 		c.mcpSession = nil
 	}
-	
+
 	c.status = StatusDisconnected
 	return err
 }
@@ -267,6 +315,64 @@ func (c *Client) Status() (Status, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.status, c.lastErr
+}
+
+// Info returns the initialization metadata (capabilities, instructions, etc.) from the server.
+func (c *Client) Info(ctx context.Context) (*ServerInfo, error) {
+	session, err := c.getSession(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	res := session.InitializeResult()
+	if res == nil {
+		return nil, fmt.Errorf("initialization result not available")
+	}
+
+	info := &ServerInfo{
+		ProtocolVersion: res.ProtocolVersion,
+		Instructions:    res.Instructions,
+		Meta:            res.Meta,
+	}
+	if res.ServerInfo != nil {
+		info.Name = res.ServerInfo.Name
+		info.Title = res.ServerInfo.Title
+		info.Version = res.ServerInfo.Version
+		info.WebsiteURL = res.ServerInfo.WebsiteURL
+		for _, icon := range res.ServerInfo.Icons {
+			info.Icons = append(info.Icons, Icon{
+				Source:   icon.Source,
+				MIMEType: icon.MIMEType,
+				Sizes:    icon.Sizes,
+				Theme:    string(icon.Theme),
+			})
+		}
+	}
+	if res.Capabilities != nil {
+		info.Capabilities.Experimental = res.Capabilities.Experimental
+		info.Capabilities.Extensions = res.Capabilities.Extensions
+		info.Capabilities.Completions = res.Capabilities.Completions != nil
+		info.Capabilities.Logging = res.Capabilities.Logging != nil
+
+		if res.Capabilities.Prompts != nil {
+			info.Capabilities.Prompts = &PromptCapabilities{
+				ListChanged: res.Capabilities.Prompts.ListChanged,
+			}
+		}
+		if res.Capabilities.Resources != nil {
+			info.Capabilities.Resources = &ResourceCapabilities{
+				ListChanged: res.Capabilities.Resources.ListChanged,
+				Subscribe:   res.Capabilities.Resources.Subscribe,
+			}
+		}
+		if res.Capabilities.Tools != nil {
+			info.Capabilities.Tools = &ToolCapabilities{
+				ListChanged: res.Capabilities.Tools.ListChanged,
+			}
+		}
+	}
+
+	return info, nil
 }
 
 type headerRoundTripper struct {
@@ -310,7 +416,7 @@ func (c *Client) GetResources(ctx context.Context, uris []string) (message.Conte
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if len(uris) == 0 {
 		res, err := session.ListResources(ctx, &mcp.ListResourcesParams{})
 		if err != nil {
@@ -342,7 +448,7 @@ func (c *Client) GetPrompt(ctx context.Context, name string, args map[string]str
 	if err != nil {
 		return nil, err
 	}
-	
+
 	res, err := session.GetPrompt(ctx, &mcp.GetPromptParams{
 		Name:      name,
 		Arguments: args,
@@ -612,6 +718,15 @@ func (m *MultiClient) Status(serverName string) (Status, error) {
 		return StatusDisconnected, fmt.Errorf("server %q not found", serverName)
 	}
 	return c.Status()
+}
+
+// Info returns the initialization metadata for the named MCP server.
+func (m *MultiClient) Info(ctx context.Context, serverName string) (*ServerInfo, error) {
+	c, ok := m.clients[serverName]
+	if !ok {
+		return nil, fmt.Errorf("server %q not found", serverName)
+	}
+	return c.Info(ctx)
 }
 
 // Tools retrieves the tools available on the named MCP server.

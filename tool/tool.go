@@ -18,6 +18,9 @@ import (
 // ErrInvalidInput is a sentinel error for any tool input validation failure.
 var ErrInvalidInput = errors.New("tool input validation failed")
 
+// ErrToolNotFound is a sentinel error for when a tool is not found in a container.
+var ErrToolNotFound = errors.New("tool not found")
+
 // ValidationError provides context for a validation failure.
 type ValidationError struct {
 	ToolName string

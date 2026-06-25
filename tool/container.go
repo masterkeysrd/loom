@@ -47,7 +47,7 @@ func (c *Container) Definitions() []Definition {
 func (c *Container) Stream(ctx context.Context, tc *message.ToolCall) (ToolStream, error) {
 	t, exists := c.tools.Get(tc.Name)
 	if !exists {
-		return nil, fmt.Errorf("tool %q not found", tc.Name)
+		return nil, fmt.Errorf("tool %q: %w", tc.Name, ErrToolNotFound)
 	}
 
 	streamer, err := t.Handler(ctx, tc)

@@ -25,6 +25,16 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// Status represents the current connection state of an MCP server.
+type Status string
+
+const (
+	StatusDisconnected Status = "disconnected"
+	StatusConnecting   Status = "connecting"
+	StatusConnected    Status = "connected"
+	StatusError        Status = "error"
+)
+
 // Config defines the connection parameters for an MCP server.
 type Config struct {
 	Transport string            `json:"transport"`         // "stdio" or "http"
@@ -41,6 +51,11 @@ type Config struct {
 	// Elicitation provides interactive user input handling.
 	// This is not serialized to JSON automatically.
 	Elicitation ElicitationProvider `json:"-"`
+
+	// Callbacks for dynamic updates from the server
+	OnToolsChanged     func(ctx context.Context) `json:"-"`
+	OnPromptsChanged   func(ctx context.Context) `json:"-"`
+	OnResourcesChanged func(ctx context.Context) `json:"-"`
 }
 
 // AuthProvider defines a standard interface for generating an MCP OAuthHandler.
@@ -66,12 +81,21 @@ type Client struct {
 	client *mcp.Client
 
 	progressRegistry sync.Map // map[any]chan message.ToolChunk
+
+	mu          sync.RWMutex
+	mcpSession  *mcp.ClientSession
+	status      Status
+	lastErr     error
+	idleTimer   *time.Timer
+	idleTimeout time.Duration
 }
 
 // NewClient creates a new Client with the given configuration.
 func NewClient(config Config) *Client {
 	c := &Client{
-		config: config,
+		config:      config,
+		status:      StatusDisconnected,
+		idleTimeout: 5 * time.Minute,
 	}
 
 	opts := &mcp.ClientOptions{
@@ -105,6 +129,22 @@ func NewClient(config Config) *Client {
 		}
 	}
 
+	if config.OnToolsChanged != nil {
+		opts.ToolListChangedHandler = func(ctx context.Context, _ *mcp.ToolListChangedRequest) {
+			config.OnToolsChanged(ctx)
+		}
+	}
+	if config.OnPromptsChanged != nil {
+		opts.PromptListChangedHandler = func(ctx context.Context, _ *mcp.PromptListChangedRequest) {
+			config.OnPromptsChanged(ctx)
+		}
+	}
+	if config.OnResourcesChanged != nil {
+		opts.ResourceListChangedHandler = func(ctx context.Context, _ *mcp.ResourceListChangedRequest) {
+			config.OnResourcesChanged(ctx)
+		}
+	}
+
 	c.client = mcp.NewClient(&mcp.Implementation{
 		Name:    "loom-mcp-client",
 		Version: "0.1.0",
@@ -113,13 +153,24 @@ func NewClient(config Config) *Client {
 	return c
 }
 
-// Session creates a new session with the MCP server.
-// The caller is responsible for closing the session.
-func (c *Client) Session(ctx context.Context) (*SessionClient, error) {
+// getSession returns the active session, establishing a new one if necessary.
+func (c *Client) getSession(ctx context.Context) (*mcp.ClientSession, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.status == StatusConnected && c.mcpSession != nil {
+		if c.idleTimer != nil {
+			c.idleTimer.Reset(c.idleTimeout)
+		}
+		return c.mcpSession, nil
+	}
+
+	c.status = StatusConnecting
+
 	var transport mcp.Transport
 	switch c.config.Transport {
 	case "stdio":
-		cmd := exec.CommandContext(ctx, c.config.Command, c.config.Args...)
+		cmd := exec.CommandContext(context.Background(), c.config.Command, c.config.Args...)
 		if len(c.config.Env) > 0 {
 			cmd.Env = os.Environ()
 			for k, v := range c.config.Env {
@@ -135,6 +186,8 @@ func (c *Client) Session(ctx context.Context) (*SessionClient, error) {
 			var err error
 			oauthHandler, err = c.config.Auth.GetHandler(ctx)
 			if err != nil {
+				c.status = StatusError
+				c.lastErr = err
 				return nil, fmt.Errorf("failed to get auth handler: %w", err)
 			}
 		}
@@ -155,15 +208,65 @@ func (c *Client) Session(ctx context.Context) (*SessionClient, error) {
 			HTTPClient:   httpClient,
 		}
 	default:
-		return nil, fmt.Errorf("unsupported transport: %s", c.config.Transport)
+		err := fmt.Errorf("unsupported transport: %s", c.config.Transport)
+		c.status = StatusError
+		c.lastErr = err
+		return nil, err
 	}
 
 	session, err := c.client.Connect(ctx, transport, nil)
 	if err != nil {
+		c.status = StatusError
+		c.lastErr = err
 		return nil, err
 	}
 
-	return &SessionClient{session: session, parent: c}, nil
+	c.mcpSession = session
+	c.status = StatusConnected
+	c.lastErr = nil
+
+	if c.idleTimer != nil {
+		c.idleTimer.Stop()
+	}
+	c.idleTimer = time.AfterFunc(c.idleTimeout, func() {
+		_ = c.Close()
+	})
+
+	return session, nil
+}
+
+// Close explicitly closes the MCP session and stops the idle timer.
+func (c *Client) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.idleTimer != nil {
+		c.idleTimer.Stop()
+		c.idleTimer = nil
+	}
+
+	var err error
+	if c.mcpSession != nil {
+		err = c.mcpSession.Close()
+		c.mcpSession = nil
+	}
+	
+	c.status = StatusDisconnected
+	return err
+}
+
+// Restart explicitly closes any active session and establishes a new one.
+func (c *Client) Restart(ctx context.Context) error {
+	_ = c.Close()
+	_, err := c.getSession(ctx)
+	return err
+}
+
+// Status returns the current connection status and the last error (if any).
+func (c *Client) Status() (Status, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.status, c.lastErr
 }
 
 type headerRoundTripper struct {
@@ -178,88 +281,21 @@ func (t *headerRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	return t.base.RoundTrip(req)
 }
 
-// GetResources retrieves resources from the server using a transient session.
-func (c *Client) GetResources(ctx context.Context, uris []string) (message.Content, error) {
-	session, err := c.Session(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer session.Close()
-	return session.GetResources(ctx, uris)
-}
-
-// GetPrompt retrieves a prompt from the server using a transient session.
-func (c *Client) GetPrompt(ctx context.Context, name string, args map[string]string) ([]message.Message, error) {
-	session, err := c.Session(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer session.Close()
-	return session.GetPrompt(ctx, name, args)
-}
-
-// MultiClient manages multiple MCP server clients.
-type MultiClient struct {
-	clients map[string]*Client
-}
-
-// NewMultiClient creates a new MultiClient with the given configurations.
-func NewMultiClient(configs map[string]Config) *MultiClient {
-	clients := make(map[string]*Client)
-	for name, config := range configs {
-		clients[name] = NewClient(config)
-	}
-	return &MultiClient{clients: clients}
-}
-
-// Session creates a new session with the named MCP server.
-func (m *MultiClient) Session(ctx context.Context, serverName string) (*SessionClient, error) {
-	c, ok := m.clients[serverName]
-	if !ok {
-		return nil, fmt.Errorf("server %q not found", serverName)
-	}
-	return c.Session(ctx)
-}
-
-// GetResources retrieves resources from the named MCP server using a transient session.
-func (m *MultiClient) GetResources(ctx context.Context, serverName string, uris []string) (message.Content, error) {
-	c, ok := m.clients[serverName]
-	if !ok {
-		return nil, fmt.Errorf("server %q not found", serverName)
-	}
-	return c.GetResources(ctx, uris)
-}
-
-// GetPrompt retrieves a prompt from the named MCP server using a transient session.
-func (m *MultiClient) GetPrompt(ctx context.Context, serverName string, promptName string, args map[string]string) ([]message.Message, error) {
-	c, ok := m.clients[serverName]
-	if !ok {
-		return nil, fmt.Errorf("server %q not found", serverName)
-	}
-	return c.GetPrompt(ctx, promptName, args)
-}
-
-// SessionClient provides session-scoped access to an MCP server.
-type SessionClient struct {
-	session *mcp.ClientSession
-	parent  *Client
-}
-
-// Close closes the underlying MCP session and its transport.
-func (s *SessionClient) Close() error {
-	return s.session.Close()
-}
-
 // Tools retrieves the tools available on the MCP server and adapts them to Loom tools.
-func (s *SessionClient) Tools(ctx context.Context) ([]*tool.Tool, error) {
-	res, err := s.session.ListTools(ctx, &mcp.ListToolsParams{})
+func (c *Client) Tools(ctx context.Context) ([]*tool.Tool, error) {
+	session, err := c.getSession(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := session.ListTools(ctx, &mcp.ListToolsParams{})
 	if err != nil {
 		return nil, err
 	}
 
 	var tools []*tool.Tool
 	for _, t := range res.Tools {
-		lt, err := s.adaptTool(t)
+		lt, err := c.adaptTool(t)
 		if err != nil {
 			return nil, err
 		}
@@ -268,10 +304,15 @@ func (s *SessionClient) Tools(ctx context.Context) ([]*tool.Tool, error) {
 	return tools, nil
 }
 
-// GetResources retrieves resources from the server.
-func (s *SessionClient) GetResources(ctx context.Context, uris []string) (message.Content, error) {
+// GetResources retrieves resources from the server using the pooled session.
+func (c *Client) GetResources(ctx context.Context, uris []string) (message.Content, error) {
+	session, err := c.getSession(ctx)
+	if err != nil {
+		return nil, err
+	}
+	
 	if len(uris) == 0 {
-		res, err := s.session.ListResources(ctx, &mcp.ListResourcesParams{})
+		res, err := session.ListResources(ctx, &mcp.ListResourcesParams{})
 		if err != nil {
 			return nil, err
 		}
@@ -282,12 +323,12 @@ func (s *SessionClient) GetResources(ctx context.Context, uris []string) (messag
 
 	var content message.Content
 	for _, uri := range uris {
-		res, err := s.session.ReadResource(ctx, &mcp.ReadResourceParams{URI: uri})
+		res, err := session.ReadResource(ctx, &mcp.ReadResourceParams{URI: uri})
 		if err != nil {
 			return nil, err
 		}
 		for _, rc := range res.Contents {
-			if block := s.mapResource(rc); block != nil {
+			if block := c.mapResource(rc); block != nil {
 				content = append(content, block)
 			}
 		}
@@ -295,29 +336,108 @@ func (s *SessionClient) GetResources(ctx context.Context, uris []string) (messag
 	return content, nil
 }
 
-// GetPrompt retrieves a prompt from the server.
-func (s *SessionClient) GetPrompt(ctx context.Context, name string, args map[string]string) ([]message.Message, error) {
-	res, err := s.session.GetPrompt(ctx, &mcp.GetPromptParams{
+// GetPrompt retrieves a prompt from the server using the pooled session.
+func (c *Client) GetPrompt(ctx context.Context, name string, args map[string]string) ([]message.Message, error) {
+	session, err := c.getSession(ctx)
+	if err != nil {
+		return nil, err
+	}
+	
+	res, err := session.GetPrompt(ctx, &mcp.GetPromptParams{
 		Name:      name,
 		Arguments: args,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return s.mapMessages(res.Messages), nil
+	return c.mapMessages(res.Messages), nil
 }
 
-func (s *SessionClient) mapMessages(mcpMessages []*mcp.PromptMessage) []message.Message {
+// CallTool executes a tool on the server using the pooled session.
+func (c *Client) CallTool(ctx context.Context, toolName string, args map[string]any) (tool.ToolStream, error) {
+	session, err := c.getSession(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	token := uuid.New().String()
+	progressChan := make(chan message.ToolChunk, 10)
+	c.progressRegistry.Store(token, progressChan)
+
+	params := &mcp.CallToolParams{
+		Name:      toolName,
+		Arguments: args,
+	}
+	params.SetProgressToken(token)
+
+	if params.Meta == nil {
+		params.Meta = make(map[string]any)
+	}
+	otel.GetTextMapPropagator().Inject(ctx, anyMapCarrier(params.Meta))
+
+	return func(yield func(message.ToolChunk, error) bool) {
+		defer c.progressRegistry.Delete(token)
+
+		ctx, span := telemetry.Start(ctx, "tools/call", trace.WithSpanKind(trace.SpanKindClient))
+		defer span.End()
+
+		span.SetAttributes(
+			telemetry.WithRPCMethod("tools/call"),
+			attribute.String("rpc.system.name", "jsonrpc"),
+			telemetry.WithToolName(toolName),
+			attribute.String("loom.tool.type", "mcp"),
+		)
+
+		type result struct {
+			res *mcp.CallToolResult
+			err error
+		}
+		resChan := make(chan result, 1)
+		startTime := time.Now()
+		go func() {
+			res, err := session.CallTool(ctx, params)
+			resChan <- result{res: res, err: err}
+		}()
+
+		for {
+			select {
+			case chunk := <-progressChan:
+				if !yield(chunk, nil) {
+					return
+				}
+			case r := <-resChan:
+				telemetry.RecordRPCDuration(ctx, time.Since(startTime), rpcconv.SystemNameJSONRPC, "tools/call")
+				if r.err != nil {
+					span.RecordError(r.err)
+					span.SetStatus(codes.Error, r.err.Error())
+					yield(message.ToolChunk{}, r.err)
+					return
+				}
+				content, isError := c.mapContent(r.res.Content)
+				yield(message.ToolChunk{
+					Content:           content,
+					StructuredContent: r.res.StructuredContent,
+					IsError:           isError || r.res.IsError,
+				}, nil)
+				return
+			case <-ctx.Done():
+				yield(message.ToolChunk{}, ctx.Err())
+				return
+			}
+		}
+	}, nil
+}
+
+func (c *Client) mapMessages(mcpMessages []*mcp.PromptMessage) []message.Message {
 	var messages []message.Message
 	for _, m := range mcpMessages {
-		content, _ := s.mapContent([]mcp.Content{m.Content})
+		content, _ := c.mapContent([]mcp.Content{m.Content})
 		switch m.Role {
 		case "user":
 			messages = append(messages, &message.User{Content: content})
 		case "assistant":
 			messages = append(messages, &message.Assistant{Content: content})
 		default:
-			// Fallback to user if role is unknown or if it's "system" (Loom has System message too)
 			if m.Role == "system" {
 				messages = append(messages, &message.System{Content: content})
 			} else {
@@ -328,7 +448,7 @@ func (s *SessionClient) mapMessages(mcpMessages []*mcp.PromptMessage) []message.
 	return messages
 }
 
-func (s *SessionClient) adaptTool(mcpTool *mcp.Tool) (*tool.Tool, error) {
+func (c *Client) adaptTool(mcpTool *mcp.Tool) (*tool.Tool, error) {
 	data, err := json.Marshal(mcpTool.InputSchema)
 	if err != nil {
 		return nil, err
@@ -358,7 +478,12 @@ func (s *SessionClient) adaptTool(mcpTool *mcp.Tool) (*tool.Tool, error) {
 			Description: mcpTool.Description,
 			InputSchema: &inputSchema,
 		},
-		Handler: s.createHandler(mcpTool.Name, resolvedInput),
+		Handler: func(ctx context.Context, call *message.ToolCall) (tool.ToolStream, error) {
+			if err := resolvedInput.Validate(call.Args); err != nil {
+				return nil, &tool.ValidationError{ToolName: mcpTool.Name, Err: err}
+			}
+			return c.CallTool(ctx, mcpTool.Name, call.Args)
+		},
 	}, nil
 }
 
@@ -385,86 +510,11 @@ func (c anyMapCarrier) Keys() []string {
 	return keys
 }
 
-func (s *SessionClient) createHandler(name string, schema *jsonschema.Resolved) tool.ToolHandler {
-	return func(ctx context.Context, call *message.ToolCall) (tool.ToolStream, error) {
-		if err := schema.Validate(call.Args); err != nil {
-			return nil, &tool.ValidationError{ToolName: name, Err: err}
-		}
-
-		token := uuid.New().String()
-		progressChan := make(chan message.ToolChunk, 10)
-		s.parent.progressRegistry.Store(token, progressChan)
-		defer s.parent.progressRegistry.Delete(token)
-
-		params := &mcp.CallToolParams{
-			Name:      name,
-			Arguments: call.Args,
-		}
-		params.SetProgressToken(token)
-
-		// Inject trace context into MCP metadata
-		if params.Meta == nil {
-			params.Meta = make(map[string]any)
-		}
-		otel.GetTextMapPropagator().Inject(ctx, anyMapCarrier(params.Meta))
-
-		return func(yield func(message.ToolChunk, error) bool) {
-			ctx, span := telemetry.Start(ctx, "tools/call", trace.WithSpanKind(trace.SpanKindClient))
-			defer span.End()
-
-			span.SetAttributes(
-				telemetry.WithRPCMethod("tools/call"),
-				attribute.String("rpc.system.name", "jsonrpc"),
-				telemetry.WithToolName(name),
-				attribute.String("loom.tool.type", "mcp"),
-			)
-
-			type result struct {
-				res *mcp.CallToolResult
-				err error
-			}
-			resChan := make(chan result, 1)
-			startTime := time.Now()
-			go func() {
-				res, err := s.session.CallTool(ctx, params)
-				resChan <- result{res: res, err: err}
-			}()
-
-			for {
-				select {
-				case chunk := <-progressChan:
-					if !yield(chunk, nil) {
-						return
-					}
-				case r := <-resChan:
-					telemetry.RecordRPCDuration(ctx, time.Since(startTime), rpcconv.SystemNameJSONRPC, "tools/call")
-					if r.err != nil {
-						span.RecordError(r.err)
-						span.SetStatus(codes.Error, r.err.Error())
-						yield(message.ToolChunk{}, r.err)
-						return
-					}
-					content, isError := s.mapContent(r.res.Content)
-					yield(message.ToolChunk{
-						Content:           content,
-						StructuredContent: r.res.StructuredContent,
-						IsError:           isError || r.res.IsError,
-					}, nil)
-					return
-				case <-ctx.Done():
-					yield(message.ToolChunk{}, ctx.Err())
-					return
-				}
-			}
-		}, nil
-	}
-}
-
-func (s *SessionClient) mapContent(mcpContent []mcp.Content) (message.Content, bool) {
+func (c *Client) mapContent(mcpContent []mcp.Content) (message.Content, bool) {
 	var content message.Content
 	isError := false
-	for _, c := range mcpContent {
-		switch v := c.(type) {
+	for _, mc := range mcpContent {
+		switch v := mc.(type) {
 		case *mcp.TextContent:
 			content = append(content, &message.TextBlock{Text: v.Text})
 		case *mcp.ImageContent:
@@ -479,7 +529,7 @@ func (s *SessionClient) mapContent(mcpContent []mcp.Content) (message.Content, b
 			})
 		case *mcp.EmbeddedResource:
 			if v.Resource != nil {
-				if block := s.mapResource(v.Resource); block != nil {
+				if block := c.mapResource(v.Resource); block != nil {
 					content = append(content, block)
 				}
 			}
@@ -488,7 +538,7 @@ func (s *SessionClient) mapContent(mcpContent []mcp.Content) (message.Content, b
 	return content, isError
 }
 
-func (s *SessionClient) mapResource(rc *mcp.ResourceContents) message.Block {
+func (c *Client) mapResource(rc *mcp.ResourceContents) message.Block {
 	extras := map[string]any{"uri": rc.URI}
 	if rc.Text != "" {
 		return &message.TextBlock{
@@ -507,8 +557,95 @@ func (s *SessionClient) mapResource(rc *mcp.ResourceContents) message.Block {
 		if strings.HasPrefix(mime, "video/") {
 			return &message.VideoBlock{Data: rc.Blob, MIMEType: mime, Extras: extras}
 		}
-		// Fallback to DocumentBlock for all other binary data (PDF, Office, etc.)
 		return &message.DocumentBlock{Data: rc.Blob, MIMEType: mime, Extras: extras}
 	}
 	return nil
+}
+
+// MultiClient manages multiple MCP server clients.
+type MultiClient struct {
+	clients map[string]*Client
+}
+
+// NewMultiClient creates a new MultiClient with the given configurations.
+func NewMultiClient(configs map[string]Config) *MultiClient {
+	clients := make(map[string]*Client)
+	for name, config := range configs {
+		clients[name] = NewClient(config)
+	}
+	return &MultiClient{clients: clients}
+}
+
+// Close closes all managed MCP sessions.
+func (m *MultiClient) Close() error {
+	var lastErr error
+	for _, c := range m.clients {
+		if err := c.Close(); err != nil {
+			lastErr = err
+		}
+	}
+	return lastErr
+}
+
+// CloseServer explicitly closes the session for the named MCP server.
+func (m *MultiClient) CloseServer(serverName string) error {
+	c, ok := m.clients[serverName]
+	if !ok {
+		return fmt.Errorf("server %q not found", serverName)
+	}
+	return c.Close()
+}
+
+// Restart explicitly closes and re-establishes the session for the named MCP server.
+func (m *MultiClient) Restart(ctx context.Context, serverName string) error {
+	c, ok := m.clients[serverName]
+	if !ok {
+		return fmt.Errorf("server %q not found", serverName)
+	}
+	return c.Restart(ctx)
+}
+
+// Status returns the current connection status of the named MCP server.
+func (m *MultiClient) Status(serverName string) (Status, error) {
+	c, ok := m.clients[serverName]
+	if !ok {
+		return StatusDisconnected, fmt.Errorf("server %q not found", serverName)
+	}
+	return c.Status()
+}
+
+// Tools retrieves the tools available on the named MCP server.
+func (m *MultiClient) Tools(ctx context.Context, serverName string) ([]*tool.Tool, error) {
+	c, ok := m.clients[serverName]
+	if !ok {
+		return nil, fmt.Errorf("server %q not found", serverName)
+	}
+	return c.Tools(ctx)
+}
+
+// GetResources retrieves resources from the named MCP server using a pooled session.
+func (m *MultiClient) GetResources(ctx context.Context, serverName string, uris []string) (message.Content, error) {
+	c, ok := m.clients[serverName]
+	if !ok {
+		return nil, fmt.Errorf("server %q not found", serverName)
+	}
+	return c.GetResources(ctx, uris)
+}
+
+// GetPrompt retrieves a prompt from the named MCP server using a pooled session.
+func (m *MultiClient) GetPrompt(ctx context.Context, serverName string, promptName string, args map[string]string) ([]message.Message, error) {
+	c, ok := m.clients[serverName]
+	if !ok {
+		return nil, fmt.Errorf("server %q not found", serverName)
+	}
+	return c.GetPrompt(ctx, promptName, args)
+}
+
+// CallTool executes a tool on the named MCP server using a pooled session.
+func (m *MultiClient) CallTool(ctx context.Context, serverName string, toolName string, args map[string]any) (tool.ToolStream, error) {
+	c, ok := m.clients[serverName]
+	if !ok {
+		return nil, fmt.Errorf("server %q not found", serverName)
+	}
+	return c.CallTool(ctx, toolName, args)
 }

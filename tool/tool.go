@@ -271,6 +271,7 @@ func AdaptStreamHandler[In any](name, desc string, schema *jsonschema.Resolved, 
 			if err != nil {
 				span.RecordError(err)
 				span.SetStatus(codes.Error, err.Error())
+				yield(message.ToolChunk{}, err) // FIX: Yield the error to the caller
 				return
 			}
 

@@ -57,12 +57,12 @@ func (sm *StateMap) UnmarshalJSON(data []byte) error {
 // from a [Checkpointer]. State is stored as raw JSON so that the checkpointer
 // implementation remains decoupled from the concrete State type.
 type Checkpoint struct {
-	Location  Location             `json:"location"`
-	Parent    *Location            `json:"parent,omitempty"`
-	State     StateMap             `json:"state"`
-	Next      []string             `json:"next"`
-	Timestamp time.Time            `json:"timestamp"`
-	Metadata  json.RawMessage      `json:"metadata,omitempty"`
+	Location  Location        `json:"location"`
+	Parent    *Location       `json:"parent,omitempty"`
+	State     StateMap        `json:"state"`
+	Next      []string        `json:"next"`
+	Timestamp time.Time       `json:"timestamp"`
+	Metadata  json.RawMessage `json:"metadata,omitempty"`
 }
 
 // CheckpointMetadata holds execution metadata for a checkpoint.

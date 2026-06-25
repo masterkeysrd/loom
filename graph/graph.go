@@ -443,5 +443,3 @@ func (n *endNode[State]) Execute(ctx context.Context, state State) (Command[Stat
 type State[T any] interface {
 	Copy() T
 }
-
-

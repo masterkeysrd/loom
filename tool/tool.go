@@ -127,6 +127,8 @@ type Tool struct {
 	Definition Definition
 	Annotation Annotation
 	Handler    ToolHandler
+
+	resolvedInputSchema *jsonschema.Resolved
 }
 
 // Option is a functional option applied to a [Tool] after construction.
@@ -138,6 +140,19 @@ func WithAnnotation(a Annotation) Option {
 		d.Annotation = a
 		d.Definition.Annotation = a
 	}
+}
+
+// Validate manually checks the given arguments against the tool's input schema.
+// It returns a [*ValidationError] if the arguments do not match the schema.
+func (t *Tool) Validate(args map[string]any) error {
+	if t.resolvedInputSchema == nil {
+		// Should not happen if constructed via New or NewStreaming
+		return fmt.Errorf("tool %q: unresolved schema", t.Definition.Name)
+	}
+	if err := t.resolvedInputSchema.Validate(args); err != nil {
+		return &ValidationError{ToolName: t.Definition.Name, Err: err}
+	}
+	return nil
 }
 
 // AdaptHandler wraps a typed [HandlerFunc] into a [ToolHandler] by:
@@ -327,7 +342,8 @@ func New[In, Out any](name, title, description string, handler HandlerFunc[In, O
 			InputSchema:  inputSchema,
 			OutputSchema: outputSchema,
 		},
-		Handler: AdaptHandler(name, description, resolvedInput, handler),
+		Handler:             AdaptHandler(name, description, resolvedInput, handler),
+		resolvedInputSchema: resolvedInput,
 	}
 	for _, opt := range opts {
 		opt(def)
@@ -356,7 +372,8 @@ func NewStreaming[In any](name, title, description string, handler StreamHandler
 			Description: description,
 			InputSchema: inputSchema,
 		},
-		Handler: AdaptStreamHandler(name, description, resolvedInput, handler),
+		Handler:             AdaptStreamHandler(name, description, resolvedInput, handler),
+		resolvedInputSchema: resolvedInput,
 	}
 	for _, opt := range opts {
 		opt(def)

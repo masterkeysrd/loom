@@ -356,7 +356,11 @@ func (m *Model) Stream(ctx context.Context, messages []message.Message, opts ...
 
 	sw, hasWriter := stream.WriterFromContext(ctx)
 	if hasWriter {
-		ctx = stream.WithMetadata(ctx, stream.Metadata{Source: "llm:" + m.profile.Name})
+		sourceName := m.name
+		if m.profile != nil {
+			sourceName = m.profile.Name
+		}
+		ctx = stream.WithMetadata(ctx, stream.Metadata{Source: "llm:" + sourceName})
 	}
 
 	resp, err := streamer(ctx, req)

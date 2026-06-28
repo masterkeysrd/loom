@@ -6,6 +6,7 @@ import (
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/stream"
 )
 
 type modelMockProvider struct {
@@ -148,5 +149,28 @@ func TestModel_CloneDeepCopiesConfig(t *testing.T) {
 	_, _ = m2.Stream(context.Background(), nil)
 	if provider.lastRequest.MaxTokens != 30 {
 		t.Errorf("m2 should have 30 tokens, got %d", provider.lastRequest.MaxTokens)
+	}
+}
+
+type mockWriter struct{}
+
+func (w *mockWriter) Write(ctx context.Context, data any) error {
+	return nil
+}
+
+func TestModel_NilProfileStreamDoesNotPanic(t *testing.T) {
+	provider := &modelMockProvider{}
+	model, err := llm.NewModel(provider, "unknown-model", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	w := &mockWriter{}
+	ctx := stream.WithWriter(context.Background(), w)
+
+	// This should not panic
+	_, err = model.Stream(ctx, nil)
+	if err != nil {
+		t.Fatalf("Stream failed: %v", err)
 	}
 }

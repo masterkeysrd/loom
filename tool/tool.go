@@ -83,8 +83,9 @@ type ToolHandler func(context.Context, *message.ToolCall) (ToolStream, error)
 
 // HandlerFunc is the typed handler variant accepted by [New].
 // The framework decodes and validates call.Args into In before invoking the
-// function. The output Out is JSON-encoded and placed in the [message.Tool]
-// content automatically so implementations never need to build message types.
+// function. The output Out is placed in the [message.Tool.StructuredContent]
+// field directly, allowing model providers to decide whether to map it as structured data
+// or serialize it to JSON content blocks.
 type HandlerFunc[In, Out any] func(context.Context, In) (Out, error)
 
 // StreamHandlerFunc is the typed handler variant for tools that natively stream results.
@@ -92,8 +93,9 @@ type StreamHandlerFunc[In any] func(context.Context, In) (ToolStream, error)
 
 // TextContentProvider is an optional interface that tool output types can implement to
 // control how their result is rendered as plain text for the LLM. When Out
-// implements TextContentProvider, [AdaptHandler] calls TextContent() instead of JSON-encoding
-// the value. The structured Go value is still available via [message.Tool.Structured].
+// implements TextContentProvider, [AdaptHandler] calls TextContent() to populate the
+// [message.Tool.Content] field. The raw structured Go value is still available via
+// [message.Tool.StructuredContent].
 type TextContentProvider interface {
 	TextContent() string
 }
@@ -268,17 +270,16 @@ func AdaptHandler[In, Out any](name, desc string, schema *jsonschema.Resolved, f
 				content = p.ToolContent()
 			} else if p, ok := any(out).(TextContentProvider); ok {
 				content = message.Content{&message.TextBlock{Text: p.TextContent()}}
-			} else {
-				outData, err := json.Marshal(out)
-				if err != nil {
-					yield(message.ToolChunk{}, fmt.Errorf("tool %q: failed to marshal output: %w", name, err))
-					return
-				}
-				content = message.Content{&message.TextBlock{Text: string(outData)}}
 			}
 
 			if telemetry.ShouldRecordContent(ctx) {
-				span.SetAttributes(telemetry.KeyContentToolResult.String(content.Text()))
+				if content != nil {
+					span.SetAttributes(telemetry.KeyContentToolResult.String(content.Text()))
+				} else {
+					if outData, err := json.Marshal(out); err == nil {
+						span.SetAttributes(telemetry.KeyContentToolResult.String(string(outData)))
+					}
+				}
 			}
 
 			yield(message.ToolChunk{

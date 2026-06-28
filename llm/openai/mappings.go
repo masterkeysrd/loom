@@ -278,48 +278,51 @@ func toAssistantMessageParam(m *message.Assistant) openai.ChatCompletionAssistan
 }
 
 func toToolString(m *message.Tool) string {
+	if len(m.Content) > 0 {
+		var sb strings.Builder
+		if m.IsError {
+			sb.WriteString("Error: ")
+		}
+
+		sb.WriteString(m.Content.Text())
+
+		for _, block := range m.Content {
+			switch b := block.(type) {
+			case *message.ImageBlock:
+				if b.URL != "" {
+					fmt.Fprintf(&sb, "\n[Image URL: %s]", b.URL)
+				} else {
+					sb.WriteString("\n[Image attached]")
+				}
+			case *message.AudioBlock:
+				if b.URL != "" {
+					fmt.Fprintf(&sb, "\n[Audio URL: %s]", b.URL)
+				} else {
+					sb.WriteString("\n[Audio attached]")
+				}
+			case *message.VideoBlock:
+				if b.URL != "" {
+					fmt.Fprintf(&sb, "\n[Video URL: %s]", b.URL)
+				} else {
+					sb.WriteString("\n[Video attached]")
+				}
+			case *message.DocumentBlock:
+				if b.URL != "" {
+					fmt.Fprintf(&sb, "\n[Document URL: %s]", b.URL)
+				} else {
+					sb.WriteString("\n[Document attached]")
+				}
+			}
+		}
+		return sb.String()
+	}
+
 	if m.StructuredContent != nil {
 		data, _ := json.Marshal(m.StructuredContent)
 		return string(data)
 	}
 
-	var sb strings.Builder
-	if m.IsError {
-		sb.WriteString("Error: ")
-	}
-
-	sb.WriteString(m.Content.Text())
-
-	for _, block := range m.Content {
-		switch b := block.(type) {
-		case *message.ImageBlock:
-			if b.URL != "" {
-				fmt.Fprintf(&sb, "\n[Image URL: %s]", b.URL)
-			} else {
-				sb.WriteString("\n[Image attached]")
-			}
-		case *message.AudioBlock:
-			if b.URL != "" {
-				fmt.Fprintf(&sb, "\n[Audio URL: %s]", b.URL)
-			} else {
-				sb.WriteString("\n[Audio attached]")
-			}
-		case *message.VideoBlock:
-			if b.URL != "" {
-				fmt.Fprintf(&sb, "\n[Video URL: %s]", b.URL)
-			} else {
-				sb.WriteString("\n[Video attached]")
-			}
-		case *message.DocumentBlock:
-			if b.URL != "" {
-				fmt.Fprintf(&sb, "\n[Document URL: %s]", b.URL)
-			} else {
-				sb.WriteString("\n[Document attached]")
-			}
-		}
-	}
-
-	return sb.String()
+	return ""
 }
 
 func ensureValidContent(content string) string {

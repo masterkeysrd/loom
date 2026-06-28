@@ -27,7 +27,7 @@
 // Example:
 //
 //	resp, err := container.Call(ctx, call)
-
+//
 //	if errors.Is(err, tool.ErrInvalidInput) {
 //	    // Handle validation error (e.g., tell the LLM it sent bad arguments)
 //	}

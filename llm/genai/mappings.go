@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -39,23 +40,23 @@ func toGenerateContentArgs(req *llm.Request) ([]*genai.Content, *genai.GenerateC
 	}
 
 	if req.Temperature != nil {
-		config.Temperature = genai.Ptr(*req.Temperature)
+		config.Temperature = new(*req.Temperature)
 	}
 
 	if req.TopP != nil {
-		config.TopP = genai.Ptr(*req.TopP)
+		config.TopP = new(*req.TopP)
 	}
 
 	if req.TopK != nil {
-		config.TopK = genai.Ptr(float32(*req.TopK))
+		config.TopK = new(float32(*req.TopK))
 	}
 
 	if req.PresencePenalty != nil {
-		config.PresencePenalty = genai.Ptr(*req.PresencePenalty)
+		config.PresencePenalty = new(*req.PresencePenalty)
 	}
 
 	if req.FrequencyPenalty != nil {
-		config.FrequencyPenalty = genai.Ptr(*req.FrequencyPenalty)
+		config.FrequencyPenalty = new(*req.FrequencyPenalty)
 	}
 
 	if len(req.Stop) > 0 {
@@ -77,7 +78,7 @@ func toGenerateContentArgs(req *llm.Request) ([]*genai.Content, *genai.GenerateC
 		}
 		if req.Thinking.Budget > 0 {
 			config.ThinkingConfig.IncludeThoughts = true
-			config.ThinkingConfig.ThinkingBudget = genai.Ptr(int32(req.Thinking.Budget))
+			config.ThinkingConfig.ThinkingBudget = new(int32(req.Thinking.Budget))
 		}
 		if req.Thinking.Effort != "" {
 			config.ThinkingConfig.ThinkingLevel = genai.ThinkingLevel(req.Thinking.Effort)
@@ -304,29 +305,31 @@ func toModelParts(content message.Content) ([]*genai.Part, error) {
 func toFunctionResponsePart(msg *message.Tool) (*genai.Part, error) {
 	response := make(map[string]any)
 
-	// Deep mapping: prioritize structured data if available
-	if msg.StructuredContent != nil {
-		// If it's already a map, use it. If not, marshal/unmarshal to get a map.
-		if m, ok := msg.StructuredContent.(map[string]any); ok {
-			for k, v := range m {
-				response[k] = v
-			}
-		} else {
-			data, _ := json.Marshal(msg.StructuredContent)
-			_ = json.Unmarshal(data, &response)
-		}
-	} else {
+	// First check if Content is populated. If so, map Content.
+	if len(msg.Content) > 0 {
 		text := msg.Content.Text()
 		if msg.IsError {
 			response["error"] = text
 		} else {
 			response["output"] = text
 		}
+	} else if msg.StructuredContent != nil {
+		// Fall back to StructuredContent if Content is not populated
+		if m, ok := msg.StructuredContent.(map[string]any); ok {
+			maps.Copy(response, m)
+		} else {
+			data, _ := json.Marshal(msg.StructuredContent)
+			_ = json.Unmarshal(data, &response)
+		}
 	}
 
 	// Ensure error key is set if IsError is true but missing from structured content
 	if msg.IsError && response["error"] == nil {
-		response["error"] = msg.Content.Text()
+		if text := msg.Content.Text(); text != "" {
+			response["error"] = text
+		} else {
+			response["error"] = "unknown error"
+		}
 	}
 
 	fr := &genai.FunctionResponse{

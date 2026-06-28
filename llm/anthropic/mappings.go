@@ -92,7 +92,19 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 			))
 		case *message.Tool:
 			// Consistently use ToolResultBlockParam for all tool outputs.
-			contentBlocks := toToolResultContent(msg.Content)
+			var contentBlocks []anthropic.ToolResultBlockParamContentUnion
+			if len(msg.Content) > 0 {
+				contentBlocks = toToolResultContent(msg.Content)
+			} else if msg.StructuredContent != nil {
+				data, _ := json.Marshal(msg.StructuredContent)
+				contentBlocks = []anthropic.ToolResultBlockParamContentUnion{
+					{
+						OfText: &anthropic.TextBlockParam{
+							Text: string(data),
+						},
+					},
+				}
+			}
 			trbp := &anthropic.ToolResultBlockParam{
 				ToolUseID: msg.ToolCallID,
 				Content:   contentBlocks,

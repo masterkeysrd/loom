@@ -44,7 +44,10 @@ func (a *AssistantAggregator) Add(chunk *AssistantChunk) {
 		if a.metrics == nil {
 			a.metrics = &TokenMetrics{}
 		}
-		*a.metrics = a.metrics.Add(*chunk.Metrics)
+		// Streaming chunks report cumulative token metrics. We overwrite the running total
+		// with the latest non-nil metrics instead of adding them, which avoids double-counting
+		// on providers that emit usage metadata on every chunk (e.g., Gemini).
+		*a.metrics = *chunk.Metrics
 	}
 }
 

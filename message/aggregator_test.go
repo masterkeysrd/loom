@@ -130,3 +130,52 @@ func extractThinking(blocks []Block) string {
 	}
 	return s
 }
+
+func TestAggregatorCumulativeMetrics(t *testing.T) {
+	chunks := []AssistantChunk{
+		{
+			Content: []Block{&TextBlock{Text: "foo"}},
+			Metrics: &TokenMetrics{
+				TotalTokens: 10,
+				Tokens: TokenDetails{
+					Input:  8,
+					Output: 2,
+				},
+			},
+		},
+		{
+			Content: []Block{&TextBlock{Text: "bar"}},
+			Metrics: &TokenMetrics{
+				TotalTokens: 11,
+				Tokens: TokenDetails{
+					Input:  8,
+					Output: 3,
+				},
+			},
+		},
+	}
+
+	agg := NewAssistantAggregator()
+	for i := range chunks {
+		agg.Add(&chunks[i])
+	}
+
+	msg, err := agg.Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	if msg.Metrics == nil {
+		t.Fatal("expected metrics to be set")
+	}
+
+	if msg.Metrics.TotalTokens != 11 {
+		t.Errorf("expected TotalTokens 11 (latest cumulative value), got %d (likely summed incorrectly)", msg.Metrics.TotalTokens)
+	}
+	if msg.Metrics.Tokens.Input != 8 {
+		t.Errorf("expected Input tokens 8, got %d", msg.Metrics.Tokens.Input)
+	}
+	if msg.Metrics.Tokens.Output != 3 {
+		t.Errorf("expected Output tokens 3, got %d", msg.Metrics.Tokens.Output)
+	}
+}

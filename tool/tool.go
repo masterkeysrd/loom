@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
+	internalctx "github.com/masterkeysrd/loom/internal/context"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/stream"
 	"github.com/masterkeysrd/loom/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -242,6 +244,17 @@ func AdaptHandler[In, Out any](name, desc string, schema *jsonschema.Resolved, f
 				}
 			}
 
+			rt := &Runtime{
+				CallID:   call.ID,
+				ToolName: call.Name,
+				Call:     call,
+				State:    internalctx.State(ctx),
+			}
+			if sw, ok := stream.WriterFromContext(ctx); ok {
+				rt.Stream = sw
+			}
+			ctx = WithRuntime(ctx, rt)
+
 			startTime := time.Now()
 			out, err := fn(ctx, input)
 			telemetry.RecordToolDuration(ctx, time.Since(startTime), telemetry.WithToolName(name))
@@ -337,6 +350,17 @@ func AdaptStreamHandler[In any](name, desc string, schema *jsonschema.Resolved, 
 					span.SetAttributes(telemetry.KeyContentToolArguments.String(string(args)))
 				}
 			}
+
+			rt := &Runtime{
+				CallID:   call.ID,
+				ToolName: call.Name,
+				Call:     call,
+				State:    internalctx.State(ctx),
+			}
+			if sw, ok := stream.WriterFromContext(ctx); ok {
+				rt.Stream = sw
+			}
+			ctx = WithRuntime(ctx, rt)
 
 			stream, err := fn(ctx, input)
 			if err != nil {

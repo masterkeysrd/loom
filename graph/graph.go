@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	internalctx "github.com/masterkeysrd/loom/internal/context"
 	"github.com/masterkeysrd/loom/stream"
 	"github.com/masterkeysrd/loom/telemetry"
 )
@@ -126,6 +127,22 @@ func (g *Graph[State]) Execute(ctx context.Context, input Command[State], loc *L
 			NodeName:  nodeName,
 			Location:  snapshot.Location,
 		})
+
+		execCtx = internalctx.WithState(execCtx, snapshot.State)
+		var sw stream.Writer
+		if w, ok := stream.WriterFromContext(execCtx); ok {
+			sw = w
+		}
+
+		rt := &Runtime{
+			RunID:    snapshot.Location.CheckpointID,
+			NodeName: nodeName,
+			Step:     currentStep,
+			Location: snapshot.Location,
+			State:    snapshot.State,
+			Stream:   sw,
+		}
+		execCtx = WithRuntime(execCtx, rt)
 
 		cmd, err := node.Execute(execCtx, snapshot.State.Copy())
 		if err != nil {

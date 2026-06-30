@@ -344,6 +344,14 @@ func (m *Model) Invoke(ctx context.Context, messages []message.Message, opts ...
 func (m *Model) Stream(ctx context.Context, messages []message.Message, opts ...CallOption) (StreamResponse, error) {
 	req := m.newRequest(messages, opts...)
 
+	rt := &Runtime{
+		Model:    m.name,
+		Provider: m.provider.Name(),
+		Profile:  m.profile,
+		Config:   m.config,
+	}
+	ctx = WithRuntime(ctx, rt)
+
 	// Create the base streamer that calls the provider
 	var streamer Streamer = func(ctx context.Context, r *Request) (StreamResponse, error) {
 		return m.provider.Stream(ctx, r)

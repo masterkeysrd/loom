@@ -391,6 +391,17 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"minimal",
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 400000,
@@ -453,6 +464,16 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 400000,
@@ -484,6 +505,17 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"minimal",
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 400000,
@@ -515,6 +547,17 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"minimal",
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 400000,
@@ -546,6 +589,14 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"high",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 400000,
@@ -577,6 +628,17 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"none",
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 400000,
@@ -608,6 +670,14 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"medium",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 128000,
@@ -639,6 +709,16 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 400000,
@@ -670,6 +750,17 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 400000,
@@ -701,6 +792,16 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 400000,
@@ -732,6 +833,18 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"none",
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 400000,
@@ -763,6 +876,14 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"medium",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 128000,
@@ -794,6 +915,17 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 400000,
@@ -826,6 +958,16 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"medium",
+						"high",
+						"xhigh",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 400000,
@@ -888,6 +1030,18 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"none",
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 400000,
@@ -920,6 +1074,18 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"none",
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 128000,
@@ -952,6 +1118,18 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"none",
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 1050000,
@@ -993,6 +1171,18 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"none",
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 400000,
@@ -1024,6 +1214,18 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"none",
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 400000,
@@ -1055,6 +1257,16 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"medium",
+						"high",
+						"xhigh",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 1050000,
@@ -1095,6 +1307,18 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"none",
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 1050000,
@@ -1136,6 +1360,16 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"medium",
+						"high",
+						"xhigh",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 1050000,
@@ -1263,6 +1497,37 @@ var staticProfiles = map[string]llm.ModelProfile{
 			CacheWrite: 0,
 		},
 	},
+	"gpt-image-2": {
+		ID:     "gpt-image-2",
+		Name:   "gpt-image-2",
+		Family: "gpt-image",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   false,
+			ToolCall:    false,
+			Temperature: false,
+		},
+		Limits: llm.ProfileLimits{
+			Context: 0,
+			Output:  0,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityImage,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      5,
+			Output:     30,
+			CacheRead:  1.25,
+			CacheWrite: 0,
+		},
+	},
 	"o1": {
 		ID:     "o1",
 		Name:   "o1",
@@ -1272,6 +1537,16 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 200000,
@@ -1295,66 +1570,6 @@ var staticProfiles = map[string]llm.ModelProfile{
 			CacheWrite: 0,
 		},
 	},
-	"o1-mini": {
-		ID:     "o1-mini",
-		Name:   "o1-mini",
-		Family: "o-mini",
-		Capabilities: llm.Capabilities{
-			Attachment:  false,
-			Reasoning:   true,
-			ToolCall:    false,
-			Temperature: false,
-		},
-		Limits: llm.ProfileLimits{
-			Context: 128000,
-			Output:  65536,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      1.1,
-			Output:     4.4,
-			CacheRead:  0.55,
-			CacheWrite: 0,
-		},
-	},
-	"o1-preview": {
-		ID:     "o1-preview",
-		Name:   "o1-preview",
-		Family: "o",
-		Capabilities: llm.Capabilities{
-			Attachment:  false,
-			Reasoning:   true,
-			ToolCall:    false,
-			Temperature: true,
-		},
-		Limits: llm.ProfileLimits{
-			Context: 128000,
-			Output:  32768,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      15,
-			Output:     60,
-			CacheRead:  7.5,
-			CacheWrite: 0,
-		},
-	},
 	"o1-pro": {
 		ID:     "o1-pro",
 		Name:   "o1-pro",
@@ -1364,6 +1579,16 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 200000,
@@ -1395,6 +1620,16 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 200000,
@@ -1427,6 +1662,14 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"medium",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 200000,
@@ -1458,6 +1701,16 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 200000,
@@ -1488,6 +1741,16 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 200000,
@@ -1519,6 +1782,16 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 200000,
@@ -1550,6 +1823,14 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"medium",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 200000,

@@ -78,10 +78,16 @@ type TierPricing struct {
 }
 
 type Capabilities struct {
-	Attachment  bool `json:"attachment"`
-	Reasoning   bool `json:"reasoning"`
-	ToolCall    bool `json:"tool_call"`
-	Temperature bool `json:"temperature"`
+	Attachment       bool              `json:"attachment"`
+	Reasoning        bool              `json:"reasoning"`
+	ToolCall         bool              `json:"tool_call"`
+	Temperature      bool              `json:"temperature"`
+	ReasoningOptions []ReasoningOption `json:"reasoning_options,omitempty"`
+}
+
+type ReasoningOption struct {
+	Type   string   `json:"type"`
+	Values []string `json:"values,omitempty"`
 }
 
 type Modalities struct {

@@ -120,13 +120,17 @@ type providerEntry struct {
 }
 
 type modelEntry struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Family      string `json:"family"`
-	Attachment  bool   `json:"attachment"`
-	Reasoning   bool   `json:"reasoning"`
-	ToolCall    bool   `json:"tool_call"`
-	Temperature bool   `json:"temperature"`
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	Family           string `json:"family"`
+	Attachment       bool   `json:"attachment"`
+	Reasoning        bool   `json:"reasoning"`
+	ReasoningOptions []struct {
+		Type   string   `json:"type"`
+		Values []string `json:"values"`
+	} `json:"reasoning_options"`
+	ToolCall    bool `json:"tool_call"`
+	Temperature bool `json:"temperature"`
 	Modalities  struct {
 		Input  []string `json:"input"`
 		Output []string `json:"output"`
@@ -178,6 +182,22 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   {{ .Reasoning }},
 			ToolCall:    {{ .ToolCall }},
 			Temperature: {{ .Temperature }},
+			{{- if .ReasoningOptions }}
+			ReasoningOptions: []llm.ReasoningOption{
+				{{- range .ReasoningOptions }}
+				{
+					Type: {{ printf "%q" .Type }},
+					{{- if .Values }}
+					Values: []string{
+						{{- range .Values }}
+						{{ printf "%q" . }},
+						{{- end }}
+					},
+					{{- end }}
+				},
+				{{- end }}
+			},
+			{{- end }}
 		},
 		Limits: llm.ProfileLimits{
 			Context: {{ .Limit.Context }},

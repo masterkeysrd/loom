@@ -7,70 +7,6 @@ package loomanthropic
 import "github.com/masterkeysrd/loom/llm"
 
 var staticProfiles = map[string]llm.ModelProfile{
-	"claude-3-5-haiku-20241022": {
-		ID:     "claude-3-5-haiku-20241022",
-		Name:   "Claude Haiku 3.5",
-		Family: "claude-haiku",
-		Capabilities: llm.Capabilities{
-			Attachment:  true,
-			Reasoning:   false,
-			ToolCall:    true,
-			Temperature: true,
-		},
-		Limits: llm.ProfileLimits{
-			Context: 200000,
-			Output:  8192,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityPDF,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      0.8,
-			Output:     4,
-			CacheRead:  0.08,
-			CacheWrite: 1,
-		},
-	},
-	"claude-3-5-haiku-latest": {
-		ID:     "claude-3-5-haiku-latest",
-		Name:   "Claude Haiku 3.5 (latest)",
-		Family: "claude-haiku",
-		Capabilities: llm.Capabilities{
-			Attachment:  true,
-			Reasoning:   false,
-			ToolCall:    true,
-			Temperature: true,
-		},
-		Limits: llm.ProfileLimits{
-			Context: 200000,
-			Output:  8192,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityPDF,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      0.8,
-			Output:     4,
-			CacheRead:  0.08,
-			CacheWrite: 1,
-		},
-	},
 	"claude-3-5-sonnet-20240620": {
 		ID:     "claude-3-5-sonnet-20240620",
 		Name:   "Claude Sonnet 3.5",
@@ -144,6 +80,11 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "budget_tokens",
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 200000,
@@ -263,6 +204,50 @@ var staticProfiles = map[string]llm.ModelProfile{
 			CacheWrite: 0.3,
 		},
 	},
+	"claude-fable-5": {
+		ID:     "claude-fable-5",
+		Name:   "Claude Fable 5",
+		Family: "claude-fable",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1000000,
+			Output:  128000,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      10,
+			Output:     50,
+			CacheRead:  1,
+			CacheWrite: 12.5,
+		},
+	},
 	"claude-haiku-4-5": {
 		ID:     "claude-haiku-4-5",
 		Name:   "Claude Haiku 4.5 (latest)",
@@ -272,6 +257,11 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "budget_tokens",
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 200000,
@@ -304,6 +294,11 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "budget_tokens",
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 200000,
@@ -336,6 +331,11 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "budget_tokens",
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 200000,
@@ -368,6 +368,11 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "budget_tokens",
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 200000,
@@ -400,6 +405,11 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "budget_tokens",
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 200000,
@@ -432,6 +442,11 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "budget_tokens",
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 200000,
@@ -464,6 +479,19 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+					},
+				},
+				{
+					Type: "budget_tokens",
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 200000,
@@ -496,6 +524,19 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+					},
+				},
+				{
+					Type: "budget_tokens",
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 200000,
@@ -528,6 +569,20 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"max",
+					},
+				},
+				{
+					Type: "budget_tokens",
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 1000000,
@@ -560,6 +615,18 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 1000000,
@@ -592,6 +659,18 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 1000000,
@@ -624,6 +703,11 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "budget_tokens",
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 200000,
@@ -656,6 +740,11 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "budget_tokens",
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 200000,
@@ -688,6 +777,11 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "budget_tokens",
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 200000,
@@ -720,6 +814,11 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "budget_tokens",
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 200000,
@@ -752,6 +851,20 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"max",
+					},
+				},
+				{
+					Type: "budget_tokens",
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 1000000,

@@ -84,6 +84,14 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "toggle",
+				},
+				{
+					Type: "budget_tokens",
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 1048576,
@@ -150,6 +158,14 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "toggle",
+				},
+				{
+					Type: "budget_tokens",
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 1048576,
@@ -214,6 +230,11 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "budget_tokens",
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 1048576,
@@ -287,6 +308,17 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"minimal",
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 1048576,
@@ -312,6 +344,38 @@ var staticProfiles = map[string]llm.ModelProfile{
 			CacheWrite: 0,
 		},
 	},
+	"gemini-3-pro-image-preview": {
+		ID:     "gemini-3-pro-image-preview",
+		Name:   "Nano Banana Pro",
+		Family: "gemini-pro",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    false,
+			Temperature: true,
+		},
+		Limits: llm.ProfileLimits{
+			Context: 131072,
+			Output:  32768,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      2,
+			Output:     120,
+			CacheRead:  0,
+			CacheWrite: 0,
+		},
+	},
 	"gemini-3-pro-preview": {
 		ID:     "gemini-3-pro-preview",
 		Name:   "Gemini 3 Pro Preview",
@@ -321,6 +385,15 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"high",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 1048576,
@@ -364,6 +437,15 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    false,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"minimal",
+						"high",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 65536,
@@ -397,6 +479,17 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"minimal",
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 1048576,
@@ -431,6 +524,17 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"minimal",
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 1048576,
@@ -465,6 +569,16 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 1048576,
@@ -508,6 +622,16 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 1048576,
@@ -551,6 +675,17 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"minimal",
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 1048576,
@@ -615,6 +750,14 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "toggle",
+				},
+				{
+					Type: "budget_tokens",
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 1048576,
@@ -649,6 +792,14 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "toggle",
+				},
+				{
+					Type: "budget_tokens",
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 1048576,
@@ -683,6 +834,11 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "toggle",
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 262144,
@@ -714,6 +870,11 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "toggle",
+				},
+			},
 		},
 		Limits: llm.ProfileLimits{
 			Context: 262144,

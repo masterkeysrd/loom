@@ -50,6 +50,8 @@ type ModelConfig struct {
 }
 
 type ThinkingConfig struct {
+	// Enabled toggles thinking on/off without setting a specific budget.
+	Enabled bool
 	// Budget is the maximum number of tokens for reasoning (Anthropic, Gemini).
 	Budget int
 	// Effort sets the reasoning intensity (OpenAI: low, medium, high; Gemini: ThinkingLevel; Anthropic: OutputConfig effort).
@@ -213,6 +215,19 @@ func (m *Model) WithStructuredOutput(schema *jsonschema.Schema) *Model {
 	return clone
 }
 
+// WithThinkingEnabled returns a clone of the model with thinking explicitly enabled or disabled.
+func (m *Model) WithThinkingEnabled(enabled bool) *Model {
+	clone := m.clone()
+	if clone.config == nil {
+		clone.config = &ModelConfig{}
+	}
+	if clone.config.Thinking == nil {
+		clone.config.Thinking = &ThinkingConfig{}
+	}
+	clone.config.Thinking.Enabled = enabled
+	return clone
+}
+
 // WithThinking returns a clone of the model with thinking enabled and a specific budget.
 func (m *Model) WithThinking(budget int) *Model {
 	clone := m.clone()
@@ -222,6 +237,7 @@ func (m *Model) WithThinking(budget int) *Model {
 	if clone.config.Thinking == nil {
 		clone.config.Thinking = &ThinkingConfig{}
 	}
+	clone.config.Thinking.Enabled = true
 	clone.config.Thinking.Budget = budget
 	return clone
 }
@@ -235,6 +251,7 @@ func (m *Model) WithThinkingEffort(effort string) *Model {
 	if clone.config.Thinking == nil {
 		clone.config.Thinking = &ThinkingConfig{}
 	}
+	clone.config.Thinking.Enabled = true
 	clone.config.Thinking.Effort = effort
 	return clone
 }
@@ -248,6 +265,7 @@ func (m *Model) WithAdaptiveThinking() *Model {
 	if clone.config.Thinking == nil {
 		clone.config.Thinking = &ThinkingConfig{}
 	}
+	clone.config.Thinking.Enabled = true
 	clone.config.Thinking.Adaptive = true
 	return clone
 }

@@ -23,11 +23,7 @@ const (
 // expected by the Google GenAI GenerateContentStream call: a content slice and a
 // config struct. System messages are extracted and placed in SystemInstruction.
 func toGenerateContentArgs(req *llm.Request) ([]*genai.Content, *genai.GenerateContentConfig, error) {
-	config := &genai.GenerateContentConfig{
-		ThinkingConfig: &genai.ThinkingConfig{
-			IncludeThoughts: true,
-		},
-	}
+	config := &genai.GenerateContentConfig{}
 
 	if ext, ok := req.Extensions[ContextCache{}.ExtensionID()]; ok {
 		if cc, ok := ext.(ContextCache); ok {
@@ -76,11 +72,15 @@ func toGenerateContentArgs(req *llm.Request) ([]*genai.Content, *genai.GenerateC
 		if config.ThinkingConfig == nil {
 			config.ThinkingConfig = &genai.ThinkingConfig{}
 		}
+		if req.Thinking.Enabled {
+			config.ThinkingConfig.IncludeThoughts = true
+		}
 		if req.Thinking.Budget > 0 {
 			config.ThinkingConfig.IncludeThoughts = true
 			config.ThinkingConfig.ThinkingBudget = new(int32(req.Thinking.Budget))
 		}
 		if req.Thinking.Effort != "" {
+			config.ThinkingConfig.IncludeThoughts = true
 			config.ThinkingConfig.ThinkingLevel = genai.ThinkingLevel(req.Thinking.Effort)
 		}
 	}

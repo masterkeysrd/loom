@@ -123,6 +123,9 @@ type modelEntry struct {
 	ID               string `json:"id"`
 	Name             string `json:"name"`
 	Family           string `json:"family"`
+	Knowledge        string `json:"knowledge"`
+	ReleaseDate      string `json:"release_date"`
+	LastUpdated      string `json:"last_updated"`
 	Attachment       bool   `json:"attachment"`
 	Reasoning        bool   `json:"reasoning"`
 	ReasoningOptions []struct {
@@ -174,9 +177,18 @@ import "github.com/masterkeysrd/loom/llm"
 var staticProfiles = map[string]llm.ModelProfile{
 {{- range .Models }}
 	{{ printf "%q" .ID }}: {
-		ID:     {{ printf "%q" .ID }},
-		Name:   {{ printf "%q" .Name }},
-		Family: {{ printf "%q" .Family }},
+		ID:          {{ printf "%q" .ID }},
+		Name:        {{ printf "%q" .Name }},
+		Family:      {{ printf "%q" .Family }},
+		{{- if .Knowledge }}
+		Knowledge:   {{ printf "%q" .Knowledge }},
+		{{- end }}
+		{{- if .ReleaseDate }}
+		ReleaseDate: {{ printf "%q" .ReleaseDate }},
+		{{- end }}
+		{{- if .LastUpdated }}
+		LastUpdated: {{ printf "%q" .LastUpdated }},
+		{{- end }}
 		Capabilities: llm.Capabilities{
 			Attachment:  {{ .Attachment }},
 			Reasoning:   {{ .Reasoning }},

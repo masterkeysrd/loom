@@ -13,6 +13,9 @@ type ModelProfile struct {
 	ID           string        `json:"id"`
 	Name         string        `json:"name"`
 	Family       string        `json:"family,omitempty"`
+	Knowledge    string        `json:"knowledge,omitempty"`
+	ReleaseDate  string        `json:"release_date,omitempty"`
+	LastUpdated  string        `json:"last_updated,omitempty"`
 	Capabilities Capabilities  `json:"capabilities"`
 	Limits       ProfileLimits `json:"limits"`
 	Modalities   Modalities    `json:"modalities"`

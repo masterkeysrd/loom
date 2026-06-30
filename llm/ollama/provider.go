@@ -207,6 +207,10 @@ func toModelProfile(id string, resp *api.ShowResponse) llm.ModelProfile {
 		},
 	}
 
+	if !resp.ModifiedAt.IsZero() {
+		p.LastUpdated = resp.ModifiedAt.Format(time.RFC3339)
+	}
+
 	// Map modalities and capabilities
 	for _, cap := range resp.Capabilities {
 		switch string(cap) {

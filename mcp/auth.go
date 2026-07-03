@@ -35,7 +35,7 @@ func newCliCodeReceiver(port int) *cliCodeReceiver {
 	}
 }
 
-func (r *cliCodeReceiver) serve(ctx context.Context) error {
+func (r *cliCodeReceiver) serve() error {
 	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", r.port))
 	if err != nil {
 		return fmt.Errorf("failed to listen on port %d: %w", r.port, err)
@@ -90,7 +90,7 @@ type OAuth2Provider struct {
 
 func (p *OAuth2Provider) GetHandler(ctx context.Context) (auth.OAuthHandler, error) {
 	receiver := newCliCodeReceiver(p.RedirectPort)
-	if err := receiver.serve(ctx); err != nil {
+	if err := receiver.serve(); err != nil {
 		return nil, err
 	}
 
@@ -131,7 +131,7 @@ type EnterpriseProvider struct {
 
 func (p *EnterpriseProvider) GetHandler(ctx context.Context) (auth.OAuthHandler, error) {
 	receiver := newCliCodeReceiver(p.RedirectPort)
-	if err := receiver.serve(ctx); err != nil {
+	if err := receiver.serve(); err != nil {
 		return nil, err
 	}
 

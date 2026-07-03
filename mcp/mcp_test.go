@@ -46,13 +46,9 @@ func TestMapContent(t *testing.T) {
 }
 
 func TestStructuredContentMapping(t *testing.T) {
-	c := &Client{}
 
 	// mock MCP CallToolResult with StructuredContent
 	mcpRes := &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: "unstructured"},
-		},
 		StructuredContent: map[string]any{"key": "value"},
 	}
 
@@ -60,9 +56,7 @@ func TestStructuredContentMapping(t *testing.T) {
 	// but we can test that mapContent works as expected if we had a way to call it.
 	// Actually, I just updated createHandler to pass StructuredContent.
 
-	content, _ := c.mapContent(mcpRes.Content)
 	chunk := message.ToolChunk{
-		Content:           content,
 		StructuredContent: mcpRes.StructuredContent,
 	}
 

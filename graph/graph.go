@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	internalctx "github.com/masterkeysrd/loom/internal/context"
+	"github.com/masterkeysrd/loom/store"
 	"github.com/masterkeysrd/loom/stream"
 	"github.com/masterkeysrd/loom/telemetry"
 )
@@ -32,6 +33,7 @@ type Graph[S State[S]] struct {
 	nodes        map[string]Node[S]
 	edges        map[string][]Edge[S]
 	checkpointer Checkpointer
+	store        store.Store
 }
 
 // Name returns the name of the graph.
@@ -47,6 +49,16 @@ func (g *Graph[S]) Checkpointer() Checkpointer {
 // SetCheckpointer sets the checkpointer of the graph.
 func (g *Graph[S]) SetCheckpointer(cp Checkpointer) {
 	g.checkpointer = cp
+}
+
+// Store returns the store of the graph.
+func (g *Graph[S]) Store() store.Store {
+	return g.store
+}
+
+// SetStore sets the store of the graph.
+func (g *Graph[S]) SetStore(s store.Store) {
+	g.store = s
 }
 
 // Execute runs the graph to completion (or until an interrupt) and returns
@@ -129,6 +141,9 @@ func (g *Graph[State]) Execute(ctx context.Context, input Command[State], loc *L
 		})
 
 		execCtx = internalctx.WithState(execCtx, snapshot.State)
+		if g.store != nil {
+			execCtx = store.WithStore(execCtx, g.store)
+		}
 		var sw stream.Writer
 		if w, ok := stream.WriterFromContext(execCtx); ok {
 			sw = w
@@ -140,6 +155,7 @@ func (g *Graph[State]) Execute(ctx context.Context, input Command[State], loc *L
 			Step:     currentStep,
 			Location: snapshot.Location,
 			State:    snapshot.State,
+			Store:    g.store,
 			Stream:   sw,
 		}
 		execCtx = WithRuntime(execCtx, rt)

@@ -10,6 +10,7 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	internalctx "github.com/masterkeysrd/loom/internal/context"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/store"
 	"github.com/masterkeysrd/loom/stream"
 	"github.com/masterkeysrd/loom/telemetry"
 	"go.opentelemetry.io/otel/attribute"
@@ -244,11 +245,13 @@ func AdaptHandler[In, Out any](name, desc string, schema *jsonschema.Resolved, f
 				}
 			}
 
+			store := store.FromContext(ctx)
 			rt := &Runtime{
 				CallID:   call.ID,
 				ToolName: call.Name,
 				Call:     call,
 				State:    internalctx.State(ctx),
+				Store:    store,
 			}
 			if sw, ok := stream.WriterFromContext(ctx); ok {
 				rt.Stream = sw
@@ -351,11 +354,13 @@ func AdaptStreamHandler[In any](name, desc string, schema *jsonschema.Resolved, 
 				}
 			}
 
+			store := store.FromContext(ctx)
 			rt := &Runtime{
 				CallID:   call.ID,
 				ToolName: call.Name,
 				Call:     call,
 				State:    internalctx.State(ctx),
+				Store:    store,
 			}
 			if sw, ok := stream.WriterFromContext(ctx); ok {
 				rt.Stream = sw

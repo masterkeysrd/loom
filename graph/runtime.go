@@ -2,8 +2,10 @@ package graph
 
 import (
 	"context"
+	"maps"
 	"sync"
 
+	"github.com/masterkeysrd/loom/store"
 	"github.com/masterkeysrd/loom/stream"
 )
 
@@ -16,6 +18,7 @@ type Runtime struct {
 
 	// Shared Resources
 	State  any           // The untyped graph state
+	Store  store.Store   // For persisting data across nodes
 	Stream stream.Writer // For emitting UI progress events
 
 	// responseMeta holds metadata to be appended to the node's result
@@ -39,9 +42,7 @@ func (r *Runtime) GetMeta() map[string]any {
 	defer r.mu.RUnlock()
 
 	m := make(map[string]any, len(r.responseMeta))
-	for k, v := range r.responseMeta {
-		m[k] = v
-	}
+	maps.Copy(m, r.responseMeta)
 	return m
 }
 

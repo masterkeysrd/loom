@@ -1,5 +1,7 @@
 package graph
 
+import "github.com/masterkeysrd/loom/store"
+
 // Builder constructs a [Graph] using a fluent API.
 // Call [New] to obtain a zero-value builder, configure it with the With*/Add*
 // methods, and finally call [Builder.Build] to compile the graph.
@@ -8,6 +10,7 @@ type Builder[S State[S]] struct {
 	nodes        map[string]Node[S]
 	edges        map[string][]Edge[S]
 	checkpointer Checkpointer
+	store        store.Store
 }
 
 // New returns a new [Builder] for a graph whose State type is State.
@@ -33,6 +36,13 @@ func (b *Builder[State]) WithName(name string) *Builder[State] {
 // and can be resumed later via [Graph.Execute] with a [Location].
 func (b *Builder[State]) WithCheckpointer(checkpointer Checkpointer) *Builder[State] {
 	b.checkpointer = checkpointer
+	return b
+}
+
+// WithStore attaches a [store.Store] to the graph.
+// When set, nodes can retrieve the store via [store.FromContext].
+func (b *Builder[State]) WithStore(s store.Store) *Builder[State] {
+	b.store = s
 	return b
 }
 
@@ -98,5 +108,6 @@ func (b *Builder[State]) Build() (*Graph[State], error) {
 		nodes:        b.nodes,
 		edges:        b.edges,
 		checkpointer: b.checkpointer,
+		store:        b.store,
 	}, nil
 }

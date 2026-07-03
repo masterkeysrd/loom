@@ -2,9 +2,11 @@ package tool
 
 import (
 	"context"
+	"maps"
 	"sync"
 
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/store"
 	"github.com/masterkeysrd/loom/stream"
 )
 
@@ -16,6 +18,7 @@ type Runtime struct {
 
 	// Shared Resources magically bridged from the graph!
 	State  any
+	Store  store.Store
 	Stream stream.Writer
 
 	mu           sync.RWMutex
@@ -38,9 +41,7 @@ func (r *Runtime) GetMeta() map[string]any {
 	defer r.mu.RUnlock()
 
 	m := make(map[string]any, len(r.responseMeta))
-	for k, v := range r.responseMeta {
-		m[k] = v
-	}
+	maps.Copy(m, r.responseMeta)
 	return m
 }
 

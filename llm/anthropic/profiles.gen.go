@@ -955,4 +955,54 @@ var staticProfiles = map[string]llm.ModelProfile{
 			CacheWrite: 3.75,
 		},
 	},
+	"claude-sonnet-5": {
+		ID:          "claude-sonnet-5",
+		Name:        "Claude Sonnet 5",
+		Family:      "claude-sonnet",
+		Knowledge:   "2026-01-31",
+		ReleaseDate: "2026-06-30",
+		LastUpdated: "2026-06-30",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "toggle",
+				},
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1000000,
+			Output:  128000,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      2,
+			Output:     10,
+			CacheRead:  0.2,
+			CacheWrite: 2.5,
+		},
+	},
 }

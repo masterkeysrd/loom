@@ -68,7 +68,7 @@ func errorKeep() SummarizerKeepFunc {
 func simpleInvoker(resp string) *mockInvoker { return &mockInvoker{response: resp} }
 
 // makeConfig returns a minimal valid SummarizerConfig.
-func makeConfig(invoker *mockInvoker, trigger SummarizerTrigger, keep SummarizerKeepFunc) SummarizerConfig {
+func makeConfig(_ *mockInvoker, trigger SummarizerTrigger, keep SummarizerKeepFunc) SummarizerConfig {
 	return SummarizerConfig{
 		TokenCounter: &fixedCounter{count: 100},
 		Triggers:     []SummarizerTrigger{trigger},

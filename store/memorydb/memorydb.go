@@ -115,10 +115,7 @@ func (s *Store) Search(ctx context.Context, namespace string, items any, opts ..
 	}
 	end := len(filtered)
 	if cfg.HasLim {
-		end = start + cfg.Limit
-		if end > len(filtered) {
-			end = len(filtered)
-		}
+		end = min(start+cfg.Limit, len(filtered))
 	}
 	if start >= len(filtered) {
 		filtered = nil

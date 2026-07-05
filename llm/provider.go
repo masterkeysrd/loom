@@ -59,6 +59,10 @@ type Request struct {
 	// Providers that do not support this parameter may ignore it.
 	MaxTokens int
 
+	// ContextWindow is the optional size of the context window (in tokens) to request.
+	// Providers that support dynamic context windows (e.g. Ollama) should use this.
+	ContextWindow int
+
 	// Temperature controls randomness. Higher values make the output more random.
 	Temperature *float32
 

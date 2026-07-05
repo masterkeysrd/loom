@@ -19,7 +19,10 @@ func toChatRequest(request *llm.Request) (*api.ChatRequest, error) {
 		"stream": true,
 	}
 	if request.MaxTokens > 0 {
-		options["num_ctx"] = request.MaxTokens
+		options["num_predict"] = request.MaxTokens
+	}
+	if request.ContextWindow > 0 {
+		options["num_ctx"] = request.ContextWindow
 	}
 
 	if request.Temperature != nil {

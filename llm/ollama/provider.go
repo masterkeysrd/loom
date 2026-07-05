@@ -70,6 +70,12 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 		return nil, fmt.Errorf("failed to convert chat request: %w", err)
 	}
 
+	if _, hasCtx := ollamaRequest.Options["num_ctx"]; !hasCtx {
+		if profile, ok := p.GetProfile(request.Model); ok && profile.Limits.Context > 0 {
+			ollamaRequest.Options["num_ctx"] = profile.Limits.Context
+		}
+	}
+
 	if sw, ok := stream.WriterFromContext(ctx); ok {
 		_ = sw.Write(ctx, stream.Event{
 			Name: "on_llm_request",

@@ -27,7 +27,8 @@ func (m *modelMockProvider) GetProfile(id string) (llm.ModelProfile, bool) {
 	if id == "test-model" {
 		return llm.ModelProfile{
 			Limits: llm.ProfileLimits{
-				Output: 4096,
+				Output:  4096,
+				Context: 8192,
 			},
 		}, true
 	}
@@ -48,6 +49,10 @@ func TestNewModel_DefaultsMaxTokensFromProfile(t *testing.T) {
 
 	if provider.lastRequest.MaxTokens != 4096 {
 		t.Errorf("expected MaxTokens to default to 4096, got %d", provider.lastRequest.MaxTokens)
+	}
+
+	if provider.lastRequest.ContextWindow != 8192 {
+		t.Errorf("expected ContextWindow to default to 8192, got %d", provider.lastRequest.ContextWindow)
 	}
 }
 
@@ -172,5 +177,17 @@ func TestModel_NilProfileStreamDoesNotPanic(t *testing.T) {
 	_, err = model.Stream(ctx, nil)
 	if err != nil {
 		t.Fatalf("Stream failed: %v", err)
+	}
+}
+
+func TestModel_WithContextWindow(t *testing.T) {
+	provider := &modelMockProvider{}
+	model, _ := llm.NewModel(provider, "test-model", nil)
+
+	m1 := model.WithContextWindow(16384)
+
+	_, _ = m1.Stream(context.Background(), nil)
+	if provider.lastRequest.ContextWindow != 16384 {
+		t.Errorf("expected ContextWindow to be 16384, got %d", provider.lastRequest.ContextWindow)
 	}
 }

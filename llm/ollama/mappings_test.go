@@ -46,3 +46,24 @@ func TestToChatRequestJSONMode(t *testing.T) {
 		t.Errorf("expected Format to be \"json\", got %s", string(ollamaReq.Format))
 	}
 }
+
+func TestToChatRequestMaxTokensAndContextWindow(t *testing.T) {
+	req := &llm.Request{
+		Model:         "llama3",
+		MaxTokens:     100,
+		ContextWindow: 8192,
+	}
+
+	ollamaReq, err := toChatRequest(req)
+	if err != nil {
+		t.Fatalf("toChatRequest failed: %v", err)
+	}
+
+	if val, ok := ollamaReq.Options["num_predict"].(int); !ok || val != 100 {
+		t.Errorf("expected num_predict to be 100, got %v", ollamaReq.Options["num_predict"])
+	}
+
+	if val, ok := ollamaReq.Options["num_ctx"].(int); !ok || val != 8192 {
+		t.Errorf("expected num_ctx to be 8192, got %v", ollamaReq.Options["num_ctx"])
+	}
+}

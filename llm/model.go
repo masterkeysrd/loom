@@ -16,6 +16,9 @@ type ModelConfig struct {
 	// MaxTokens is the maximum number of tokens that the model is allowed to use in the response, this is used for context window management and to avoid out of memory errors.
 	MaxTokens int
 
+	// ContextWindow is the size of the context window to request (in tokens).
+	ContextWindow int
+
 	// Temperature controls randomness. Higher values make the output more random.
 	Temperature *float32
 
@@ -99,6 +102,7 @@ func NewModel(provider Provider, name string, config *ModelConfig) (*Model, erro
 		config = &ModelConfig{}
 		if profile != nil {
 			config.MaxTokens = profile.Limits.Output
+			config.ContextWindow = profile.Limits.Context
 		}
 	}
 
@@ -150,6 +154,16 @@ func (m *Model) WithMaxTokens(max int) *Model {
 		clone.config = &ModelConfig{}
 	}
 	clone.config.MaxTokens = max
+	return clone
+}
+
+// WithContextWindow returns a clone of the model with ContextWindow set.
+func (m *Model) WithContextWindow(ctx int) *Model {
+	clone := m.clone()
+	if clone.config == nil {
+		clone.config = &ModelConfig{}
+	}
+	clone.config.ContextWindow = ctx
 	return clone
 }
 
@@ -421,6 +435,7 @@ func (m *Model) newRequest(messages []message.Message, opts ...CallOption) *Requ
 
 	if m.config != nil {
 		req.MaxTokens = m.config.MaxTokens
+		req.ContextWindow = m.config.ContextWindow
 		req.Temperature = m.config.Temperature
 		req.TopP = m.config.TopP
 		req.TopK = m.config.TopK

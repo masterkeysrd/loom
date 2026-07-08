@@ -50,6 +50,10 @@ type ModelConfig struct {
 
 	// Extensions captures provider-specific configurations.
 	Extensions map[string]Extension
+
+	// Options captures arbitrary provider-specific key-value options
+	// (e.g. Ollama's "keep_alive", "seed", "num_ctx").
+	Options map[string]any
 }
 
 type ThinkingConfig struct {

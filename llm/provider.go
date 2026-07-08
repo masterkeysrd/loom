@@ -94,6 +94,12 @@ type Request struct {
 	// Extensions captures provider-specific configurations that
 	// are not part of the common LLM parameters.
 	Extensions map[string]Extension
+
+	// Options captures arbitrary provider-specific key-value options
+	// (e.g. Ollama's "keep_alive", "seed", "num_ctx"). Providers that
+	// support such knobs should read from this map and apply them to
+	// their wire-format request.
+	Options map[string]any
 }
 
 // CacheManager is an optional interface that providers can implement if they

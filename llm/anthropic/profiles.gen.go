@@ -7,226 +7,11 @@ package loomanthropic
 import "github.com/masterkeysrd/loom/llm"
 
 var staticProfiles = map[string]llm.ModelProfile{
-	"claude-3-5-sonnet-20240620": {
-		ID:          "claude-3-5-sonnet-20240620",
-		Name:        "Claude Sonnet 3.5",
-		Family:      "claude-sonnet",
-		Knowledge:   "2024-04-30",
-		ReleaseDate: "2024-06-20",
-		LastUpdated: "2024-06-20",
-		Capabilities: llm.Capabilities{
-			Attachment:  true,
-			Reasoning:   false,
-			ToolCall:    true,
-			Temperature: true,
-		},
-		Limits: llm.ProfileLimits{
-			Context: 200000,
-			Output:  8192,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityPDF,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      3,
-			Output:     15,
-			CacheRead:  0.3,
-			CacheWrite: 3.75,
-		},
-	},
-	"claude-3-5-sonnet-20241022": {
-		ID:          "claude-3-5-sonnet-20241022",
-		Name:        "Claude Sonnet 3.5 v2",
-		Family:      "claude-sonnet",
-		Knowledge:   "2024-04-30",
-		ReleaseDate: "2024-10-22",
-		LastUpdated: "2024-10-22",
-		Capabilities: llm.Capabilities{
-			Attachment:  true,
-			Reasoning:   false,
-			ToolCall:    true,
-			Temperature: true,
-		},
-		Limits: llm.ProfileLimits{
-			Context: 200000,
-			Output:  8192,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityPDF,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      3,
-			Output:     15,
-			CacheRead:  0.3,
-			CacheWrite: 3.75,
-		},
-	},
-	"claude-3-7-sonnet-20250219": {
-		ID:          "claude-3-7-sonnet-20250219",
-		Name:        "Claude Sonnet 3.7",
-		Family:      "claude-sonnet",
-		Knowledge:   "2024-10-31",
-		ReleaseDate: "2025-02-19",
-		LastUpdated: "2025-02-19",
-		Capabilities: llm.Capabilities{
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
-				{
-					Type: "budget_tokens",
-				},
-			},
-		},
-		Limits: llm.ProfileLimits{
-			Context: 200000,
-			Output:  64000,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityPDF,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      3,
-			Output:     15,
-			CacheRead:  0.3,
-			CacheWrite: 3.75,
-		},
-	},
-	"claude-3-haiku-20240307": {
-		ID:          "claude-3-haiku-20240307",
-		Name:        "Claude Haiku 3",
-		Family:      "claude-haiku",
-		Knowledge:   "2023-08-31",
-		ReleaseDate: "2024-03-13",
-		LastUpdated: "2024-03-13",
-		Capabilities: llm.Capabilities{
-			Attachment:  true,
-			Reasoning:   false,
-			ToolCall:    true,
-			Temperature: true,
-		},
-		Limits: llm.ProfileLimits{
-			Context: 200000,
-			Output:  4096,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityPDF,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      0.25,
-			Output:     1.25,
-			CacheRead:  0.03,
-			CacheWrite: 0.3,
-		},
-	},
-	"claude-3-opus-20240229": {
-		ID:          "claude-3-opus-20240229",
-		Name:        "Claude Opus 3",
-		Family:      "claude-opus",
-		Knowledge:   "2023-08-31",
-		ReleaseDate: "2024-02-29",
-		LastUpdated: "2024-02-29",
-		Capabilities: llm.Capabilities{
-			Attachment:  true,
-			Reasoning:   false,
-			ToolCall:    true,
-			Temperature: true,
-		},
-		Limits: llm.ProfileLimits{
-			Context: 200000,
-			Output:  4096,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityPDF,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      15,
-			Output:     75,
-			CacheRead:  1.5,
-			CacheWrite: 18.75,
-		},
-	},
-	"claude-3-sonnet-20240229": {
-		ID:          "claude-3-sonnet-20240229",
-		Name:        "Claude Sonnet 3",
-		Family:      "claude-sonnet",
-		Knowledge:   "2023-08-31",
-		ReleaseDate: "2024-03-04",
-		LastUpdated: "2024-03-04",
-		Capabilities: llm.Capabilities{
-			Attachment:  true,
-			Reasoning:   false,
-			ToolCall:    true,
-			Temperature: true,
-		},
-		Limits: llm.ProfileLimits{
-			Context: 200000,
-			Output:  4096,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityPDF,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      3,
-			Output:     15,
-			CacheRead:  0.3,
-			CacheWrite: 0.3,
-		},
-	},
 	"claude-fable-5": {
 		ID:          "claude-fable-5",
 		Name:        "Claude Fable 5",
 		Family:      "claude-fable",
-		ReleaseDate: "2026-06-09",
+		ReleaseDate: "2026-06-07",
 		LastUpdated: "2026-06-09",
 		Capabilities: llm.Capabilities{
 			Attachment:  true,
@@ -348,46 +133,6 @@ var staticProfiles = map[string]llm.ModelProfile{
 			CacheWrite: 1.25,
 		},
 	},
-	"claude-opus-4-0": {
-		ID:          "claude-opus-4-0",
-		Name:        "Claude Opus 4 (latest)",
-		Family:      "claude-opus",
-		Knowledge:   "2025-03-31",
-		ReleaseDate: "2025-05-22",
-		LastUpdated: "2025-05-22",
-		Capabilities: llm.Capabilities{
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
-				{
-					Type: "budget_tokens",
-				},
-			},
-		},
-		Limits: llm.ProfileLimits{
-			Context: 200000,
-			Output:  32000,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityPDF,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      15,
-			Output:     75,
-			CacheRead:  1.5,
-			CacheWrite: 18.75,
-		},
-	},
 	"claude-opus-4-1": {
 		ID:          "claude-opus-4-1",
 		Name:        "Claude Opus 4.1 (latest)",
@@ -435,46 +180,6 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-03-31",
 		ReleaseDate: "2025-08-05",
 		LastUpdated: "2025-08-05",
-		Capabilities: llm.Capabilities{
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
-				{
-					Type: "budget_tokens",
-				},
-			},
-		},
-		Limits: llm.ProfileLimits{
-			Context: 200000,
-			Output:  32000,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityPDF,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      15,
-			Output:     75,
-			CacheRead:  1.5,
-			CacheWrite: 18.75,
-		},
-	},
-	"claude-opus-4-20250514": {
-		ID:          "claude-opus-4-20250514",
-		Name:        "Claude Opus 4",
-		Family:      "claude-opus",
-		Knowledge:   "2025-03-31",
-		ReleaseDate: "2025-05-22",
-		LastUpdated: "2025-05-22",
 		Capabilities: llm.Capabilities{
 			Attachment:  true,
 			Reasoning:   true,
@@ -561,7 +266,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Name:        "Claude Opus 4.5",
 		Family:      "claude-opus",
 		Knowledge:   "2025-03-31",
-		ReleaseDate: "2025-11-01",
+		ReleaseDate: "2025-11-24",
 		LastUpdated: "2025-11-01",
 		Capabilities: llm.Capabilities{
 			Attachment:  true,
@@ -609,7 +314,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Name:        "Claude Opus 4.6",
 		Family:      "claude-opus",
 		Knowledge:   "2025-05-31",
-		ReleaseDate: "2026-02-05",
+		ReleaseDate: "2026-02-04",
 		LastUpdated: "2026-03-13",
 		Capabilities: llm.Capabilities{
 			Attachment:  true,
@@ -658,7 +363,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Name:        "Claude Opus 4.7",
 		Family:      "claude-opus",
 		Knowledge:   "2026-01-31",
-		ReleaseDate: "2026-04-16",
+		ReleaseDate: "2026-04-14",
 		LastUpdated: "2026-04-16",
 		Capabilities: llm.Capabilities{
 			Attachment:  true,
@@ -746,86 +451,6 @@ var staticProfiles = map[string]llm.ModelProfile{
 			CacheWrite: 6.25,
 		},
 	},
-	"claude-sonnet-4-0": {
-		ID:          "claude-sonnet-4-0",
-		Name:        "Claude Sonnet 4 (latest)",
-		Family:      "claude-sonnet",
-		Knowledge:   "2025-03-31",
-		ReleaseDate: "2025-05-22",
-		LastUpdated: "2025-05-22",
-		Capabilities: llm.Capabilities{
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
-				{
-					Type: "budget_tokens",
-				},
-			},
-		},
-		Limits: llm.ProfileLimits{
-			Context: 200000,
-			Output:  64000,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityPDF,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      3,
-			Output:     15,
-			CacheRead:  0.3,
-			CacheWrite: 3.75,
-		},
-	},
-	"claude-sonnet-4-20250514": {
-		ID:          "claude-sonnet-4-20250514",
-		Name:        "Claude Sonnet 4",
-		Family:      "claude-sonnet",
-		Knowledge:   "2025-03-31",
-		ReleaseDate: "2025-05-22",
-		LastUpdated: "2025-05-22",
-		Capabilities: llm.Capabilities{
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
-				{
-					Type: "budget_tokens",
-				},
-			},
-		},
-		Limits: llm.ProfileLimits{
-			Context: 200000,
-			Output:  64000,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityPDF,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      3,
-			Output:     15,
-			CacheRead:  0.3,
-			CacheWrite: 3.75,
-		},
-	},
 	"claude-sonnet-4-5": {
 		ID:          "claude-sonnet-4-5",
 		Name:        "Claude Sonnet 4.5 (latest)",
@@ -845,7 +470,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			},
 		},
 		Limits: llm.ProfileLimits{
-			Context: 200000,
+			Context: 1000000,
 			Output:  64000,
 		},
 		Modalities: llm.Modalities{
@@ -885,7 +510,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			},
 		},
 		Limits: llm.ProfileLimits{
-			Context: 200000,
+			Context: 1000000,
 			Output:  64000,
 		},
 		Modalities: llm.Modalities{
@@ -935,7 +560,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		},
 		Limits: llm.ProfileLimits{
 			Context: 1000000,
-			Output:  64000,
+			Output:  128000,
 		},
 		Modalities: llm.Modalities{
 			Inputs: []llm.Modality{
@@ -960,7 +585,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Name:        "Claude Sonnet 5",
 		Family:      "claude-sonnet",
 		Knowledge:   "2026-01-31",
-		ReleaseDate: "2026-06-30",
+		ReleaseDate: "2026-06-29",
 		LastUpdated: "2026-06-30",
 		Capabilities: llm.Capabilities{
 			Attachment:  true,

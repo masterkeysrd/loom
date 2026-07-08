@@ -14,7 +14,7 @@ func TestToModelProfile(t *testing.T) {
 			Family: "gemma3",
 		},
 		Parameters:   "num_ctx 8192\ntemperature 0.7",
-		Capabilities: []model.Capability{"completion", "vision"},
+		Capabilities: []model.Capability{"completion", "vision", "thinking", "tools"},
 		ModelInfo: map[string]any{
 			"gemma3.context_length": float64(131072),
 		},
@@ -28,6 +28,10 @@ func TestToModelProfile(t *testing.T) {
 
 	if profile.Family != "gemma3" {
 		t.Errorf("expected family gemma3, got %s", profile.Family)
+	}
+
+	if !profile.OpenWeights {
+		t.Error("expected OpenWeights to be true")
 	}
 
 	// ModelInfo should override Parameters
@@ -52,6 +56,10 @@ func TestToModelProfile(t *testing.T) {
 
 	if !profile.Capabilities.ToolCall {
 		t.Error("expected ToolCall capability to be true")
+	}
+
+	if !profile.Capabilities.Reasoning {
+		t.Error("expected Reasoning capability to be true")
 	}
 }
 

@@ -204,12 +204,13 @@ func (p *Provider) fetchAndCacheProfile(id string) (llm.ModelProfile, error) {
 
 func toModelProfile(id string, resp *api.ShowResponse) llm.ModelProfile {
 	p := llm.ModelProfile{
-		ID:     id,
-		Name:   id,
-		Family: resp.Details.Family,
+		ID:          id,
+		Name:        id,
+		Family:      resp.Details.Family,
+		OpenWeights: true, // Ollama runs open-weights models
 		Capabilities: llm.Capabilities{
 			Temperature: true,
-			ToolCall:    true, // Assume true for modern Ollama models
+			ToolCall:    true, // Assume true for modern Ollama models by default
 		},
 	}
 
@@ -218,11 +219,24 @@ func toModelProfile(id string, resp *api.ShowResponse) llm.ModelProfile {
 	}
 
 	// Map modalities and capabilities
-	for _, cap := range resp.Capabilities {
-		switch string(cap) {
-		case "vision":
-			p.Modalities.Inputs = append(p.Modalities.Inputs, llm.ModalityImage)
-			p.Capabilities.Attachment = true
+	if len(resp.Capabilities) > 0 {
+		hasTools := false
+		for _, cap := range resp.Capabilities {
+			if string(cap) == "tools" {
+				hasTools = true
+				break
+			}
+		}
+		p.Capabilities.ToolCall = hasTools
+
+		for _, cap := range resp.Capabilities {
+			switch string(cap) {
+			case "vision":
+				p.Modalities.Inputs = append(p.Modalities.Inputs, llm.ModalityImage)
+				p.Capabilities.Attachment = true
+			case "thinking":
+				p.Capabilities.Reasoning = true
+			}
 		}
 	}
 

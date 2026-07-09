@@ -81,6 +81,7 @@ func (c *Container) Call(ctx context.Context, tc *message.ToolCall) (*message.To
 	var content message.Content
 	var structured any
 	var isError bool
+	var metadata map[string]any
 	for chunk, err := range stream {
 		if err != nil {
 			return nil, err
@@ -94,13 +95,25 @@ func (c *Container) Call(ctx context.Context, tc *message.ToolCall) (*message.To
 		if chunk.IsError {
 			isError = true
 		}
+		if len(chunk.Metadata) > 0 {
+			if metadata == nil {
+				metadata = make(map[string]any)
+			}
+			for k, v := range chunk.Metadata {
+				metadata[k] = v
+			}
+		}
 	}
 
-	return &message.Tool{
+	toolMsg := &message.Tool{
 		ToolCallID:        tc.ID,
 		Name:              tc.Name,
 		Content:           content,
 		StructuredContent: structured,
 		IsError:           isError,
-	}, nil
+	}
+	if len(metadata) > 0 {
+		toolMsg.SetMetadata(metadata)
+	}
+	return toolMsg, nil
 }

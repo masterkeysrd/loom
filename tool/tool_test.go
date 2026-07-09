@@ -115,3 +115,40 @@ func TestValidator(t *testing.T) {
 		t.Errorf("expected execution to succeed, got %v", err)
 	}
 }
+
+func TestToolRuntimeMetadata(t *testing.T) {
+	myTool, err := New("test_metadata", "test", "test", func(ctx context.Context, in map[string]any) (string, error) {
+		rt, ok := RuntimeFromContext(ctx)
+		if !ok {
+			return "", errors.New("runtime not found in context")
+		}
+		rt.SetMeta("source", "unit_test")
+		rt.SetMeta("score", 95)
+		return "ok", nil
+	})
+	if err != nil {
+		t.Fatalf("failed to create tool: %v", err)
+	}
+
+	c := NewContainer(myTool)
+	res, err := c.Call(context.Background(), &message.ToolCall{
+		Name: "test_metadata",
+		Args: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("Call failed: %v", err)
+	}
+
+	meta := res.GetMetadata()
+	if meta == nil {
+		t.Fatalf("expected metadata to be populated, got nil")
+	}
+
+	if meta["source"] != "unit_test" {
+		t.Errorf("expected meta[\"source\"] to be \"unit_test\", got %v", meta["source"])
+	}
+
+	if meta["score"] != 95 {
+		t.Errorf("expected meta[\"score\"] to be 95, got %v", meta["score"])
+	}
+}

@@ -50,6 +50,9 @@ type ToolChunk struct {
 
 	// IsError indicates if this chunk represents a functional error.
 	IsError bool `json:"is_error,omitempty"`
+
+	// Metadata carries any response metadata set by the tool runtime.
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // isChunk marks ToolChunk as a [Chunk].

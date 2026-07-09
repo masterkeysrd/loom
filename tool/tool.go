@@ -298,9 +298,15 @@ func AdaptHandler[In, Out any](name, desc string, schema *jsonschema.Resolved, f
 				}
 			}
 
+			var metadata map[string]any
+			if meta := rt.GetMeta(); len(meta) > 0 {
+				metadata = meta
+			}
+
 			yield(message.ToolChunk{
 				Content:           content,
 				StructuredContent: out,
+				Metadata:          metadata,
 			}, nil)
 		}, nil
 	}
@@ -376,6 +382,17 @@ func AdaptStreamHandler[In any](name, desc string, schema *jsonschema.Resolved, 
 			}
 
 			for chunk, err := range stream {
+				if err == nil {
+					if meta := rt.GetMeta(); len(meta) > 0 {
+						if chunk.Metadata == nil {
+							chunk.Metadata = make(map[string]any)
+						}
+						for k, v := range meta {
+							chunk.Metadata[k] = v
+						}
+					}
+				}
+
 				if err != nil {
 					span.RecordError(err)
 					span.SetStatus(codes.Error, err.Error())

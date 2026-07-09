@@ -112,3 +112,53 @@ func cloneMap(input map[string]any) map[string]any {
 	maps.Copy(clone, input)
 	return clone
 }
+
+// CloneMessage returns a deep copy of the given Message.
+func CloneMessage(msg Message) Message {
+	if msg == nil {
+		return nil
+	}
+
+	switch m := msg.(type) {
+	case *System:
+		return &System{
+			Base:    cloneBase(m.Base),
+			Content: CloneContent(m.Content),
+		}
+	case *User:
+		return &User{
+			Base:    cloneBase(m.Base),
+			Content: CloneContent(m.Content),
+		}
+	case *Assistant:
+		return &Assistant{
+			Base:    cloneBase(m.Base),
+			Content: CloneContent(m.Content),
+		}
+	case *Tool:
+		return &Tool{
+			Base:              cloneBase(m.Base),
+			ToolCallID:        m.ToolCallID,
+			Name:              m.Name,
+			Content:           CloneContent(m.Content),
+			IsError:           m.IsError,
+			StructuredContent: m.StructuredContent,
+		}
+	default:
+		return msg
+	}
+}
+
+func cloneBase(b Base) Base {
+	clone := Base{
+		ID: b.ID,
+	}
+	if b.Metadata != nil {
+		clone.Metadata = cloneMap(b.Metadata)
+	}
+	if b.Extensions != nil {
+		clone.Extensions = make(ExtensionMap, len(b.Extensions))
+		maps.Copy(clone.Extensions, b.Extensions)
+	}
+	return clone
+}

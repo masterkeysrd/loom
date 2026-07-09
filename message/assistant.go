@@ -32,7 +32,7 @@ func (a *Assistant) GetContent() Content {
 
 // WithExtension returns the message with the given provider-specific extension set.
 func (a *Assistant) WithExtension(ext Extension) *Assistant {
-	a.Base.AddExtension(ext)
+	a.AddExtension(ext)
 	return a
 }
 

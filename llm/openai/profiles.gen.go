@@ -1509,6 +1509,234 @@ var staticProfiles = map[string]llm.ModelProfile{
 			},
 		},
 	},
+	"gpt-5.6": {
+		ID:          "gpt-5.6",
+		Name:        "GPT-5.6",
+		Family:      "gpt",
+		Knowledge:   "2026-02-16",
+		ReleaseDate: "2026-07-09",
+		LastUpdated: "2026-07-09",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"none",
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1050000,
+			Output:  128000,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      5,
+			Output:     30,
+			CacheRead:  0.5,
+			CacheWrite: 6.25,
+			TieredLimits: []llm.TierPricing{
+				{
+					Input:      10,
+					Output:     45,
+					CacheRead:  1,
+					CacheWrite: 12.5,
+					TierLimit:  272000,
+				},
+			},
+		},
+	},
+	"gpt-5.6-luna": {
+		ID:          "gpt-5.6-luna",
+		Name:        "GPT-5.6 Luna",
+		Family:      "gpt-nano",
+		Knowledge:   "2026-02-16",
+		ReleaseDate: "2026-07-09",
+		LastUpdated: "2026-07-09",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"none",
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1050000,
+			Output:  128000,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      1,
+			Output:     6,
+			CacheRead:  0.1,
+			CacheWrite: 1.25,
+			TieredLimits: []llm.TierPricing{
+				{
+					Input:      2,
+					Output:     9,
+					CacheRead:  0.2,
+					CacheWrite: 2.5,
+					TierLimit:  272000,
+				},
+			},
+		},
+	},
+	"gpt-5.6-sol": {
+		ID:          "gpt-5.6-sol",
+		Name:        "GPT-5.6 Sol",
+		Family:      "gpt",
+		Knowledge:   "2026-02-16",
+		ReleaseDate: "2026-07-09",
+		LastUpdated: "2026-07-09",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"none",
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1050000,
+			Output:  128000,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      5,
+			Output:     30,
+			CacheRead:  0.5,
+			CacheWrite: 6.25,
+			TieredLimits: []llm.TierPricing{
+				{
+					Input:      10,
+					Output:     45,
+					CacheRead:  1,
+					CacheWrite: 12.5,
+					TierLimit:  272000,
+				},
+			},
+		},
+	},
+	"gpt-5.6-terra": {
+		ID:          "gpt-5.6-terra",
+		Name:        "GPT-5.6 Terra",
+		Family:      "gpt-mini",
+		Knowledge:   "2026-02-16",
+		ReleaseDate: "2026-07-09",
+		LastUpdated: "2026-07-09",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"none",
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1050000,
+			Output:  128000,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      2.5,
+			Output:     15,
+			CacheRead:  0.25,
+			CacheWrite: 3.125,
+			TieredLimits: []llm.TierPricing{
+				{
+					Input:      5,
+					Output:     22.5,
+					CacheRead:  0.5,
+					CacheWrite: 6.25,
+					TierLimit:  272000,
+				},
+			},
+		},
+	},
 	"gpt-image-1": {
 		ID:          "gpt-image-1",
 		Name:        "gpt-image-1",

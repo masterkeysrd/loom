@@ -217,7 +217,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ID:          "claude-opus-4-5",
 		Name:        "Claude Opus 4.5 (latest)",
 		Family:      "claude-opus",
-		Knowledge:   "2025-03-31",
+		Knowledge:   "2025-05",
 		ReleaseDate: "2025-11-24",
 		LastUpdated: "2025-11-24",
 		Capabilities: llm.Capabilities{
@@ -265,7 +265,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ID:          "claude-opus-4-5-20251101",
 		Name:        "Claude Opus 4.5",
 		Family:      "claude-opus",
-		Knowledge:   "2025-03-31",
+		Knowledge:   "2025-05",
 		ReleaseDate: "2025-11-24",
 		LastUpdated: "2025-11-01",
 		Capabilities: llm.Capabilities{
@@ -409,6 +409,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ID:          "claude-opus-4-8",
 		Name:        "Claude Opus 4.8",
 		Family:      "claude-opus",
+		Knowledge:   "2026-01",
 		ReleaseDate: "2026-05-28",
 		LastUpdated: "2026-05-28",
 		Capabilities: llm.Capabilities{

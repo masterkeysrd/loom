@@ -885,6 +885,40 @@ var staticProfiles = map[string]llm.ModelProfile{
 			CacheWrite: 0,
 		},
 	},
+	"gemini-omni-flash-preview": {
+		ID:          "gemini-omni-flash-preview",
+		Name:        "Gemini Omni Flash Preview",
+		Family:      "gemini",
+		ReleaseDate: "2026-06-30",
+		LastUpdated: "2026-06-30",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    false,
+			Temperature: true,
+		},
+		Limits: llm.ProfileLimits{
+			Context: 131072,
+			Output:  65536,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityVideo,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityVideo,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      1.5,
+			Output:     17.5,
+			CacheRead:  0,
+			CacheWrite: 0,
+		},
+	},
 	"gemma-4-26b-a4b-it": {
 		ID:          "gemma-4-26b-a4b-it",
 		Name:        "Gemma 4 26B A4B IT",

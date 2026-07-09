@@ -67,3 +67,35 @@ func TestToChatRequestMaxTokensAndContextWindow(t *testing.T) {
 		t.Errorf("expected num_ctx to be 8192, got %v", ollamaReq.Options["num_ctx"])
 	}
 }
+
+func TestToChatRequestThinkingToggle(t *testing.T) {
+	// Test thinking enabled
+	reqEnabled := &llm.Request{
+		Model: "llama3",
+		Thinking: &llm.ThinkingConfig{
+			Enabled: true,
+		},
+	}
+	ollamaReqEnabled, err := toChatRequest(reqEnabled)
+	if err != nil {
+		t.Fatalf("toChatRequest failed: %v", err)
+	}
+	if ollamaReqEnabled.Think == nil || ollamaReqEnabled.Think.Value != true {
+		t.Errorf("expected Think to be true, got %v", ollamaReqEnabled.Think)
+	}
+
+	// Test thinking disabled
+	reqDisabled := &llm.Request{
+		Model: "llama3",
+		Thinking: &llm.ThinkingConfig{
+			Enabled: false,
+		},
+	}
+	ollamaReqDisabled, err := toChatRequest(reqDisabled)
+	if err != nil {
+		t.Fatalf("toChatRequest failed: %v", err)
+	}
+	if ollamaReqDisabled.Think == nil || ollamaReqDisabled.Think.Value != false {
+		t.Errorf("expected Think to be false, got %v", ollamaReqDisabled.Think)
+	}
+}

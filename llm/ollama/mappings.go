@@ -69,8 +69,8 @@ func toChatRequest(request *llm.Request) (*api.ChatRequest, error) {
 	if request.Thinking != nil {
 		if request.Thinking.Effort != "" {
 			ollamaRequest.Think = &api.ThinkValue{Value: request.Thinking.Effort}
-		} else if request.Thinking.Budget > 0 || request.Thinking.Adaptive {
-			ollamaRequest.Think = &api.ThinkValue{Value: true}
+		} else {
+			ollamaRequest.Think = &api.ThinkValue{Value: request.Thinking.Enabled || request.Thinking.Budget > 0 || request.Thinking.Adaptive}
 		}
 	}
 

@@ -1871,6 +1871,54 @@ var staticProfiles = map[string]llm.ModelProfile{
 			CacheWrite: 0,
 		},
 	},
+	"gpt-realtime-2.1": {
+		ID:          "gpt-realtime-2.1",
+		Name:        "GPT-Realtime-2.1",
+		Family:      "gpt",
+		Knowledge:   "2024-09-30",
+		ReleaseDate: "2026-07-06",
+		LastUpdated: "2026-07-06",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"minimal",
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 128000,
+			Output:  32000,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityAudio,
+				llm.ModalityImage,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityAudio,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      4,
+			Output:     24,
+			CacheRead:  0.4,
+			CacheWrite: 0,
+		},
+	},
 	"o1": {
 		ID:          "o1",
 		Name:        "o1",

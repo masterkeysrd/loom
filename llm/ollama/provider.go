@@ -33,6 +33,13 @@ type Provider struct {
 	overrides sync.Map
 }
 
+func (p *Provider) NewProvider(client *api.Client, baseURL *url.URL) *Provider {
+	return &Provider{
+		client:  client,
+		baseURL: baseURL,
+	}
+}
+
 // NewDefaultProvider creates a [Provider] using the Ollama client configured
 // from environment variables (OLLAMA_HOST, etc.).
 func NewDefaultProvider() (*Provider, error) {

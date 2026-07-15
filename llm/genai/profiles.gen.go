@@ -130,7 +130,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ID:          "gemini-2.5-flash-image",
 		Name:        "Nano Banana",
 		Family:      "gemini-flash",
-		Knowledge:   "2025-06",
+		Knowledge:   "2024-06",
 		ReleaseDate: "2025-08-26",
 		LastUpdated: "2025-08-26",
 		Capabilities: llm.Capabilities{

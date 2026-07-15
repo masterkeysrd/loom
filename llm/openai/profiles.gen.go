@@ -1512,7 +1512,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 	"gpt-5.6": {
 		ID:          "gpt-5.6",
 		Name:        "GPT-5.6",
-		Family:      "gpt",
+		Family:      "gpt-sol",
 		Knowledge:   "2026-02-16",
 		ReleaseDate: "2026-07-09",
 		LastUpdated: "2026-07-09",
@@ -1569,7 +1569,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 	"gpt-5.6-luna": {
 		ID:          "gpt-5.6-luna",
 		Name:        "GPT-5.6 Luna",
-		Family:      "gpt-nano",
+		Family:      "gpt-luna",
 		Knowledge:   "2026-02-16",
 		ReleaseDate: "2026-07-09",
 		LastUpdated: "2026-07-09",
@@ -1626,7 +1626,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 	"gpt-5.6-sol": {
 		ID:          "gpt-5.6-sol",
 		Name:        "GPT-5.6 Sol",
-		Family:      "gpt",
+		Family:      "gpt-sol",
 		Knowledge:   "2026-02-16",
 		ReleaseDate: "2026-07-09",
 		LastUpdated: "2026-07-09",
@@ -1683,7 +1683,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 	"gpt-5.6-terra": {
 		ID:          "gpt-5.6-terra",
 		Name:        "GPT-5.6 Terra",
-		Family:      "gpt-mini",
+		Family:      "gpt-terra",
 		Knowledge:   "2026-02-16",
 		ReleaseDate: "2026-07-09",
 		LastUpdated: "2026-07-09",

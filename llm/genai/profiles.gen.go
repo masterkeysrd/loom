@@ -800,8 +800,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Name:        "Gemini Flash Latest",
 		Family:      "gemini-flash",
 		Knowledge:   "2025-01",
-		ReleaseDate: "2025-09-25",
-		LastUpdated: "2025-09-25",
+		ReleaseDate: "2026-05-19",
+		LastUpdated: "2026-05-19",
 		Capabilities: llm.Capabilities{
 			Attachment:  true,
 			Reasoning:   true,
@@ -809,10 +809,13 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Temperature: true,
 			ReasoningOptions: []llm.ReasoningOption{
 				{
-					Type: "toggle",
-				},
-				{
-					Type: "budget_tokens",
+					Type: "effort",
+					Values: []string{
+						"minimal",
+						"low",
+						"medium",
+						"high",
+					},
 				},
 			},
 		},
@@ -824,8 +827,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Inputs: []llm.Modality{
 				llm.ModalityText,
 				llm.ModalityImage,
-				llm.ModalityAudio,
 				llm.ModalityVideo,
+				llm.ModalityAudio,
 				llm.ModalityPDF,
 			},
 			Outputs: []llm.Modality{
@@ -834,9 +837,9 @@ var staticProfiles = map[string]llm.ModelProfile{
 		},
 		OpenWeights: false,
 		Pricing: llm.Pricing{
-			Input:      0.3,
-			Output:     2.5,
-			CacheRead:  0.075,
+			Input:      1.5,
+			Output:     9,
+			CacheRead:  0.15,
 			CacheWrite: 0,
 		},
 	},
@@ -845,8 +848,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Name:        "Gemini Flash-Lite Latest",
 		Family:      "gemini-flash-lite",
 		Knowledge:   "2025-01",
-		ReleaseDate: "2025-09-25",
-		LastUpdated: "2025-09-25",
+		ReleaseDate: "2026-05-07",
+		LastUpdated: "2026-05-07",
 		Capabilities: llm.Capabilities{
 			Attachment:  true,
 			Reasoning:   true,
@@ -854,10 +857,13 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Temperature: true,
 			ReasoningOptions: []llm.ReasoningOption{
 				{
-					Type: "toggle",
-				},
-				{
-					Type: "budget_tokens",
+					Type: "effort",
+					Values: []string{
+						"minimal",
+						"low",
+						"medium",
+						"high",
+					},
 				},
 			},
 		},
@@ -869,8 +875,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Inputs: []llm.Modality{
 				llm.ModalityText,
 				llm.ModalityImage,
-				llm.ModalityAudio,
 				llm.ModalityVideo,
+				llm.ModalityAudio,
 				llm.ModalityPDF,
 			},
 			Outputs: []llm.Modality{
@@ -879,8 +885,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 		},
 		OpenWeights: false,
 		Pricing: llm.Pricing{
-			Input:      0.1,
-			Output:     0.4,
+			Input:      0.25,
+			Output:     1.5,
 			CacheRead:  0.025,
 			CacheWrite: 0,
 		},

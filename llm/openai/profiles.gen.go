@@ -462,84 +462,6 @@ var staticProfiles = map[string]llm.ModelProfile{
 			CacheWrite: 0,
 		},
 	},
-	"gpt-5-chat-latest": {
-		ID:          "gpt-5-chat-latest",
-		Name:        "GPT-5 Chat (latest)",
-		Family:      "gpt-codex",
-		Knowledge:   "2024-09-30",
-		ReleaseDate: "2025-08-07",
-		LastUpdated: "2025-08-07",
-		Capabilities: llm.Capabilities{
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    false,
-			Temperature: true,
-		},
-		Limits: llm.ProfileLimits{
-			Context: 400000,
-			Output:  128000,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      1.25,
-			Output:     10,
-			CacheRead:  0.125,
-			CacheWrite: 0,
-		},
-	},
-	"gpt-5-codex": {
-		ID:          "gpt-5-codex",
-		Name:        "GPT-5-Codex",
-		Family:      "gpt-codex",
-		Knowledge:   "2024-09-30",
-		ReleaseDate: "2025-09-15",
-		LastUpdated: "2025-09-15",
-		Capabilities: llm.Capabilities{
-			Attachment:  false,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: false,
-			ReasoningOptions: []llm.ReasoningOption{
-				{
-					Type: "effort",
-					Values: []string{
-						"low",
-						"medium",
-						"high",
-					},
-				},
-			},
-		},
-		Limits: llm.ProfileLimits{
-			Context: 400000,
-			Output:  128000,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      1.25,
-			Output:     10,
-			CacheRead:  0.125,
-			CacheWrite: 0,
-		},
-	},
 	"gpt-5-mini": {
 		ID:          "gpt-5-mini",
 		Name:        "GPT-5 Mini",
@@ -683,7 +605,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
-			Temperature: false,
+			Temperature: true,
 			ReasoningOptions: []llm.ReasoningOption{
 				{
 					Type: "effort",
@@ -717,181 +639,6 @@ var staticProfiles = map[string]llm.ModelProfile{
 			CacheWrite: 0,
 		},
 	},
-	"gpt-5.1-chat-latest": {
-		ID:          "gpt-5.1-chat-latest",
-		Name:        "GPT-5.1 Chat",
-		Family:      "gpt-codex",
-		Knowledge:   "2024-09-30",
-		ReleaseDate: "2025-11-13",
-		LastUpdated: "2025-11-13",
-		Capabilities: llm.Capabilities{
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: false,
-			ReasoningOptions: []llm.ReasoningOption{
-				{
-					Type: "effort",
-					Values: []string{
-						"medium",
-					},
-				},
-			},
-		},
-		Limits: llm.ProfileLimits{
-			Context: 128000,
-			Output:  16384,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      1.25,
-			Output:     10,
-			CacheRead:  0.125,
-			CacheWrite: 0,
-		},
-	},
-	"gpt-5.1-codex": {
-		ID:          "gpt-5.1-codex",
-		Name:        "GPT-5.1 Codex",
-		Family:      "gpt-codex",
-		Knowledge:   "2024-09-30",
-		ReleaseDate: "2025-11-13",
-		LastUpdated: "2025-11-13",
-		Capabilities: llm.Capabilities{
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: false,
-			ReasoningOptions: []llm.ReasoningOption{
-				{
-					Type: "effort",
-					Values: []string{
-						"low",
-						"medium",
-						"high",
-					},
-				},
-			},
-		},
-		Limits: llm.ProfileLimits{
-			Context: 400000,
-			Output:  128000,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      1.25,
-			Output:     10,
-			CacheRead:  0.125,
-			CacheWrite: 0,
-		},
-	},
-	"gpt-5.1-codex-max": {
-		ID:          "gpt-5.1-codex-max",
-		Name:        "GPT-5.1 Codex Max",
-		Family:      "gpt-codex",
-		Knowledge:   "2024-09-30",
-		ReleaseDate: "2025-11-13",
-		LastUpdated: "2025-11-13",
-		Capabilities: llm.Capabilities{
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: false,
-			ReasoningOptions: []llm.ReasoningOption{
-				{
-					Type: "effort",
-					Values: []string{
-						"low",
-						"medium",
-						"high",
-						"xhigh",
-					},
-				},
-			},
-		},
-		Limits: llm.ProfileLimits{
-			Context: 400000,
-			Output:  128000,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      1.25,
-			Output:     10,
-			CacheRead:  0.125,
-			CacheWrite: 0,
-		},
-	},
-	"gpt-5.1-codex-mini": {
-		ID:          "gpt-5.1-codex-mini",
-		Name:        "GPT-5.1 Codex mini",
-		Family:      "gpt-codex",
-		Knowledge:   "2024-09-30",
-		ReleaseDate: "2025-11-13",
-		LastUpdated: "2025-11-13",
-		Capabilities: llm.Capabilities{
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: false,
-			ReasoningOptions: []llm.ReasoningOption{
-				{
-					Type: "effort",
-					Values: []string{
-						"low",
-						"medium",
-						"high",
-					},
-				},
-			},
-		},
-		Limits: llm.ProfileLimits{
-			Context: 400000,
-			Output:  128000,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      0.25,
-			Output:     2,
-			CacheRead:  0.025,
-			CacheWrite: 0,
-		},
-	},
 	"gpt-5.2": {
 		ID:          "gpt-5.2",
 		Name:        "GPT-5.2",
@@ -903,7 +650,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
-			Temperature: false,
+			Temperature: true,
 			ReasoningOptions: []llm.ReasoningOption{
 				{
 					Type: "effort",
@@ -967,52 +714,6 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Inputs: []llm.Modality{
 				llm.ModalityText,
 				llm.ModalityImage,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      1.75,
-			Output:     14,
-			CacheRead:  0.175,
-			CacheWrite: 0,
-		},
-	},
-	"gpt-5.2-codex": {
-		ID:          "gpt-5.2-codex",
-		Name:        "GPT-5.2 Codex",
-		Family:      "gpt-codex",
-		Knowledge:   "2025-08-31",
-		ReleaseDate: "2025-12-11",
-		LastUpdated: "2025-12-11",
-		Capabilities: llm.Capabilities{
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: false,
-			ReasoningOptions: []llm.ReasoningOption{
-				{
-					Type: "effort",
-					Values: []string{
-						"low",
-						"medium",
-						"high",
-						"xhigh",
-					},
-				},
-			},
-		},
-		Limits: llm.ProfileLimits{
-			Context: 400000,
-			Output:  128000,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityPDF,
 			},
 			Outputs: []llm.Modality{
 				llm.ModalityText,
@@ -1115,7 +816,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
-			Temperature: false,
+			Temperature: true,
 			ReasoningOptions: []llm.ReasoningOption{
 				{
 					Type: "effort",
@@ -1209,7 +910,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
-			Temperature: false,
+			Temperature: true,
 			ReasoningOptions: []llm.ReasoningOption{
 				{
 					Type: "effort",
@@ -1265,7 +966,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
-			Temperature: false,
+			Temperature: true,
 			ReasoningOptions: []llm.ReasoningOption{
 				{
 					Type: "effort",
@@ -1311,7 +1012,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
-			Temperature: false,
+			Temperature: true,
 			ReasoningOptions: []llm.ReasoningOption{
 				{
 					Type: "effort",
@@ -1551,16 +1252,16 @@ var staticProfiles = map[string]llm.ModelProfile{
 		},
 		OpenWeights: false,
 		Pricing: llm.Pricing{
-			Input:      5,
-			Output:     30,
-			CacheRead:  0.5,
-			CacheWrite: 6.25,
+			Input:      4,
+			Output:     20,
+			CacheRead:  0.4,
+			CacheWrite: 5,
 			TieredLimits: []llm.TierPricing{
 				{
-					Input:      10,
-					Output:     45,
-					CacheRead:  1,
-					CacheWrite: 12.5,
+					Input:      8,
+					Output:     30,
+					CacheRead:  0.8,
+					CacheWrite: 10,
 					TierLimit:  272000,
 				},
 			},
@@ -1608,16 +1309,16 @@ var staticProfiles = map[string]llm.ModelProfile{
 		},
 		OpenWeights: false,
 		Pricing: llm.Pricing{
-			Input:      1,
-			Output:     6,
-			CacheRead:  0.1,
-			CacheWrite: 1.25,
+			Input:      0.2,
+			Output:     1.2,
+			CacheRead:  0.02,
+			CacheWrite: 0.25,
 			TieredLimits: []llm.TierPricing{
 				{
-					Input:      2,
-					Output:     9,
-					CacheRead:  0.2,
-					CacheWrite: 2.5,
+					Input:      0.4,
+					Output:     1.8,
+					CacheRead:  0.04,
+					CacheWrite: 0.5,
 					TierLimit:  272000,
 				},
 			},
@@ -1665,16 +1366,16 @@ var staticProfiles = map[string]llm.ModelProfile{
 		},
 		OpenWeights: false,
 		Pricing: llm.Pricing{
-			Input:      5,
-			Output:     30,
-			CacheRead:  0.5,
-			CacheWrite: 6.25,
+			Input:      4,
+			Output:     20,
+			CacheRead:  0.4,
+			CacheWrite: 5,
 			TieredLimits: []llm.TierPricing{
 				{
-					Input:      10,
-					Output:     45,
-					CacheRead:  1,
-					CacheWrite: 12.5,
+					Input:      8,
+					Output:     30,
+					CacheRead:  0.8,
+					CacheWrite: 10,
 					TierLimit:  272000,
 				},
 			},
@@ -1722,16 +1423,16 @@ var staticProfiles = map[string]llm.ModelProfile{
 		},
 		OpenWeights: false,
 		Pricing: llm.Pricing{
-			Input:      2.5,
-			Output:     15,
-			CacheRead:  0.25,
-			CacheWrite: 3.125,
+			Input:      2,
+			Output:     12,
+			CacheRead:  0.2,
+			CacheWrite: 2.5,
 			TieredLimits: []llm.TierPricing{
 				{
-					Input:      5,
-					Output:     22.5,
-					CacheRead:  0.5,
-					CacheWrite: 6.25,
+					Input:      4,
+					Output:     18,
+					CacheRead:  0.4,
+					CacheWrite: 5,
 					TierLimit:  272000,
 				},
 			},
@@ -2053,48 +1754,6 @@ var staticProfiles = map[string]llm.ModelProfile{
 			CacheWrite: 0,
 		},
 	},
-	"o3-deep-research": {
-		ID:          "o3-deep-research",
-		Name:        "o3-deep-research",
-		Family:      "o",
-		Knowledge:   "2024-05",
-		ReleaseDate: "2024-06-26",
-		LastUpdated: "2024-06-26",
-		Capabilities: llm.Capabilities{
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: false,
-			ReasoningOptions: []llm.ReasoningOption{
-				{
-					Type: "effort",
-					Values: []string{
-						"medium",
-					},
-				},
-			},
-		},
-		Limits: llm.ProfileLimits{
-			Context: 200000,
-			Output:  100000,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      10,
-			Output:     40,
-			CacheRead:  2.5,
-			CacheWrite: 0,
-		},
-	},
 	"o3-mini": {
 		ID:          "o3-mini",
 		Name:        "o3-mini",
@@ -2223,48 +1882,6 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Input:      1.1,
 			Output:     4.4,
 			CacheRead:  0.275,
-			CacheWrite: 0,
-		},
-	},
-	"o4-mini-deep-research": {
-		ID:          "o4-mini-deep-research",
-		Name:        "o4-mini-deep-research",
-		Family:      "o-mini",
-		Knowledge:   "2024-05",
-		ReleaseDate: "2024-06-26",
-		LastUpdated: "2024-06-26",
-		Capabilities: llm.Capabilities{
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: false,
-			ReasoningOptions: []llm.ReasoningOption{
-				{
-					Type: "effort",
-					Values: []string{
-						"medium",
-					},
-				},
-			},
-		},
-		Limits: llm.ProfileLimits{
-			Context: 200000,
-			Output:  100000,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      2,
-			Output:     8,
-			CacheRead:  0.5,
 			CacheWrite: 0,
 		},
 	},

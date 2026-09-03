@@ -7,67 +7,121 @@ package loomgenai
 import "github.com/masterkeysrd/loom/llm"
 
 var staticProfiles = map[string]llm.ModelProfile{
-	"gemini-2.0-flash": {
-		ID:          "gemini-2.0-flash",
-		Name:        "Gemini 2.0 Flash",
-		Family:      "gemini-flash",
-		Knowledge:   "2024-06",
-		ReleaseDate: "2024-12-11",
-		LastUpdated: "2024-12-11",
+	"deep-research-max-preview-04-2026": {
+		ID:          "deep-research-max-preview-04-2026",
+		Name:        "Deep Research Max Preview (Apr-21-2026)",
+		Family:      "gemini-pro",
+		Knowledge:   "2025-01",
+		ReleaseDate: "2026-04-21",
+		LastUpdated: "2026-04-21",
 		Capabilities: llm.Capabilities{
 			Attachment:  true,
-			Reasoning:   false,
+			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
 		},
 		Limits: llm.ProfileLimits{
-			Context: 1048576,
-			Output:  8192,
+			Context: 131072,
+			Output:  65536,
 		},
 		Modalities: llm.Modalities{
 			Inputs: []llm.Modality{
 				llm.ModalityText,
 				llm.ModalityImage,
-				llm.ModalityAudio,
 				llm.ModalityVideo,
+				llm.ModalityAudio,
 				llm.ModalityPDF,
 			},
 			Outputs: []llm.Modality{
 				llm.ModalityText,
+				llm.ModalityImage,
 			},
 		},
 		OpenWeights: false,
 		Pricing: llm.Pricing{
-			Input:      0.1,
-			Output:     0.4,
-			CacheRead:  0.025,
+			Input:      2,
+			Output:     12,
+			CacheRead:  0.2,
 			CacheWrite: 0,
+			TieredLimits: []llm.TierPricing{
+				{
+					Input:      4,
+					Output:     18,
+					CacheRead:  0.4,
+					CacheWrite: 0,
+					TierLimit:  200000,
+				},
+			},
 		},
 	},
-	"gemini-2.0-flash-lite": {
-		ID:          "gemini-2.0-flash-lite",
-		Name:        "Gemini 2.0 Flash-Lite",
-		Family:      "gemini-flash-lite",
-		Knowledge:   "2024-06",
-		ReleaseDate: "2024-12-11",
-		LastUpdated: "2024-12-11",
+	"deep-research-preview-04-2026": {
+		ID:          "deep-research-preview-04-2026",
+		Name:        "Deep Research Preview (Apr-21-2026)",
+		Family:      "gemini-pro",
+		Knowledge:   "2025-01",
+		ReleaseDate: "2026-04-21",
+		LastUpdated: "2026-04-21",
 		Capabilities: llm.Capabilities{
 			Attachment:  true,
-			Reasoning:   false,
+			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
 		},
 		Limits: llm.ProfileLimits{
-			Context: 1048576,
-			Output:  8192,
+			Context: 131072,
+			Output:  65536,
 		},
 		Modalities: llm.Modalities{
 			Inputs: []llm.Modality{
 				llm.ModalityText,
 				llm.ModalityImage,
-				llm.ModalityAudio,
 				llm.ModalityVideo,
+				llm.ModalityAudio,
 				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      2,
+			Output:     12,
+			CacheRead:  0.2,
+			CacheWrite: 0,
+			TieredLimits: []llm.TierPricing{
+				{
+					Input:      4,
+					Output:     18,
+					CacheRead:  0.4,
+					CacheWrite: 0,
+					TierLimit:  200000,
+				},
+			},
+		},
+	},
+	"gemini-2.5-computer-use-preview-10-2025": {
+		ID:          "gemini-2.5-computer-use-preview-10-2025",
+		Name:        "Gemini 2.5 Computer Use Preview 10-2025",
+		Family:      "gemini-pro",
+		Knowledge:   "2025-01",
+		ReleaseDate: "2025-10-07",
+		LastUpdated: "2025-10-07",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: true,
+		},
+		Limits: llm.ProfileLimits{
+			Context: 131072,
+			Output:  65536,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
 			},
 			Outputs: []llm.Modality{
 				llm.ModalityText,
@@ -75,10 +129,19 @@ var staticProfiles = map[string]llm.ModelProfile{
 		},
 		OpenWeights: false,
 		Pricing: llm.Pricing{
-			Input:      0.075,
-			Output:     0.3,
+			Input:      1.25,
+			Output:     10,
 			CacheRead:  0,
 			CacheWrite: 0,
+			TieredLimits: []llm.TierPricing{
+				{
+					Input:      2.5,
+					Output:     15,
+					CacheRead:  0,
+					CacheWrite: 0,
+					TierLimit:  200000,
+				},
+			},
 		},
 	},
 	"gemini-2.5-flash": {
@@ -371,6 +434,50 @@ var staticProfiles = map[string]llm.ModelProfile{
 			CacheWrite: 0,
 		},
 	},
+	"gemini-3-pro-image": {
+		ID:          "gemini-3-pro-image",
+		Name:        "Nano Banana Pro",
+		Family:      "gemini-pro",
+		Knowledge:   "2025-01",
+		ReleaseDate: "2026-05-28",
+		LastUpdated: "2026-05-28",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    false,
+			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"high",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 131072,
+			Output:  32768,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      2,
+			Output:     120,
+			CacheRead:  0,
+			CacheWrite: 0,
+		},
+	},
 	"gemini-3-pro-image-preview": {
 		ID:          "gemini-3-pro-image-preview",
 		Name:        "Nano Banana Pro",
@@ -406,30 +513,30 @@ var staticProfiles = map[string]llm.ModelProfile{
 			CacheWrite: 0,
 		},
 	},
-	"gemini-3-pro-preview": {
-		ID:          "gemini-3-pro-preview",
-		Name:        "Gemini 3 Pro Preview",
-		Family:      "gemini-pro",
+	"gemini-3.1-flash-image": {
+		ID:          "gemini-3.1-flash-image",
+		Name:        "Nano Banana 2",
+		Family:      "gemini-flash",
 		Knowledge:   "2025-01",
-		ReleaseDate: "2025-11-18",
-		LastUpdated: "2025-11-18",
+		ReleaseDate: "2026-05-28",
+		LastUpdated: "2026-05-28",
 		Capabilities: llm.Capabilities{
 			Attachment:  true,
 			Reasoning:   true,
-			ToolCall:    true,
+			ToolCall:    false,
 			Temperature: true,
 			ReasoningOptions: []llm.ReasoningOption{
 				{
 					Type: "effort",
 					Values: []string{
-						"low",
+						"minimal",
 						"high",
 					},
 				},
 			},
 		},
 		Limits: llm.ProfileLimits{
-			Context: 1048576,
+			Context: 65536,
 			Output:  65536,
 		},
 		Modalities: llm.Modalities{
@@ -437,28 +544,19 @@ var staticProfiles = map[string]llm.ModelProfile{
 				llm.ModalityText,
 				llm.ModalityImage,
 				llm.ModalityVideo,
-				llm.ModalityAudio,
 				llm.ModalityPDF,
 			},
 			Outputs: []llm.Modality{
 				llm.ModalityText,
+				llm.ModalityImage,
 			},
 		},
 		OpenWeights: false,
 		Pricing: llm.Pricing{
-			Input:      2,
-			Output:     12,
-			CacheRead:  0.2,
+			Input:      0.5,
+			Output:     60,
+			CacheRead:  0,
 			CacheWrite: 0,
-			TieredLimits: []llm.TierPricing{
-				{
-					Input:      4,
-					Output:     18,
-					CacheRead:  0.4,
-					CacheWrite: 0,
-					TierLimit:  200000,
-				},
-			},
 		},
 	},
 	"gemini-3.1-flash-image-preview": {
@@ -554,6 +652,50 @@ var staticProfiles = map[string]llm.ModelProfile{
 			CacheWrite: 0,
 		},
 	},
+	"gemini-3.1-flash-lite-image": {
+		ID:          "gemini-3.1-flash-lite-image",
+		Name:        "Nano Banana 2 Lite",
+		Family:      "gemini-flash-lite",
+		Knowledge:   "2025-01",
+		ReleaseDate: "2026-06-30",
+		LastUpdated: "2026-06-30",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"minimal",
+						"high",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 65536,
+			Output:  65536,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      0.25,
+			Output:     30,
+			CacheRead:  0,
+			CacheWrite: 0,
+		},
+	},
 	"gemini-3.1-flash-lite-preview": {
 		ID:          "gemini-3.1-flash-lite-preview",
 		Name:        "Gemini 3.1 Flash Lite Preview",
@@ -599,6 +741,87 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Input:      0.25,
 			Output:     1.5,
 			CacheRead:  0.025,
+			CacheWrite: 0,
+		},
+	},
+	"gemini-3.1-flash-live-preview": {
+		ID:          "gemini-3.1-flash-live-preview",
+		Name:        "Gemini 3.1 Flash Live Preview",
+		Family:      "gemini-flash",
+		Knowledge:   "2025-01",
+		ReleaseDate: "2026-03-26",
+		LastUpdated: "2026-03-26",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"minimal",
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 131072,
+			Output:  65536,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityVideo,
+				llm.ModalityAudio,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityAudio,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      0.75,
+			Output:     4.5,
+			CacheRead:  0,
+			CacheWrite: 0,
+		},
+	},
+	"gemini-3.1-flash-tts-preview": {
+		ID:          "gemini-3.1-flash-tts-preview",
+		Name:        "Gemini 3.1 Flash TTS Preview",
+		Family:      "gemini-flash",
+		Knowledge:   "2025-01",
+		ReleaseDate: "2026-04-15",
+		LastUpdated: "2026-04-15",
+		Capabilities: llm.Capabilities{
+			Attachment:  false,
+			Reasoning:   true,
+			ToolCall:    false,
+			Temperature: true,
+		},
+		Limits: llm.ProfileLimits{
+			Context: 8192,
+			Output:  16384,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityAudio,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      1,
+			Output:     20,
+			CacheRead:  0,
 			CacheWrite: 0,
 		},
 	},
@@ -762,6 +985,229 @@ var staticProfiles = map[string]llm.ModelProfile{
 			CacheWrite: 0,
 		},
 	},
+	"gemini-3.5-flash-lite": {
+		ID:          "gemini-3.5-flash-lite",
+		Name:        "Gemini 3.5 Flash Lite",
+		Family:      "gemini-flash-lite",
+		Knowledge:   "2026-03",
+		ReleaseDate: "2026-07-21",
+		LastUpdated: "2026-07-21",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"minimal",
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1048576,
+			Output:  65536,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityVideo,
+				llm.ModalityAudio,
+				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      0.3,
+			Output:     2.5,
+			CacheRead:  0.03,
+			CacheWrite: 0,
+		},
+	},
+	"gemini-3.5-live-translate-preview": {
+		ID:          "gemini-3.5-live-translate-preview",
+		Name:        "Gemini 3.5 Live Translate Preview",
+		Family:      "gemini-pro",
+		Knowledge:   "2025-01",
+		ReleaseDate: "2026-06-09",
+		LastUpdated: "2026-06-09",
+		Capabilities: llm.Capabilities{
+			Attachment:  false,
+			Reasoning:   false,
+			ToolCall:    false,
+			Temperature: true,
+		},
+		Limits: llm.ProfileLimits{
+			Context: 16384,
+			Output:  32768,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityAudio,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityAudio,
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      3.5,
+			Output:     21,
+			CacheRead:  0,
+			CacheWrite: 0,
+		},
+	},
+	"gemini-3.6-flash": {
+		ID:          "gemini-3.6-flash",
+		Name:        "Gemini 3.6 Flash",
+		Family:      "gemini-flash",
+		Knowledge:   "2026-03",
+		ReleaseDate: "2026-07-21",
+		LastUpdated: "2026-07-21",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"minimal",
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1048576,
+			Output:  65536,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityVideo,
+				llm.ModalityAudio,
+				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      0.75,
+			Output:     3.75,
+			CacheRead:  0.075,
+			CacheWrite: 0,
+		},
+	},
+	"gemini-3.7-flash": {
+		ID:          "gemini-3.7-flash",
+		Name:        "Gemini 3.7 Flash",
+		Family:      "gemini-flash",
+		Knowledge:   "2026-03",
+		ReleaseDate: "2026-08-13",
+		LastUpdated: "2026-08-13",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1048576,
+			Output:  65536,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityVideo,
+				llm.ModalityAudio,
+				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      0.75,
+			Output:     3.75,
+			CacheRead:  0.075,
+			CacheWrite: 0,
+		},
+	},
+	"gemini-3.8-flash": {
+		ID:          "gemini-3.8-flash",
+		Name:        "Gemini 3.8 Flash",
+		Family:      "gemini-flash",
+		ReleaseDate: "2026-09-02",
+		LastUpdated: "2026-09-02",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1048576,
+			Output:  65536,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityVideo,
+				llm.ModalityAudio,
+				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      0.75,
+			Output:     3.75,
+			CacheRead:  0.075,
+			CacheWrite: 0,
+		},
+	},
 	"gemini-embedding-001": {
 		ID:          "gemini-embedding-001",
 		Name:        "Gemini Embedding 001",
@@ -795,13 +1241,50 @@ var staticProfiles = map[string]llm.ModelProfile{
 			CacheWrite: 0,
 		},
 	},
+	"gemini-embedding-2": {
+		ID:          "gemini-embedding-2",
+		Name:        "Gemini Embedding 2",
+		Family:      "gemini",
+		Knowledge:   "2025-11",
+		ReleaseDate: "2026-04-22",
+		LastUpdated: "2026-04-22",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   false,
+			ToolCall:    false,
+			Temperature: false,
+		},
+		Limits: llm.ProfileLimits{
+			Context: 8192,
+			Output:  1,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityAudio,
+				llm.ModalityVideo,
+				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      0.2,
+			Output:     0,
+			CacheRead:  0,
+			CacheWrite: 0,
+		},
+	},
 	"gemini-flash-latest": {
 		ID:          "gemini-flash-latest",
 		Name:        "Gemini Flash Latest",
 		Family:      "gemini-flash",
-		Knowledge:   "2025-01",
-		ReleaseDate: "2026-05-19",
-		LastUpdated: "2026-05-19",
+		Knowledge:   "2026-03",
+		ReleaseDate: "2026-08-13",
+		LastUpdated: "2026-08-13",
 		Capabilities: llm.Capabilities{
 			Attachment:  true,
 			Reasoning:   true,
@@ -811,7 +1294,6 @@ var staticProfiles = map[string]llm.ModelProfile{
 				{
 					Type: "effort",
 					Values: []string{
-						"minimal",
 						"low",
 						"medium",
 						"high",
@@ -837,9 +1319,9 @@ var staticProfiles = map[string]llm.ModelProfile{
 		},
 		OpenWeights: false,
 		Pricing: llm.Pricing{
-			Input:      1.5,
-			Output:     9,
-			CacheRead:  0.15,
+			Input:      0.75,
+			Output:     3.75,
+			CacheRead:  0.075,
 			CacheWrite: 0,
 		},
 	},
@@ -847,9 +1329,9 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ID:          "gemini-flash-lite-latest",
 		Name:        "Gemini Flash-Lite Latest",
 		Family:      "gemini-flash-lite",
-		Knowledge:   "2025-01",
-		ReleaseDate: "2026-05-07",
-		LastUpdated: "2026-05-07",
+		Knowledge:   "2026-03",
+		ReleaseDate: "2026-07-21",
+		LastUpdated: "2026-07-21",
 		Capabilities: llm.Capabilities{
 			Attachment:  true,
 			Reasoning:   true,
@@ -885,9 +1367,9 @@ var staticProfiles = map[string]llm.ModelProfile{
 		},
 		OpenWeights: false,
 		Pricing: llm.Pricing{
-			Input:      0.25,
-			Output:     1.5,
-			CacheRead:  0.025,
+			Input:      0.3,
+			Output:     2.5,
+			CacheRead:  0.03,
 			CacheWrite: 0,
 		},
 	},
@@ -994,6 +1476,174 @@ var staticProfiles = map[string]llm.ModelProfile{
 			},
 		},
 		OpenWeights: true,
+		Pricing: llm.Pricing{
+			Input:      0,
+			Output:     0,
+			CacheRead:  0,
+			CacheWrite: 0,
+		},
+	},
+	"lyria-3-clip-preview": {
+		ID:          "lyria-3-clip-preview",
+		Name:        "Lyria 3 Clip Preview",
+		Family:      "lyria",
+		ReleaseDate: "2026-03-25",
+		LastUpdated: "2026-03-25",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   false,
+			ToolCall:    false,
+			Temperature: true,
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1048576,
+			Output:  65536,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityAudio,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      0,
+			Output:     0,
+			CacheRead:  0,
+			CacheWrite: 0,
+		},
+	},
+	"lyria-3-pro-preview": {
+		ID:          "lyria-3-pro-preview",
+		Name:        "Lyria 3 Pro Preview",
+		Family:      "lyria",
+		ReleaseDate: "2026-03-25",
+		LastUpdated: "2026-03-25",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   false,
+			ToolCall:    false,
+			Temperature: true,
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1048576,
+			Output:  65536,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityAudio,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      0,
+			Output:     0,
+			CacheRead:  0,
+			CacheWrite: 0,
+		},
+	},
+	"veo-3.1-fast-generate-preview": {
+		ID:          "veo-3.1-fast-generate-preview",
+		Name:        "Veo 3.1 fast",
+		Family:      "veo",
+		ReleaseDate: "2025-10-15",
+		LastUpdated: "2026-01-01",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   false,
+			ToolCall:    false,
+			Temperature: false,
+		},
+		Limits: llm.ProfileLimits{
+			Context: 480,
+			Output:  8192,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityVideo,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityVideo,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      0,
+			Output:     0,
+			CacheRead:  0,
+			CacheWrite: 0,
+		},
+	},
+	"veo-3.1-generate-preview": {
+		ID:          "veo-3.1-generate-preview",
+		Name:        "Veo 3.1",
+		Family:      "veo",
+		ReleaseDate: "2025-10-15",
+		LastUpdated: "2026-01",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   false,
+			ToolCall:    false,
+			Temperature: false,
+		},
+		Limits: llm.ProfileLimits{
+			Context: 480,
+			Output:  8192,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityVideo,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      0,
+			Output:     0,
+			CacheRead:  0,
+			CacheWrite: 0,
+		},
+	},
+	"veo-3.1-lite-generate-preview": {
+		ID:          "veo-3.1-lite-generate-preview",
+		Name:        "Veo 3.1 lite",
+		Family:      "veo",
+		ReleaseDate: "2026-03-31",
+		LastUpdated: "2026-03-31",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   false,
+			ToolCall:    false,
+			Temperature: false,
+		},
+		Limits: llm.ProfileLimits{
+			Context: 480,
+			Output:  8192,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityVideo,
+			},
+		},
+		OpenWeights: false,
 		Pricing: llm.Pricing{
 			Input:      0,
 			Output:     0,

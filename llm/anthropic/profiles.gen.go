@@ -53,6 +53,53 @@ var staticProfiles = map[string]llm.ModelProfile{
 			CacheWrite: 12.5,
 		},
 	},
+	"claude-fable-5-1": {
+		ID:          "claude-fable-5-1",
+		Name:        "Claude Fable 5.1",
+		Family:      "claude-fable",
+		Knowledge:   "2026-06",
+		ReleaseDate: "2026-09-01",
+		LastUpdated: "2026-09-01",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1000000,
+			Output:  128000,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      10,
+			Output:     50,
+			CacheRead:  0.25,
+			CacheWrite: 12.5,
+		},
+	},
 	"claude-haiku-4-5": {
 		ID:          "claude-haiku-4-5",
 		Name:        "Claude Haiku 4.5 (latest)",
@@ -131,86 +178,6 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Output:     5,
 			CacheRead:  0.1,
 			CacheWrite: 1.25,
-		},
-	},
-	"claude-opus-4-1": {
-		ID:          "claude-opus-4-1",
-		Name:        "Claude Opus 4.1 (latest)",
-		Family:      "claude-opus",
-		Knowledge:   "2025-03-31",
-		ReleaseDate: "2025-08-05",
-		LastUpdated: "2025-08-05",
-		Capabilities: llm.Capabilities{
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
-				{
-					Type: "budget_tokens",
-				},
-			},
-		},
-		Limits: llm.ProfileLimits{
-			Context: 200000,
-			Output:  32000,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityPDF,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      15,
-			Output:     75,
-			CacheRead:  1.5,
-			CacheWrite: 18.75,
-		},
-	},
-	"claude-opus-4-1-20250805": {
-		ID:          "claude-opus-4-1-20250805",
-		Name:        "Claude Opus 4.1",
-		Family:      "claude-opus",
-		Knowledge:   "2025-03-31",
-		ReleaseDate: "2025-08-05",
-		LastUpdated: "2025-08-05",
-		Capabilities: llm.Capabilities{
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
-				{
-					Type: "budget_tokens",
-				},
-			},
-		},
-		Limits: llm.ProfileLimits{
-			Context: 200000,
-			Output:  32000,
-		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityPDF,
-			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: llm.Pricing{
-			Input:      15,
-			Output:     75,
-			CacheRead:  1.5,
-			CacheWrite: 18.75,
 		},
 	},
 	"claude-opus-4-5": {
@@ -412,6 +379,53 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2026-01",
 		ReleaseDate: "2026-05-28",
 		LastUpdated: "2026-05-28",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1000000,
+			Output:  128000,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      5,
+			Output:     25,
+			CacheRead:  0.5,
+			CacheWrite: 6.25,
+		},
+	},
+	"claude-opus-5": {
+		ID:          "claude-opus-5",
+		Name:        "Claude Opus 5",
+		Family:      "claude-opus",
+		Knowledge:   "2026-05",
+		ReleaseDate: "2026-07-24",
+		LastUpdated: "2026-07-24",
 		Capabilities: llm.Capabilities{
 			Attachment:  true,
 			Reasoning:   true,

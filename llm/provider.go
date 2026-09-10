@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"iter"
+	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/message"
@@ -111,6 +112,39 @@ type CacheManager interface {
 
 	// DeleteCache removes a previously created context cache resource.
 	DeleteCache(context.Context, string) error
+}
+
+// QuotaInfo describes the remaining capacity fraction and rate-limit reset window for a model.
+type QuotaInfo struct {
+	// RemainingFraction is the available capacity between 0.0 and 1.0 (e.g. 0.85 = 85%).
+	RemainingFraction float64 `json:"remainingFraction"`
+
+	// ResetTime is the ISO 8601 / RFC 3339 timestamp string when the quota window resets.
+	ResetTime string `json:"resetTime,omitempty"`
+}
+
+// Percentage returns RemainingFraction multiplied by 100.
+func (q QuotaInfo) Percentage() float64 {
+	return q.RemainingFraction * 100
+}
+
+// ParsedResetTime parses ResetTime as RFC 3339 or returns a zero time if empty or invalid.
+func (q QuotaInfo) ParsedResetTime() (time.Time, error) {
+	if q.ResetTime == "" {
+		return time.Time{}, nil
+	}
+	return time.Parse(time.RFC3339, q.ResetTime)
+}
+
+// QuotaProvider is an optional interface that providers can implement if they
+// support querying model quotas, usage limits, or rate-limit replenishment windows.
+type QuotaProvider interface {
+	// GetQuota returns quota information for the given model ID, resolving aliases if applicable.
+	// Returns false if no quota information is available for the model.
+	GetQuota(ctx context.Context, model string) (QuotaInfo, bool, error)
+
+	// ListQuotas returns a map of model IDs to their respective QuotaInfo.
+	ListQuotas(ctx context.Context) (map[string]QuotaInfo, error)
 }
 
 // StreamResponse is an iterator over streaming chunks from an LLM provider.

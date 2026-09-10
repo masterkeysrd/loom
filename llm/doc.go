@@ -25,6 +25,14 @@
 // [Registry.Register]. The [ollama] sub-package ships a ready-to-use
 // implementation.
 //
+// # Capability Interfaces
+//
+// Providers may optionally implement extended capability interfaces:
+//
+//   - [CacheManager]: for backends supporting explicit context cache management (e.g. Gemini).
+//   - [QuotaProvider]: for backends that support live or cached quota, usage percentage,
+//     and rate-limit replenishment window inspection (e.g. Google Antigravity).
+//
 // # Registry
 //
 // [Registry] is a thread-safe map from provider name to [Provider]. It allows

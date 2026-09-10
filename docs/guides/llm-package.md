@@ -106,7 +106,30 @@ resp, _ := model.Invoke(ctx, prompt, llm.WithExtensionOption(loomgenai.ContextCa
 model.DeleteCache(ctx, cacheID)
 ```
 
-## 5. Using the LLM Registry
+## 5. Quota & Rate Limit Inspection (`llm.QuotaProvider`)
+
+Providers that expose quota or rolling-window capacity metrics (such as Google Antigravity) implement the [`llm.QuotaProvider`](file:///Users/masterkeysrd/Projects/loom/llm/provider.go) interface. This allows callers to inspect remaining capacity percentages and reset times:
+
+```go
+// Type-assert to llm.QuotaProvider
+if qp, ok := provider.(llm.QuotaProvider); ok {
+    // Inspect a specific model (resolves aliases like "gemini-3.8-flash")
+    if quota, ok, err := qp.GetQuota(ctx, "gemini-3.8-flash"); ok && err == nil {
+        fmt.Printf("Remaining: %.1f%%\n", quota.Percentage())
+        if reset, err := quota.ParsedResetTime(); err == nil && !reset.IsZero() {
+            fmt.Printf("Replenishes at: %s\n", reset.Format(time.RFC3339))
+        }
+    }
+
+    // List all model quotas
+    quotas, _ := qp.ListQuotas(ctx)
+    for model, q := range quotas {
+        fmt.Printf("• %s: %.1f%%\n", model, q.Percentage())
+    }
+}
+```
+
+## 6. Using the LLM Registry
 The `Registry` is useful for decoupling your application from specific provider packages. It allows you to register provider factories and retrieve them by name.
 
 ## Summary
@@ -114,4 +137,5 @@ The `Registry` is useful for decoupling your application from specific provider 
 - Use `llm.NewModel` to start interacting with an LLM.
 - Use the `With*` methods to configure model parameters.
 - Use `Invoke` for simple request-response and `Stream` for real-time applications.
+- Use `llm.QuotaProvider` to query model quotas and replenishment windows.
 - Use `llm.Registry` to manage multiple providers in a large application.

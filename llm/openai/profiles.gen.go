@@ -1438,6 +1438,62 @@ var staticProfiles = map[string]llm.ModelProfile{
 			},
 		},
 	},
+	"gpt-6-astra": {
+		ID:          "gpt-6-astra",
+		Name:        "GPT-6 Astra",
+		Family:      "gpt-astra",
+		Knowledge:   "2026-04-30",
+		ReleaseDate: "2026-09-04",
+		LastUpdated: "2026-09-04",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1050000,
+			Output:  128000,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      10,
+			Output:     50,
+			CacheRead:  1,
+			CacheWrite: 12.5,
+			TieredLimits: []llm.TierPricing{
+				{
+					Input:      20,
+					Output:     75,
+					CacheRead:  2,
+					CacheWrite: 25,
+					TierLimit:  272000,
+				},
+			},
+		},
+	},
 	"gpt-image-1": {
 		ID:          "gpt-image-1",
 		Name:        "gpt-image-1",

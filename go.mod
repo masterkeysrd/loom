@@ -3,14 +3,14 @@ module github.com/masterkeysrd/loom
 go 1.26.3
 
 require (
-	github.com/anthropics/anthropic-sdk-go v1.71.0
+	github.com/anthropics/anthropic-sdk-go v1.75.0
 	github.com/google/jsonschema-go v0.4.3
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/lib/pq v1.12.3
-	github.com/modelcontextprotocol/go-sdk v1.7.0
-	github.com/ollama/ollama v0.34.0
-	github.com/openai/openai-go/v3 v3.59.0
+	github.com/modelcontextprotocol/go-sdk v1.8.0
+	github.com/ollama/ollama v0.34.4
+	github.com/openai/openai-go/v3 v3.66.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.71.0
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.46.0
@@ -22,9 +22,9 @@ require (
 	go.opentelemetry.io/proto/otlp v1.11.0
 	golang.org/x/oauth2 v0.37.0
 	google.golang.org/genai v1.71.0
-	google.golang.org/grpc v1.83.2
+	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
-	modernc.org/sqlite v1.58.0
+	modernc.org/sqlite v1.59.0
 )
 
 require (
@@ -35,6 +35,7 @@ require (
 	github.com/buger/jsonparser v1.6.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/coder/websocket v1.8.15 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect

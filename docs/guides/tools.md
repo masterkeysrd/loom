@@ -82,14 +82,13 @@ client := mcp.NewClient(mcp.Config{
     Command:   "python",
     Args:      []string{"my_server.py"},
 })
+defer client.Close()
 
-// Extract tools
-session, _ := client.Session(ctx)
-mcpTools, _ := session.Tools(ctx)
+// Extract tools as native Loom tools
+mcpTools, _ := client.Tools(ctx)
 
 // Integrate with Loom container
-container := tool.NewContainer()
-container.AddTools(mcpTools...)
+container := tool.NewContainer(mcpTools...)
 ```
 
 See the [MCP Guide](./mcp.md) for more details.

@@ -50,6 +50,7 @@ nav:
       - Decision Models: guides/decision.md
       - Persistence & State: guides/persistence.md
       - Tools & Streaming: guides/tools.md
+      - Model Context Protocol (MCP): guides/mcp.md
   - LLM Providers:
       - OpenAI: guides/providers/openai.md
       - Anthropic: guides/providers/anthropic.md

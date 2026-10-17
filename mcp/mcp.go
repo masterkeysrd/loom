@@ -115,10 +115,13 @@ type ServerCapabilities struct {
 	Experimental map[string]any
 	Extensions   map[string]any
 	Completions  bool
-	Logging      bool
-	Prompts      *PromptCapabilities
-	Resources    *ResourceCapabilities
-	Tools        *ToolCapabilities
+	// Logging indicates whether the server supports sending log notifications to the client.
+	//
+	// Deprecated: MCP logging is deprecated as of protocol version 2026-07-28 (SEP-2577) in favor of OpenTelemetry or stderr.
+	Logging   bool
+	Prompts   *PromptCapabilities
+	Resources *ResourceCapabilities
+	Tools     *ToolCapabilities
 }
 
 // PromptCapabilities describes the server's support for prompts.
@@ -147,6 +150,13 @@ const (
 	StatusError        Status = "error"
 )
 
+const (
+	// ProtocolVersion20260728 is the MCP v2 stateless protocol version (SEP-2575).
+	ProtocolVersion20260728 = "2026-07-28"
+	// ProtocolVersion20251125 is the legacy stateful MCP v1 protocol version.
+	ProtocolVersion20251125 = "2025-11-25"
+)
+
 // Config defines the connection parameters for an MCP server.
 type Config struct {
 	Transport string            `json:"transport"`         // "stdio" or "http"
@@ -155,6 +165,25 @@ type Config struct {
 	Env       map[string]string `json:"env,omitempty"`     // for "stdio"
 	URL       string            `json:"url,omitempty"`     // for "http"
 	Headers   map[string]string `json:"headers,omitempty"` // Static headers (e.g., API keys)
+
+	// ProtocolVersion optionally specifies the MCP protocol version to negotiate
+	// (e.g., ProtocolVersion20260728 or ProtocolVersion20251125). If empty, the SDK
+	// negotiates the latest supported version (2026-07-28) via server/discover with
+	// automatic fallback to legacy initialize.
+	ProtocolVersion string `json:"protocol_version,omitempty"`
+
+	// DisableStandaloneSSE disables opening a persistent GET SSE stream on legacy
+	// HTTP connections. Under MCP v2 (>= 2026-07-28), standalone GET SSE streams
+	// are not used (replaced by subscriptions/listen).
+	DisableStandaloneSSE bool `json:"disable_standalone_sse,omitempty"`
+
+	// MaxRetries configures the maximum number of reconnect attempts for HTTP streams.
+	MaxRetries int `json:"max_retries,omitempty"`
+
+	// DisableMultiRoundTrip disables automatic SEP-2322 Multi Round-Trip Request
+	// handling (where the client automatically fulfills server InputRequests such
+	// as elicitation and retries the call with InputResponses and RequestState).
+	DisableMultiRoundTrip bool `json:"disable_multi_round_trip,omitempty"`
 
 	// Auth provides dynamic authentication (OAuth2/Enterprise).
 	// This is not serialized to JSON automatically.
@@ -169,6 +198,8 @@ type Config struct {
 	OnPromptsChanged   func(ctx context.Context)                                                             `json:"-"`
 	OnResourcesChanged func(ctx context.Context)                                                             `json:"-"`
 	OnResourceUpdated  func(ctx context.Context, uri string)                                                 `json:"-"`
+	// OnLogMessage receives log notifications from the server.
+	// Deprecated: MCP logging is deprecated as of protocol version 2026-07-28 (SEP-2577) in favor of OpenTelemetry or stderr.
 	OnLogMessage       func(ctx context.Context, level string, logger string, data any)                      `json:"-"`
 	OnProgress         func(ctx context.Context, token any, progress float64, total float64, message string) `json:"-"`
 }
@@ -214,6 +245,7 @@ func NewClient(config Config) *Client {
 	}
 
 	opts := &mcp.ClientOptions{
+		Capabilities: &mcp.ClientCapabilities{},
 		ProgressNotificationHandler: func(ctx context.Context, req *mcp.ProgressNotificationClientRequest) {
 			if ch, ok := c.progressRegistry.Load(req.Params.ProgressToken); ok {
 				var total *float64
@@ -232,16 +264,27 @@ func NewClient(config Config) *Client {
 					// Drop if full
 				}
 			}
+			if config.OnProgress != nil {
+				config.OnProgress(ctx, req.Params.ProgressToken, req.Params.Progress, req.Params.Total, req.Params.Message)
+			}
 		},
 	}
 
 	if config.Elicitation != nil {
+		opts.Capabilities.Elicitation = &mcp.ElicitationCapabilities{
+			Form: &mcp.FormElicitationCapabilities{},
+			URL:  &mcp.URLElicitationCapabilities{},
+		}
 		opts.ElicitationHandler = func(ctx context.Context, req *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
 			return config.Elicitation.HandleElicit(ctx, req.Params)
 		}
 		opts.ElicitationCompleteHandler = func(ctx context.Context, req *mcp.ElicitationCompleteNotificationRequest) {
 			config.Elicitation.HandleElicitComplete(ctx, req.Params)
 		}
+	}
+
+	if config.DisableMultiRoundTrip {
+		opts.MultiRoundTrip = &mcp.MultiRoundTripOptions{Disabled: true}
 	}
 
 	if config.OnToolsChanged != nil {
@@ -267,11 +310,6 @@ func NewClient(config Config) *Client {
 	if config.OnLogMessage != nil {
 		opts.LoggingMessageHandler = func(ctx context.Context, req *mcp.LoggingMessageRequest) {
 			config.OnLogMessage(ctx, string(req.Params.Level), req.Params.Logger, req.Params.Data)
-		}
-	}
-	if config.OnProgress != nil {
-		opts.ProgressNotificationHandler = func(ctx context.Context, req *mcp.ProgressNotificationClientRequest) {
-			config.OnProgress(ctx, req.Params.ProgressToken, req.Params.Progress, req.Params.Total, req.Params.Message)
 		}
 	}
 
@@ -333,9 +371,11 @@ func (c *Client) getSession(ctx context.Context) (*mcp.ClientSession, error) {
 		}
 
 		transport = &mcp.StreamableClientTransport{
-			Endpoint:     c.config.URL,
-			OAuthHandler: oauthHandler,
-			HTTPClient:   httpClient,
+			Endpoint:             c.config.URL,
+			OAuthHandler:         oauthHandler,
+			HTTPClient:           httpClient,
+			DisableStandaloneSSE: c.config.DisableStandaloneSSE,
+			MaxRetries:           c.config.MaxRetries,
 		}
 	default:
 		err := fmt.Errorf("unsupported transport: %s", c.config.Transport)
@@ -344,7 +384,7 @@ func (c *Client) getSession(ctx context.Context) (*mcp.ClientSession, error) {
 		return nil, err
 	}
 
-	session, err := c.client.Connect(ctx, transport, nil)
+	session, err := c.client.Connect(ctx, transport, &mcp.ClientSessionOptions{ProtocolVersion: c.config.ProtocolVersion})
 	if err != nil {
 		c.status = StatusError
 		c.lastErr = err
@@ -664,6 +704,8 @@ func (c *Client) UnsubscribeResource(ctx context.Context, uri string) error {
 }
 
 // SetLoggingLevel configures the logging level the server should send to the client.
+//
+// Deprecated: MCP logging is deprecated as of protocol version 2026-07-28 (SEP-2577) in favor of OpenTelemetry or stderr.
 func (c *Client) SetLoggingLevel(ctx context.Context, level string) error {
 	session, err := c.getSession(ctx)
 	if err != nil {
@@ -828,6 +870,37 @@ func (c *Client) adaptTool(mcpTool *mcp.Tool) (*tool.Tool, error) {
 		return nil, err
 	}
 
+	var outputSchema *jsonschema.Schema
+	if mcpTool.OutputSchema != nil {
+		outData, err := json.Marshal(mcpTool.OutputSchema)
+		if err != nil {
+			return nil, err
+		}
+		var s jsonschema.Schema
+		if err := json.Unmarshal(outData, &s); err != nil {
+			return nil, err
+		}
+		outputSchema = &s
+	}
+
+	var annotation tool.Annotation
+	if mcpTool.Annotations != nil {
+		isDangerous := !mcpTool.Annotations.ReadOnlyHint
+		if mcpTool.Annotations.DestructiveHint != nil {
+			isDangerous = *mcpTool.Annotations.DestructiveHint
+		}
+		isOpenWorld := true
+		if mcpTool.Annotations.OpenWorldHint != nil {
+			isOpenWorld = *mcpTool.Annotations.OpenWorldHint
+		}
+		annotation = tool.Annotation{
+			IsReadOnly:   mcpTool.Annotations.ReadOnlyHint,
+			IsIdempotent: mcpTool.Annotations.IdempotentHint,
+			IsDangerous:  isDangerous,
+			IsOpenWorld:  isOpenWorld,
+		}
+	}
+
 	title := mcpTool.Title
 	if title == "" && mcpTool.Annotations != nil {
 		title = mcpTool.Annotations.Title
@@ -838,11 +911,14 @@ func (c *Client) adaptTool(mcpTool *mcp.Tool) (*tool.Tool, error) {
 
 	return &tool.Tool{
 		Definition: tool.Definition{
-			Name:        mcpTool.Name,
-			Title:       title,
-			Description: mcpTool.Description,
-			InputSchema: &inputSchema,
+			Name:         mcpTool.Name,
+			Title:        title,
+			Description:  mcpTool.Description,
+			Annotation:   annotation,
+			InputSchema:  &inputSchema,
+			OutputSchema: outputSchema,
 		},
+		Annotation: annotation,
 		Handler: func(ctx context.Context, call *message.ToolCall) (tool.ToolStream, error) {
 			if err := resolvedInput.Validate(call.Args); err != nil {
 				return nil, &tool.ValidationError{ToolName: mcpTool.Name, Err: err}
@@ -891,6 +967,28 @@ func (c *Client) mapContent(mcpContent []mcp.Content) (message.Content, bool) {
 			content = append(content, &message.AudioBlock{
 				Data:     v.Data,
 				MIMEType: v.MIMEType,
+			})
+		case *mcp.ResourceLink:
+			label := v.URI
+			if v.Title != "" {
+				label = v.Title
+			} else if v.Name != "" {
+				label = v.Name
+			}
+			text := fmt.Sprintf("[Resource: %s](%s)", label, v.URI)
+			if v.Description != "" {
+				text += ": " + v.Description
+			}
+			content = append(content, &message.TextBlock{
+				Text: text,
+				Extras: map[string]any{
+					"type":        "resource_link",
+					"uri":         v.URI,
+					"name":        v.Name,
+					"title":       v.Title,
+					"description": v.Description,
+					"mime_type":   v.MIMEType,
+				},
 			})
 		case *mcp.EmbeddedResource:
 			if v.Resource != nil {
@@ -1052,6 +1150,8 @@ func (m *MultiClient) UnsubscribeResource(ctx context.Context, serverName string
 }
 
 // SetLoggingLevel configures the logging level for the named MCP server.
+//
+// Deprecated: MCP logging is deprecated as of protocol version 2026-07-28 (SEP-2577) in favor of OpenTelemetry or stderr.
 func (m *MultiClient) SetLoggingLevel(ctx context.Context, serverName string, level string) error {
 	c, ok := m.clients[serverName]
 	if !ok {

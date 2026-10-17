@@ -171,3 +171,25 @@ func (p *EnterpriseProvider) GetHandler(ctx context.Context) (auth.OAuthHandler,
 
 	return handler, nil
 }
+
+// ClientCredentialsProvider implements AuthProvider for OAuth2 Client Credentials (M2M) flows.
+type ClientCredentialsProvider struct {
+	ClientID     string
+	ClientSecret string
+	HTTPClient   *http.Client
+}
+
+func (p *ClientCredentialsProvider) GetHandler(ctx context.Context) (auth.OAuthHandler, error) {
+	if p.ClientID == "" || p.ClientSecret == "" {
+		return nil, fmt.Errorf("client ID and client secret are required for client credentials flow")
+	}
+	return extauth.NewClientCredentialsHandler(&extauth.ClientCredentialsHandlerConfig{
+		Credentials: &oauthex.ClientCredentials{
+			ClientID: p.ClientID,
+			ClientSecretAuth: &oauthex.ClientSecretAuth{
+				ClientSecret: p.ClientSecret,
+			},
+		},
+		HTTPClient: p.HTTPClient,
+	})
+}

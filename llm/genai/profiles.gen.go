@@ -115,8 +115,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Temperature: true,
 		},
 		Limits: llm.ProfileLimits{
-			Context: 131072,
-			Output:  65536,
+			Context: 128000,
+			Output:  64000,
 		},
 		Modalities: llm.Modalities{
 			Inputs: []llm.Modality{
@@ -457,7 +457,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			},
 		},
 		Limits: llm.ProfileLimits{
-			Context: 131072,
+			Context: 65536,
 			Output:  32768,
 		},
 		Modalities: llm.Modalities{
@@ -536,8 +536,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 			},
 		},
 		Limits: llm.ProfileLimits{
-			Context: 65536,
-			Output:  65536,
+			Context: 131072,
+			Output:  32768,
 		},
 		Modalities: llm.Modalities{
 			Inputs: []llm.Modality{
@@ -676,7 +676,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		},
 		Limits: llm.ProfileLimits{
 			Context: 65536,
-			Output:  65536,
+			Output:  4096,
 		},
 		Modalities: llm.Modalities{
 			Inputs: []llm.Modality{
@@ -1205,6 +1205,53 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Input:      0.75,
 			Output:     3.75,
 			CacheRead:  0.075,
+			CacheWrite: 0,
+		},
+	},
+	"gemini-4-argon": {
+		ID:          "gemini-4-argon",
+		Name:        "Gemini 4 Argon",
+		Family:      "gemini",
+		Knowledge:   "2026-03",
+		ReleaseDate: "2026-10-13",
+		LastUpdated: "2026-10-13",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: true,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1048576,
+			Output:  32768,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityVideo,
+				llm.ModalityAudio,
+				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      2,
+			Output:     10,
+			CacheRead:  0.1,
 			CacheWrite: 0,
 		},
 	},

@@ -56,6 +56,7 @@ nav:
       - Anthropic: guides/providers/anthropic.md
       - Google Gemini: guides/providers/google.md
       - Ollama: guides/providers/ollama.md
+      - TypeSafe AI: guides/providers/typesafe.md
   - Advanced:
       - Human-in-the-Loop: guides/hitl.md
       - Memory Management: guides/memory.md

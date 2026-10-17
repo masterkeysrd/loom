@@ -22,7 +22,7 @@ Decision models evaluate structured questions against an input context (arbitrar
 
 ## 1. Core Abstractions
 
-- **`Provider`**: The backend implementation that executes decision evaluations. Native backends include OpenAI Decisions and Ollama SystemOne; any LLM can also be adapted.
+- **`Provider`**: The backend implementation that executes decision evaluations. Native backends include OpenAI Decisions, Ollama SystemOne, and TypeSafe AI; any LLM can also be adapted.
 - **`Model`**: The high-level wrapper configured with a provider and model name. Supports single-question shortcuts, batch evaluations, and middleware chains.
 - **`Question`**: The question definition:
   - **`Predicate`**: Binary true/false question with probability and criteria descriptions.
@@ -76,6 +76,34 @@ if err != nil {
 // Pass provider directly to decision.NewModel
 model, err := decision.NewModel(provider, "nimble", nil)
 ```
+
+### TypeSafe AI Native SystemOne API
+TypeSafe AI provides dedicated, high-speed System One endpoints (`POST https://api.typesafe.ai/v1/systemone` and `GET https://api.typesafe.ai/v1/models`) specifically architected for deterministic probabilistic decision-making.
+
+Loom's `loomtypesafe.Provider` implements `decision.Provider` and `decision.ProfileProvider` out of the box:
+
+```go
+import (
+    "github.com/masterkeysrd/loom/decision"
+    loomtypesafe "github.com/masterkeysrd/loom/decision/typesafe"
+)
+
+// Uses TYPESAFE_API_KEY from environment
+provider, err := loomtypesafe.NewDefaultProvider()
+if err != nil {
+    log.Fatal(err)
+}
+
+// Pass provider directly to decision.NewModel with jev-latest
+model, err := decision.NewModel(provider, loomtypesafe.ModelJevLatest, nil)
+```
+
+Features:
+- **Ultra-low cost**: $0.042 per 1M input tokens ($0 output tokens).
+- **Purpose-built models**: `loomtypesafe.ModelJevLatest` (`"jev-latest"`), `loomtypesafe.ModelJevPreview` (`"jev-preview"`), `loomtypesafe.ModelJev1_14_0` (`"jev-1.14.0"`), and `loomtypesafe.ModelJev1_13_0` (`"jev-1.13.0"`).
+- **Extended context extension**: Use `loomtypesafe.LongContext{Enabled: true}` to raise context limits from 64k to 262k tokens.
+- **Payload optimization & retries**: Automatic gzip compression for requests $\ge$ 1 KiB, exponential retries on `429` and `529`.
+- **Modality**: Text and structured JSON state (multimodal images not supported).
 
 ### LLM Fallback Adapter
 If your preferred provider does not offer a native decision endpoint (e.g., Anthropic Claude or Google Gemini), you can adapt any standard `llm.Model` into a decision model using `decision.NewFromLLM`.
@@ -355,4 +383,5 @@ Decision models include built-in OpenTelemetry instrumentation via `TelemetryMid
 
 - Explore [OpenAI Provider](./providers/openai.md) for configuring `gpt-6-luna` with native decisions.
 - Explore [Ollama Provider](./providers/ollama.md) for running local `nimble` and `clef` System One models.
+- Explore [TypeSafe AI Provider](./providers/typesafe.md) for purpose-built, high-throughput System One decision models.
 - Review [Graph Workflows](./quickstart.md) to learn how to construct complex graph agents.

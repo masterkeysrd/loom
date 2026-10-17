@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/masterkeysrd/loom/decision"
+	loomtypesafe "github.com/masterkeysrd/loom/decision/typesafe"
 	"github.com/masterkeysrd/loom/graph"
 	"github.com/masterkeysrd/loom/llm"
 	loomollama "github.com/masterkeysrd/loom/llm/ollama"
@@ -37,8 +38,8 @@ func main() {
 		modelFlag    string
 		llmFlag      bool
 	)
-	flag.StringVar(&providerFlag, "provider", "ollama", "Provider to use: ollama or openai")
-	flag.StringVar(&modelFlag, "model", "nimble", "Model to use (e.g., nimble, clef, clef-flash, gpt-6-luna, or any LLM with -llm)")
+	flag.StringVar(&providerFlag, "provider", "ollama", "Provider to use: ollama, openai, or typesafe")
+	flag.StringVar(&modelFlag, "model", "nimble", "Model to use (e.g., nimble, clef, clef-flash, gpt-6-luna, jev-latest, or any LLM with -llm)")
 	flag.BoolVar(&llmFlag, "llm", false, "Use decision.NewFromLLM adapter with a standard chat LLM instead of native decision API")
 	flag.Parse()
 
@@ -76,8 +77,20 @@ func main() {
 		}
 		llmProvider = p
 		decisionProvider = p
+	case "typesafe":
+		if llmFlag {
+			log.Fatalf("typesafe provider only supports the native decision API (-llm cannot be used with -provider typesafe)")
+		}
+		if modelFlag == "nimble" {
+			modelFlag = loomtypesafe.ModelJevLatest
+		}
+		p, err := loomtypesafe.NewDefaultProvider()
+		if err != nil {
+			log.Fatalf("failed to create TypeSafe provider: %v", err)
+		}
+		decisionProvider = p
 	default:
-		log.Fatalf("unsupported provider %q: must be 'ollama' or 'openai'", providerFlag)
+		log.Fatalf("unsupported provider %q: must be 'ollama', 'openai', or 'typesafe'", providerFlag)
 	}
 
 	var decider *decision.Model

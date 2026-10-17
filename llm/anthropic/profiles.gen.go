@@ -180,6 +180,65 @@ var staticProfiles = map[string]llm.ModelProfile{
 			CacheWrite: 1.25,
 		},
 	},
+	"claude-haiku-5-5": {
+		ID:          "claude-haiku-5-5",
+		Name:        "Claude Haiku 5.5",
+		Family:      "claude-haiku",
+		Knowledge:   "2026-06",
+		ReleaseDate: "2026-10-07",
+		LastUpdated: "2026-10-07",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "toggle",
+				},
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1000000,
+			Output:  128000,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      0.1,
+			Output:     0.5,
+			CacheRead:  0.01,
+			CacheWrite: 0.125,
+			TieredLimits: []llm.TierPricing{
+				{
+					Input:      0.5,
+					Output:     2.5,
+					CacheRead:  0.05,
+					CacheWrite: 0.625,
+					TierLimit:  100000,
+				},
+			},
+		},
+	},
 	"claude-opus-4-5": {
 		ID:          "claude-opus-4-5",
 		Name:        "Claude Opus 4.5 (latest)",
@@ -466,6 +525,53 @@ var staticProfiles = map[string]llm.ModelProfile{
 			CacheWrite: 6.25,
 		},
 	},
+	"claude-opus-5-5": {
+		ID:          "claude-opus-5-5",
+		Name:        "Claude Opus 5.5",
+		Family:      "claude-opus",
+		Knowledge:   "2026-06",
+		ReleaseDate: "2026-09-22",
+		LastUpdated: "2026-09-22",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1000000,
+			Output:  128000,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      4,
+			Output:     20,
+			CacheRead:  0.2,
+			CacheWrite: 5,
+		},
+	},
 	"claude-sonnet-4-5": {
 		ID:          "claude-sonnet-4-5",
 		Name:        "Claude Sonnet 4.5 (latest)",
@@ -485,7 +591,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			},
 		},
 		Limits: llm.ProfileLimits{
-			Context: 1000000,
+			Context: 200000,
 			Output:  64000,
 		},
 		Modalities: llm.Modalities{
@@ -525,7 +631,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			},
 		},
 		Limits: llm.ProfileLimits{
-			Context: 1000000,
+			Context: 200000,
 			Output:  64000,
 		},
 		Modalities: llm.Modalities{
@@ -642,6 +748,53 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Input:      2,
 			Output:     10,
 			CacheRead:  0.2,
+			CacheWrite: 2.5,
+		},
+	},
+	"claude-sonnet-5-5": {
+		ID:          "claude-sonnet-5-5",
+		Name:        "Claude Sonnet 5.5",
+		Family:      "claude-sonnet",
+		Knowledge:   "2026-06",
+		ReleaseDate: "2026-09-28",
+		LastUpdated: "2026-09-28",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1000000,
+			Output:  128000,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      2,
+			Output:     10,
+			CacheRead:  0.1,
 			CacheWrite: 2.5,
 		},
 	},

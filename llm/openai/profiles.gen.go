@@ -1494,6 +1494,280 @@ var staticProfiles = map[string]llm.ModelProfile{
 			},
 		},
 	},
+	"gpt-6-luna": {
+		ID:          "gpt-6-luna",
+		Name:        "GPT-6 Luna",
+		Family:      "gpt-luna",
+		Knowledge:   "2026-05-18",
+		ReleaseDate: "2026-09-22",
+		LastUpdated: "2026-09-22",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"none",
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1050000,
+			Output:  128000,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      0.1,
+			Output:     0.5,
+			CacheRead:  0.01,
+			CacheWrite: 0.125,
+			TieredLimits: []llm.TierPricing{
+				{
+					Input:      0.2,
+					Output:     0.75,
+					CacheRead:  0.02,
+					CacheWrite: 0.25,
+					TierLimit:  272000,
+				},
+			},
+		},
+	},
+	"gpt-6-sol": {
+		ID:          "gpt-6-sol",
+		Name:        "GPT-6 Sol",
+		Family:      "gpt-sol",
+		Knowledge:   "2026-04-20",
+		ReleaseDate: "2026-09-22",
+		LastUpdated: "2026-09-22",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"none",
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1050000,
+			Output:  128000,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      2,
+			Output:     10,
+			CacheRead:  0.2,
+			CacheWrite: 2.5,
+			TieredLimits: []llm.TierPricing{
+				{
+					Input:      4,
+					Output:     15,
+					CacheRead:  0.4,
+					CacheWrite: 5,
+					TierLimit:  272000,
+				},
+			},
+		},
+	},
+	"gpt-6.1-sol": {
+		ID:          "gpt-6.1-sol",
+		Name:        "GPT-6.1 Sol",
+		Family:      "gpt-sol",
+		Knowledge:   "2026-04-30",
+		ReleaseDate: "2026-09-29",
+		LastUpdated: "2026-09-29",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1050000,
+			Output:  128000,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      2,
+			Output:     10,
+			CacheRead:  0.1,
+			CacheWrite: 2.5,
+			TieredLimits: []llm.TierPricing{
+				{
+					Input:      4,
+					Output:     15,
+					CacheRead:  0.2,
+					CacheWrite: 5,
+					TierLimit:  272000,
+				},
+			},
+		},
+	},
+	"gpt-daybreak-blue-latest": {
+		ID:          "gpt-daybreak-blue-latest",
+		Name:        "Daybreak Blue",
+		Family:      "gpt-sol",
+		Knowledge:   "2026-02-16",
+		ReleaseDate: "2026-08-07",
+		LastUpdated: "2026-08-07",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"none",
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 1050000,
+			Output:  128000,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+				llm.ModalityPDF,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      4,
+			Output:     20,
+			CacheRead:  0.4,
+			CacheWrite: 5,
+			TieredLimits: []llm.TierPricing{
+				{
+					Input:      8,
+					Output:     30,
+					CacheRead:  0.8,
+					CacheWrite: 10,
+					TierLimit:  272000,
+				},
+			},
+		},
+	},
+	"gpt-daybreak-red-latest": {
+		ID:          "gpt-daybreak-red-latest",
+		Name:        "Daybreak Red",
+		Family:      "gpt",
+		Knowledge:   "2026-02-16",
+		ReleaseDate: "2026-08-07",
+		LastUpdated: "2026-08-07",
+		Capabilities: llm.Capabilities{
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []llm.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"none",
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: llm.ProfileLimits{
+			Context: 400000,
+			Output:  128000,
+		},
+		Modalities: llm.Modalities{
+			Inputs: []llm.Modality{
+				llm.ModalityText,
+				llm.ModalityImage,
+			},
+			Outputs: []llm.Modality{
+				llm.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: llm.Pricing{
+			Input:      12.5,
+			Output:     75,
+			CacheRead:  1.25,
+			CacheWrite: 15.625,
+		},
+	},
 	"gpt-image-1": {
 		ID:          "gpt-image-1",
 		Name:        "gpt-image-1",

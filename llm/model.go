@@ -124,6 +124,21 @@ func NewModel(provider Provider, name string, config *ModelConfig) (*Model, erro
 	return m, nil
 }
 
+// Name returns the configured model identifier.
+func (m *Model) Name() string {
+	return m.name
+}
+
+// Provider returns the underlying [Provider].
+func (m *Model) Provider() Provider {
+	return m.provider
+}
+
+// Profile returns the model profile if available, or nil otherwise.
+func (m *Model) Profile() *ModelProfile {
+	return m.profile
+}
+
 // BindTools registers tool definitions with the model. On every subsequent
 // call the tool descriptors are advertised to the LLM so it can emit tool-call
 // blocks. Multiple calls to BindTools accumulate definitions.

@@ -86,3 +86,46 @@ for _, p := range profiles {
     fmt.Printf("Model: %s, Context: %d\n", p.ID, p.Limits.Context)
 }
 ```
+
+## 6. Decision Models (System One) ⚖️
+
+`loomopenai.Provider` natively implements the [`decision.Provider`](../decision.md) interface, communicating directly with OpenAI's `/v1/decisions` endpoint. This allows you to evaluate fast, calibrated probabilistic questions using decision models such as `gpt-6-luna`.
+
+You can pass the OpenAI provider directly to `decision.NewModel`:
+
+```go
+import (
+    "context"
+    "fmt"
+    "log"
+
+    "github.com/masterkeysrd/loom/decision"
+    "github.com/masterkeysrd/loom/llm/openai"
+)
+
+// 1. Create OpenAI provider
+provider, err := loomopenai.NewDefaultProvider()
+if err != nil {
+    log.Fatal(err)
+}
+
+// 2. Instantiate decision model (e.g., gpt-6-luna)
+decisionModel, err := decision.NewModel(provider, "gpt-6-luna", nil)
+if err != nil {
+    log.Fatal(err)
+}
+
+// 3. Fast probabilistic predicate check
+input := decision.Text("Order #1294: Expedited overnight delivery to an unverified address with a new credit card.")
+ans, err := decisionModel.Check(context.Background(), input, "Is this order high-risk fraud?")
+if err != nil {
+    log.Fatal(err)
+}
+
+if ans.Passed(0.80) {
+    fmt.Printf("Flagged for fraud review (probability: %.2f, confidence: %.2f)\n", ans.Probability, ans.Confidence)
+}
+```
+
+Calls to OpenAI decisions automatically record OpenTelemetry client spans decorated with `openai.api.type = "decisions"`.
+

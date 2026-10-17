@@ -38,3 +38,46 @@ provider.OverrideProfile("my-local-llama", llm.ModelProfile{
     },
 })
 ```
+
+## 4. Decision Models (System One) ⚖️
+
+`loomollama.Provider` natively implements the [`decision.Provider`](../decision.md) interface, communicating directly with Ollama's `/v1/systemone` endpoint. This enables fast, fully local probabilistic evaluation using System One decision models such as `nimble`, `clef`, or `clef-flash`.
+
+You can pass the Ollama provider directly to `decision.NewModel`:
+
+```go
+import (
+    "context"
+    "fmt"
+    "log"
+
+    "github.com/masterkeysrd/loom/decision"
+    "github.com/masterkeysrd/loom/llm/ollama"
+)
+
+// 1. Create Ollama provider (connects to http://localhost:11434 by default)
+provider, err := loomollama.NewDefaultProvider()
+if err != nil {
+    log.Fatal(err)
+}
+
+// 2. Instantiate decision model (e.g., nimble, clef, or clef-flash)
+decisionModel, err := decision.NewModel(provider, "nimble", nil)
+if err != nil {
+    log.Fatal(err)
+}
+
+// 3. Fast local decision check
+input := decision.Text("Customer says: 'Can you provide the API documentation for webhook signatures?'")
+ans, err := decisionModel.Check(context.Background(), input, "Is this request asking for technical documentation?")
+if err != nil {
+    log.Fatal(err)
+}
+
+if ans.Passed(0.75) {
+    fmt.Printf("Technical inquiry confirmed (probability: %.2f, confidence: %.2f)\n", ans.Probability, ans.Confidence)
+}
+```
+
+Calls to Ollama SystemOne endpoints automatically record OpenTelemetry client spans decorated with `ollama.api.type = "systemone"`.
+

@@ -169,6 +169,9 @@ type ImageBlock struct {
 	Extras   map[string]any `json:"extras,omitempty"`
 }
 
+// ImageContent is an alias for ImageBlock.
+type ImageContent = ImageBlock
+
 // Kind returns [BlockKindImage], identifying this block in serialised content.
 func (b *ImageBlock) Kind() BlockKind {
 	return BlockKindImage

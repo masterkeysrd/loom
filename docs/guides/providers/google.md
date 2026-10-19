@@ -75,3 +75,38 @@ Google provider models are statically defined and include information about mult
 ```go
 profiles := provider.SearchProfiles("gemini-1.5")
 ```
+
+## 5. Embedding Models 🧭
+
+`loomgenai.Provider` implements the [`embedding.Provider`](../embedding.md) interface, supporting both text and multimodal embeddings (such as `gemini-embedding-001` and `gemini-embedding-2`), task-type optimization, and configurable output dimensionality:
+
+```go
+import (
+    "context"
+    "fmt"
+    "log"
+
+    "github.com/masterkeysrd/loom/embedding"
+    loomgenai "github.com/masterkeysrd/loom/providers/genai"
+)
+
+ctx := context.Background()
+provider, err := loomgenai.NewDefaultProvider(ctx)
+if err != nil {
+    log.Fatal(err)
+}
+
+embedModel, err := embedding.NewModel(provider, "gemini-embedding-001", nil)
+if err != nil {
+    log.Fatal(err)
+}
+
+vec, err := embedModel.
+    WithDimensions(768).
+    EmbedQuery(ctx, "What are the key capabilities of Gemini?")
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Vector dimensions: %d\n", vec.Dimension())
+```
+

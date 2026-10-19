@@ -237,6 +237,8 @@ func toModelProfile(id string, resp *api.ShowResponse) llm.ModelProfile {
 				p.Capabilities.Completion = true
 			case "decision":
 				p.Capabilities.Decision = true
+			case "embedding":
+				p.Capabilities.Embedding = true
 			case "tools":
 				p.Capabilities.ToolCall = true
 			case "vision":
@@ -271,22 +273,31 @@ func toModelProfile(id string, resp *api.ShowResponse) llm.ModelProfile {
 	// ModelInfo usually has the more accurate hardware-derived limit
 	for k, v := range resp.ModelInfo {
 		if strings.HasSuffix(k, ".context_length") {
-			if f, ok := v.(float64); ok {
-				p.Limits.Context = int(f)
-				break
+			if val, ok := toInt(v); ok {
+				p.Limits.Context = val
 			}
-			if i, ok := v.(int); ok {
-				p.Limits.Context = i
-				break
-			}
-			if i64, ok := v.(int64); ok {
-				p.Limits.Context = int(i64)
-				break
+		}
+		if p.Capabilities.Embedding && strings.HasSuffix(k, ".embedding_length") {
+			if val, ok := toInt(v); ok {
+				p.Limits.Dimensions = val
 			}
 		}
 	}
 
 	return p
+}
+
+func toInt(v any) (int, bool) {
+	switch val := v.(type) {
+	case float64:
+		return int(val), true
+	case int:
+		return val, true
+	case int64:
+		return int(val), true
+	default:
+		return 0, false
+	}
 }
 
 // SearchProfiles returns profiles whose ID or DisplayName contains query

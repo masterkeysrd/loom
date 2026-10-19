@@ -81,3 +81,39 @@ if ans.Passed(0.75) {
 
 Calls to Ollama SystemOne endpoints automatically record OpenTelemetry client spans decorated with `ollama.api.type = "systemone"`.
 
+## 5. Embedding Models 🧭
+
+`loomollama.Provider` natively implements the [`embedding.Provider`](../embedding.md) interface via Ollama's `/api/embed` endpoint, allowing you to generate embeddings locally with models like `nomic-embed-text`, `mxbai-embed-large`, or `bge-m3`:
+
+```go
+import (
+    "context"
+    "fmt"
+    "log"
+
+    "github.com/masterkeysrd/loom/embedding"
+    loomollama "github.com/masterkeysrd/loom/providers/ollama"
+)
+
+provider, err := loomollama.NewDefaultProvider()
+if err != nil {
+    log.Fatal(err)
+}
+
+// Make sure you have pulled the embedding model locally: ollama pull nomic-embed-text
+embedModel, err := embedding.NewModel(provider, "nomic-embed-text", nil)
+if err != nil {
+    log.Fatal(err)
+}
+
+vecs, err := embedModel.EmbedDocuments(context.Background(), []string{
+    "First local document chunk",
+    "Second local document chunk",
+})
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Embedded %d documents (dim=%d)\n", len(vecs), vecs[0].Dimension())
+```
+
+Calls to Ollama embedding endpoints automatically record OpenTelemetry client spans decorated with `ollama.api.type = "embed"`.

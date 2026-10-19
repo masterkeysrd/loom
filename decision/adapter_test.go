@@ -553,11 +553,11 @@ func TestLLM_ImagePassing(t *testing.T) {
 	model, _ := llm.NewModel(p, "vision-model", nil)
 	adapter, _ := decision.NewLLMAdapter(model)
 
-	img1 := message.ImageContent{
+	img1 := message.ImageBlock{
 		Data:     []byte{0x89, 0x50, 0x4E, 0x47},
 		MIMEType: "image/png",
 	}
-	img2 := message.ImageContent{
+	img2 := message.ImageBlock{
 		URL: "https://example.com/photo.jpg",
 	}
 

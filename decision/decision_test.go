@@ -619,7 +619,7 @@ func TestConstructors(t *testing.T) {
 			t.Errorf("expected state with count=42, got %v", inState.State)
 		}
 
-		img := message.ImageContent{URL: "https://example.com/test.png"}
+		img := message.ImageBlock{URL: "https://example.com/test.png"}
 		inMultimodal := inText.WithImages(img)
 		if len(inMultimodal.Images) != 1 || inMultimodal.Images[0].URL != "https://example.com/test.png" {
 			t.Errorf("expected 1 image, got %+v", inMultimodal.Images)

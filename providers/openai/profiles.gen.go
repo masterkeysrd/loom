@@ -14,8 +14,9 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2025-12-16",
 		LastUpdated: "2025-12-16",
 		Capabilities: llm.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   false,
 			ToolCall:    false,
@@ -53,6 +54,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  false,
 			Reasoning:   false,
 			ToolCall:    false,
@@ -88,7 +90,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
-			Attachment:  true,
+			Embedding:   false,
+			Attachment:  false,
 			Reasoning:   false,
 			ToolCall:    true,
 			Temperature: true,
@@ -123,6 +126,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   false,
 			ToolCall:    true,
@@ -159,6 +163,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   false,
 			ToolCall:    true,
@@ -196,6 +201,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   false,
 			ToolCall:    true,
@@ -233,6 +239,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   false,
 			ToolCall:    true,
@@ -269,6 +276,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   false,
 			ToolCall:    true,
@@ -306,6 +314,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   false,
 			ToolCall:    true,
@@ -342,6 +351,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   false,
 			ToolCall:    true,
@@ -378,6 +388,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   false,
 			ToolCall:    true,
@@ -414,6 +425,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   false,
 			ToolCall:    true,
@@ -451,6 +463,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -498,6 +511,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -545,6 +559,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -592,6 +607,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -636,6 +652,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -683,6 +700,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -731,6 +749,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -775,6 +794,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -821,6 +841,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   false,
 			ToolCall:    true,
@@ -857,6 +878,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -906,6 +928,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -955,6 +978,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -1013,6 +1037,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -1061,6 +1086,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -1109,6 +1135,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -1164,6 +1191,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -1222,6 +1250,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -1278,6 +1307,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -1337,6 +1367,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -1396,6 +1427,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -1455,6 +1487,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -1514,6 +1547,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -1572,6 +1606,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -1631,6 +1666,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -1690,6 +1726,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -1748,6 +1785,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -1807,6 +1845,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -1853,8 +1892,9 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2025-04-24",
 		LastUpdated: "2025-04-24",
 		Capabilities: llm.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   false,
 			ToolCall:    false,
@@ -1888,8 +1928,9 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2025-09-26",
 		LastUpdated: "2025-09-26",
 		Capabilities: llm.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   false,
 			ToolCall:    false,
@@ -1924,8 +1965,9 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2025-11-25",
 		LastUpdated: "2025-11-25",
 		Capabilities: llm.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   false,
 			ToolCall:    false,
@@ -1960,8 +2002,9 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2026-04-21",
 		LastUpdated: "2026-04-21",
 		Capabilities: llm.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   false,
 			ToolCall:    false,
@@ -1996,8 +2039,9 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2026-07-06",
 		LastUpdated: "2026-07-06",
 		Capabilities: llm.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -2048,6 +2092,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -2095,6 +2140,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -2141,6 +2187,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -2188,6 +2235,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  false,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -2233,6 +2281,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -2279,6 +2328,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -2323,16 +2373,18 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2024-01-25",
 		LastUpdated: "2024-01-25",
 		Capabilities: llm.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
+			Embedding:   true,
 			Attachment:  false,
 			Reasoning:   false,
 			ToolCall:    false,
 			Temperature: false,
 		},
 		Limits: llm.ProfileLimits{
-			Context: 8191,
-			Output:  3072,
+			Context:    8191,
+			Output:     0,
+			Dimensions: 3072,
 		},
 		Modalities: llm.Modalities{
 			Inputs: []llm.Modality{
@@ -2358,16 +2410,18 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2024-01-25",
 		LastUpdated: "2024-01-25",
 		Capabilities: llm.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
+			Embedding:   true,
 			Attachment:  false,
 			Reasoning:   false,
 			ToolCall:    false,
 			Temperature: false,
 		},
 		Limits: llm.ProfileLimits{
-			Context: 8191,
-			Output:  1536,
+			Context:    8191,
+			Output:     0,
+			Dimensions: 1536,
 		},
 		Modalities: llm.Modalities{
 			Inputs: []llm.Modality{
@@ -2393,16 +2447,18 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2022-12-15",
 		LastUpdated: "2022-12-15",
 		Capabilities: llm.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
+			Embedding:   true,
 			Attachment:  false,
 			Reasoning:   false,
 			ToolCall:    false,
 			Temperature: false,
 		},
 		Limits: llm.ProfileLimits{
-			Context: 8192,
-			Output:  1536,
+			Context:    8192,
+			Output:     0,
+			Dimensions: 1536,
 		},
 		Modalities: llm.Modalities{
 			Inputs: []llm.Modality{

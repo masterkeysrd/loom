@@ -83,6 +83,7 @@ type TierPricing struct {
 type Capabilities struct {
 	Completion       bool              `json:"completion"`
 	Decision         bool              `json:"decision"`
+	Embedding        bool              `json:"embedding"`
 	Attachment       bool              `json:"attachment"`
 	Reasoning        bool              `json:"reasoning"`
 	ToolCall         bool              `json:"tool_call"`
@@ -103,16 +104,18 @@ type Modalities struct {
 type Modality string
 
 const (
-	ModalityText  Modality = "text"
-	ModalityImage Modality = "image"
-	ModalityAudio Modality = "audio"
-	ModalityVideo Modality = "video"
-	ModalityPDF   Modality = "pdf"
+	ModalityText      Modality = "text"
+	ModalityImage     Modality = "image"
+	ModalityAudio     Modality = "audio"
+	ModalityVideo     Modality = "video"
+	ModalityPDF       Modality = "pdf"
+	ModalityEmbedding Modality = "embedding"
 )
 
 type ProfileLimits struct {
-	Context int `json:"context"`
-	Output  int `json:"output"`
+	Context    int `json:"context"`
+	Output     int `json:"output"`
+	Dimensions int `json:"dimensions,omitempty"`
 }
 
 // SearchProfiles returns all entries from profiles whose ID or DisplayName

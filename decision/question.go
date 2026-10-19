@@ -8,7 +8,7 @@ import (
 // It can contain arbitrary structured state or text, alongside optional multimodal images.
 type Input struct {
 	State  any
-	Images []message.ImageContent
+	Images []message.ImageBlock
 }
 
 // Text creates an Input with a plain text string as its state.
@@ -26,7 +26,7 @@ func State(v any) Input {
 }
 
 // WithImages returns a copy of Input with the provided images appended.
-func (in Input) WithImages(imgs ...message.ImageContent) Input {
+func (in Input) WithImages(imgs ...message.ImageBlock) Input {
 	in.Images = append(in.Images, imgs...)
 	return in
 }

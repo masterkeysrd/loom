@@ -168,11 +168,37 @@ type modelEntry struct {
 }
 
 func (m modelEntry) IsCompletion() bool {
-	return m.Type == ""
+	return m.Type == "" && !m.IsEmbedding()
 }
 
 func (m modelEntry) IsDecision() bool {
 	return m.Type == "decision"
+}
+
+func (m modelEntry) IsEmbedding() bool {
+	if m.Type == "embedding" || strings.Contains(m.ID, "embedding") {
+		return true
+	}
+	for _, mod := range m.Modalities.Output {
+		if mod == "embedding" {
+			return true
+		}
+	}
+	return false
+}
+
+func (m modelEntry) OutputLimit() int {
+	if m.IsEmbedding() {
+		return 0
+	}
+	return m.Limit.Output
+}
+
+func (m modelEntry) DimensionsLimit() int {
+	if m.IsEmbedding() && m.Limit.Output > 1 {
+		return m.Limit.Output
+	}
+	return 0
 }
 
 var profileTemplate = template.Must(template.New("").
@@ -206,6 +232,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  {{ .IsCompletion }},
 			Decision:    {{ .IsDecision }},
+			Embedding:   {{ .IsEmbedding }},
 			Attachment:  {{ .Attachment }},
 			Reasoning:   {{ .Reasoning }},
 			ToolCall:    {{ .ToolCall }},
@@ -229,7 +256,10 @@ var staticProfiles = map[string]llm.ModelProfile{
 		},
 		Limits: llm.ProfileLimits{
 			Context: {{ .Limit.Context }},
-			Output:  {{ .Limit.Output }},
+			Output:  {{ .OutputLimit }},
+			{{- if .DimensionsLimit }}
+			Dimensions: {{ .DimensionsLimit }},
+			{{- end }}
 		},
 		Modalities: llm.Modalities{
 			Inputs: []llm.Modality{
@@ -280,6 +310,8 @@ func formatModality(m string) string {
 		return "llm.ModalityVideo"
 	case "pdf":
 		return "llm.ModalityPDF"
+	case "embedding":
+		return "llm.ModalityEmbedding"
 	default:
 		return fmt.Sprintf("// Unknown modality: %q", m)
 	}

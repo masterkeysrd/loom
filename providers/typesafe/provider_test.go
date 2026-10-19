@@ -648,7 +648,7 @@ func TestEvaluateRejectsImages(t *testing.T) {
 
 	req := &decision.Request{
 		Model: loomtypesafe.ModelJevLatest,
-		Input: decision.Text("analyze this").WithImages(message.ImageContent{
+		Input: decision.Text("analyze this").WithImages(message.ImageBlock{
 			Data: []byte("fake-image-bytes"),
 		}),
 	}

@@ -16,6 +16,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -65,6 +66,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -114,6 +116,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -156,6 +159,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -198,6 +202,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -259,6 +264,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -309,6 +315,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -359,6 +366,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -410,6 +418,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -459,6 +468,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -508,6 +518,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -557,6 +568,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -606,6 +618,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -648,6 +661,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -690,6 +704,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -741,6 +756,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -793,6 +809,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Capabilities: llm.Capabilities{
 			Completion:  true,
 			Decision:    false,
+			Embedding:   false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,

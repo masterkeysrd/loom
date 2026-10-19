@@ -48,6 +48,7 @@ nav:
       - Conversations & Messages: guides/conversations.md
       - LLM Package: guides/llm-package.md
       - Decision Models: guides/decision.md
+      - Embedding Models: guides/embedding.md
       - Persistence & State: guides/persistence.md
       - Tools & Streaming: guides/tools.md
       - Model Context Protocol (MCP): guides/mcp.md

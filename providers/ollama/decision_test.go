@@ -21,7 +21,7 @@ func TestToSystemOneRequestConversion(t *testing.T) {
 		Model: "decision-model-v1",
 		Input: decision.Input{
 			State: map[string]any{"balance": 150.50, "status": "active"},
-			Images: []message.ImageContent{
+			Images: []message.ImageBlock{
 				{Data: []byte("img-data-1"), MIMEType: "image/png"},
 				{Data: nil, MIMEType: "image/jpeg"}, // should be skipped
 				{Data: []byte("img-data-2"), MIMEType: "image/webp"},

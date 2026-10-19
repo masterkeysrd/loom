@@ -80,9 +80,9 @@ func TestToDecisionNewParams_MultimodalImageInput(t *testing.T) {
 	req := &decision.Request{
 		Model: "gpt-6-luna",
 		Input: decision.Text("describe the image").WithImages(
-			message.ImageContent{URL: "https://example.com/cat.jpg"},
-			message.ImageContent{Data: rawJPEG, MIMEType: "image/jpeg"},
-			message.ImageContent{Data: rawPNG}, // default to image/png
+			message.ImageBlock{URL: "https://example.com/cat.jpg"},
+			message.ImageBlock{Data: rawJPEG, MIMEType: "image/jpeg"},
+			message.ImageBlock{Data: rawPNG}, // default to image/png
 		),
 		Questions: []decision.Question{
 			decision.Predicate("has_cat", "is there a cat in the image"),

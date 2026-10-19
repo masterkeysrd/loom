@@ -129,3 +129,38 @@ if ans.Passed(0.80) {
 
 Calls to OpenAI decisions automatically record OpenTelemetry client spans decorated with `openai.api.type = "decisions"`.
 
+## 7. Embedding Models 🧭
+
+`loomopenai.Provider` also implements the [`embedding.Provider`](../embedding.md) interface for generating dense text embeddings using models like `text-embedding-3-small` and `text-embedding-3-large`:
+
+```go
+import (
+    "context"
+    "fmt"
+    "log"
+
+    "github.com/masterkeysrd/loom/embedding"
+    loomopenai "github.com/masterkeysrd/loom/providers/openai"
+)
+
+provider, err := loomopenai.NewDefaultProvider()
+if err != nil {
+    log.Fatal(err)
+}
+
+embedModel, err := embedding.NewModel(provider, "text-embedding-3-small", nil)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Optionally reduce vector dimensions (e.g., 512)
+embedModel = embedModel.WithDimensions(512)
+
+vec, err := embedModel.EmbedQuery(context.Background(), "How does Loom handle state persistence?")
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Vector dimensions: %d\n", vec.Dimension())
+```
+
+Calls to OpenAI embeddings automatically record OpenTelemetry client spans decorated with `openai.api.type = "embeddings"`.

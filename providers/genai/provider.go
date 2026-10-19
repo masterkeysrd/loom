@@ -3,7 +3,6 @@ package loomgenai
 import (
 	"context"
 	"fmt"
-	"maps"
 	"net/http"
 	"sync"
 	"time"
@@ -134,7 +133,13 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 // merged on top of the generated static catalog.
 func (p *Provider) ListProfiles() []llm.ModelProfile {
 	merged := make(map[string]llm.ModelProfile, len(staticProfiles))
-	maps.Copy(merged, staticProfiles)
+	for k, v := range staticProfiles {
+		if override, ok := staticProfileOverrides[k]; ok {
+			merged[k] = override(v)
+		} else {
+			merged[k] = v
+		}
+	}
 	p.overrides.Range(func(k, v any) bool {
 		merged[k.(string)] = v.(llm.ModelProfile)
 		return true
@@ -153,6 +158,11 @@ func (p *Provider) GetProfile(id string) (llm.ModelProfile, bool) {
 		return v.(llm.ModelProfile), true
 	}
 	m, ok := staticProfiles[id]
+	if ok {
+		if override, hasOverride := staticProfileOverrides[id]; hasOverride {
+			m = override(m)
+		}
+	}
 	return m, ok
 }
 

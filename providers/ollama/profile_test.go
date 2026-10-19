@@ -58,6 +58,10 @@ func TestToModelProfile(t *testing.T) {
 		t.Error("expected Decision capability to be false")
 	}
 
+	if profile.Capabilities.Embedding {
+		t.Error("expected Embedding capability to be false")
+	}
+
 	if !profile.Capabilities.Attachment {
 		t.Error("expected Attachment capability to be true")
 	}
@@ -89,12 +93,51 @@ func TestToModelProfileDecisionCapability(t *testing.T) {
 		t.Error("expected Completion capability to be false for decision-only model")
 	}
 
+	if profile.Capabilities.Embedding {
+		t.Error("expected Embedding capability to be false")
+	}
+
 	if profile.Capabilities.ToolCall {
 		t.Error("expected ToolCall capability to be false")
 	}
 
 	if !profile.Capabilities.Attachment {
 		t.Error("expected Attachment capability to be true")
+	}
+}
+
+func TestToModelProfileEmbeddingCapability(t *testing.T) {
+	resp := &api.ShowResponse{
+		Details: api.ModelDetails{
+			Family: "nomic-bert",
+		},
+		Capabilities: []model.Capability{"embedding"},
+		ModelInfo: map[string]any{
+			"nomic-bert.context_length":   float64(8192),
+			"nomic-bert.embedding_length": float64(768),
+		},
+	}
+
+	profile := toModelProfile("nomic-embed-text", resp)
+
+	if !profile.Capabilities.Embedding {
+		t.Error("expected Embedding capability to be true")
+	}
+
+	if profile.Limits.Dimensions != 768 {
+		t.Errorf("expected Dimensions limit 768, got %d", profile.Limits.Dimensions)
+	}
+
+	if profile.Capabilities.Completion {
+		t.Error("expected Completion capability to be false for embedding-only model")
+	}
+
+	if profile.Capabilities.Decision {
+		t.Error("expected Decision capability to be false")
+	}
+
+	if profile.Capabilities.ToolCall {
+		t.Error("expected ToolCall capability to be false")
 	}
 }
 
@@ -132,5 +175,9 @@ func TestToModelProfileDefaultContext(t *testing.T) {
 
 	if profile.Capabilities.Decision {
 		t.Error("expected default Decision capability to be false when capabilities list is empty")
+	}
+
+	if profile.Capabilities.Embedding {
+		t.Error("expected default Embedding capability to be false when capabilities list is empty")
 	}
 }

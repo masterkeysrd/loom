@@ -9,11 +9,12 @@ import (
 	"github.com/masterkeysrd/loom/decision"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 )
 
 type mockLLMProvider struct {
 	name            string
-	profiles        map[string]llm.ModelProfile
+	profiles        map[string]profile.Profile
 	lastRequest     *llm.Request
 	responseHandler func(ctx context.Context, req *llm.Request) (string, *message.TokenMetrics, error)
 }
@@ -49,31 +50,31 @@ func (m *mockLLMProvider) Stream(ctx context.Context, req *llm.Request) (llm.Str
 	}, nil
 }
 
-func (m *mockLLMProvider) ListProfiles() []llm.ModelProfile {
-	var list []llm.ModelProfile
+func (m *mockLLMProvider) ListProfiles() []profile.Profile {
+	var list []profile.Profile
 	for _, p := range m.profiles {
 		list = append(list, p)
 	}
 	return list
 }
 
-func (m *mockLLMProvider) GetProfile(id string) (llm.ModelProfile, bool) {
+func (m *mockLLMProvider) GetProfile(id string) (profile.Profile, bool) {
 	if m.profiles == nil {
-		return llm.ModelProfile{}, false
+		return profile.Profile{}, false
 	}
 	p, ok := m.profiles[id]
 	return p, ok
 }
 
-func (m *mockLLMProvider) SearchProfiles(query string) []llm.ModelProfile {
+func (m *mockLLMProvider) SearchProfiles(query string) []profile.Profile {
 	return nil
 }
 
-func (m *mockLLMProvider) OverrideProfile(id string, profile llm.ModelProfile) {
+func (m *mockLLMProvider) OverrideProfile(id string, p profile.Profile) {
 	if m.profiles == nil {
-		m.profiles = make(map[string]llm.ModelProfile)
+		m.profiles = make(map[string]profile.Profile)
 	}
-	m.profiles[id] = profile
+	m.profiles[id] = p
 }
 
 func TestLLM_NilModel(t *testing.T) {
@@ -624,18 +625,18 @@ func TestLLM_MetricsPreservation(t *testing.T) {
 		},
 	}
 
-	profile := llm.ModelProfile{
+	prof := profile.Profile{
 		ID:   "smart-model",
 		Name: "smart-model",
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:  10.0, // per 1M tokens
 			Output: 30.0,
 		},
 	}
 
 	p := &mockLLMProvider{
-		profiles: map[string]llm.ModelProfile{
-			"smart-model": profile,
+		profiles: map[string]profile.Profile{
+			"smart-model": prof,
 		},
 		responseHandler: func(ctx context.Context, req *llm.Request) (string, *message.TokenMetrics, error) {
 			return `{"answers": {"test": {"refused": false, "probability": 0.5}}}`, expectedMetrics, nil

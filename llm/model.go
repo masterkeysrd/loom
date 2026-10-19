@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/stream"
 	"github.com/masterkeysrd/loom/tool"
 )
@@ -86,7 +87,7 @@ type CallOption func(*Request)
 type Model struct {
 	name       string
 	provider   Provider
-	profile    *ModelProfile
+	profile    *profile.Profile
 	tools      []tool.Definition
 	config     *ModelConfig
 	middleware []Middleware
@@ -97,23 +98,23 @@ type Model struct {
 // non-empty catalog and name is not found in it, preventing hallucinated or
 // cross-provider model IDs from reaching the API.
 func NewModel(provider Provider, name string, config *ModelConfig) (*Model, error) {
-	var profile *ModelProfile
+	var prof *profile.Profile
 	if p, found := provider.GetProfile(name); found {
-		profile = &p
+		prof = &p
 	}
 
 	if config == nil {
 		config = &ModelConfig{}
-		if profile != nil {
-			config.MaxTokens = profile.Limits.Output
-			config.ContextWindow = profile.Limits.Context
+		if prof != nil {
+			config.MaxTokens = prof.Limits.Output
+			config.ContextWindow = prof.Limits.Context
 		}
 	}
 
 	m := &Model{
 		name:       name,
 		provider:   provider,
-		profile:    profile,
+		profile:    prof,
 		config:     config,
 		middleware: make([]Middleware, 0),
 	}
@@ -135,7 +136,7 @@ func (m *Model) Provider() Provider {
 }
 
 // Profile returns the model profile if available, or nil otherwise.
-func (m *Model) Profile() *ModelProfile {
+func (m *Model) Profile() *profile.Profile {
 	return m.profile
 }
 

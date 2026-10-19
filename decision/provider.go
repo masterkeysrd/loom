@@ -1,10 +1,6 @@
 package decision
 
-import (
-	"context"
-
-	"github.com/masterkeysrd/loom/llm"
-)
+import "context"
 
 // Provider is the abstraction over a concrete decision backend (e.g., Gemini, OpenAI, Claude).
 // Implementations evaluate a structured [Request] against one or more questions and return
@@ -15,12 +11,6 @@ type Provider interface {
 
 	// Evaluate executes a decision evaluation request for the given questions.
 	Evaluate(ctx context.Context, req *Request) (*Response, error)
-}
-
-// ProfileProvider is an optional interface that providers may implement to expose
-// model catalog metadata, limits, and pricing information.
-type ProfileProvider interface {
-	GetProfile(id string) (llm.ModelProfile, bool)
 }
 
 // Extension is the interface that all provider-specific configurations must

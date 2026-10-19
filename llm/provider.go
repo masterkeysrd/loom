@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/tool"
 )
 
@@ -23,22 +24,22 @@ type Provider interface {
 	// iterator over [message.AssistantChunk] values.
 	Stream(context.Context, *Request) (StreamResponse, error)
 
-	// ListProfiles returns all known [ModelProfile] entries for this provider.
+	// ListProfiles returns all known [profile.Profile] entries for this provider.
 	// An empty slice means the provider has no static catalog (e.g. Ollama,
 	// where models are user-installed), and profile validation is skipped.
-	ListProfiles() []ModelProfile
+	ListProfiles() []profile.Profile
 
 	// GetProfile looks up a model by ID, checking runtime overrides first and
 	// falling back to the static generated catalog.
-	GetProfile(id string) (ModelProfile, bool)
+	GetProfile(id string) (profile.Profile, bool)
 
 	// SearchProfiles returns profiles whose ID or DisplayName contains query
 	// (case-insensitive).
-	SearchProfiles(query string) []ModelProfile
+	SearchProfiles(query string) []profile.Profile
 
 	// OverrideProfile registers a custom profile for id, shadowing any
 	// entry with the same ID in the static catalog.
-	OverrideProfile(id string, profile ModelProfile)
+	OverrideProfile(id string, p profile.Profile)
 }
 
 // Extension is the interface that all provider-specific configurations must

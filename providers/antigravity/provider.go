@@ -12,6 +12,7 @@ import (
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/stream"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/attribute"
@@ -19,6 +20,7 @@ import (
 )
 
 var _ llm.Provider = (*Provider)(nil)
+var _ profile.Provider = (*Provider)(nil)
 var _ llm.QuotaProvider = (*Provider)(nil)
 var _ llm.TokenCounter = (*Provider)(nil)
 
@@ -70,7 +72,7 @@ type Provider struct {
 	cachedMu    sync.RWMutex
 	lastFetched time.Time
 	cacheTTL    time.Duration
-	cached      map[string]llm.ModelProfile
+	cached      map[string]profile.Profile
 	rawProfiles bool
 
 	quotaTTL         time.Duration
@@ -145,7 +147,7 @@ func NewProvider(cfg *Config) (*Provider, error) {
 	return &Provider{
 		client:       client,
 		cacheTTL:     cacheTTL,
-		cached:       make(map[string]llm.ModelProfile),
+		cached:       make(map[string]profile.Profile),
 		rawProfiles:  cfg.RawProfiles,
 		quotaTTL:     quotaTTL,
 		cachedQuotas: make(map[string]QuotaInfo),
@@ -252,7 +254,7 @@ func (p *Provider) ensureProfiles() {
 	p.lastFetched = time.Now()
 }
 
-func toModelProfile(m AvailableModel) llm.ModelProfile {
+func toModelProfile(m AvailableModel) profile.Profile {
 	family := "gemini"
 	if strings.Contains(m.ID, "claude") {
 		family = "claude"
@@ -260,15 +262,15 @@ func toModelProfile(m AvailableModel) llm.ModelProfile {
 		family = "gpt"
 	}
 
-	inputs := []llm.Modality{llm.ModalityText}
+	inputs := []profile.Modality{profile.ModalityText}
 	if m.SupportsImages {
-		inputs = append(inputs, llm.ModalityImage)
+		inputs = append(inputs, profile.ModalityImage)
 	}
 	if m.SupportsVideo {
-		inputs = append(inputs, llm.ModalityVideo)
+		inputs = append(inputs, profile.ModalityVideo)
 	}
 	if m.SupportedMimeTypes != nil && m.SupportedMimeTypes["application/pdf"] {
-		inputs = append(inputs, llm.ModalityPDF)
+		inputs = append(inputs, profile.ModalityPDF)
 	}
 	hasAudio := false
 	for mime := range m.SupportedMimeTypes {
@@ -278,27 +280,27 @@ func toModelProfile(m AvailableModel) llm.ModelProfile {
 		}
 	}
 	if hasAudio {
-		inputs = append(inputs, llm.ModalityAudio)
+		inputs = append(inputs, profile.ModalityAudio)
 	}
 
-	return llm.ModelProfile{
+	return profile.Profile{
 		ID:     m.ID,
 		Name:   m.DisplayName,
 		Family: family,
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Attachment:  m.SupportsImages || m.SupportsVideo || len(m.SupportedMimeTypes) > 0,
 			Reasoning:   m.SupportsThinking,
 			ToolCall:    true,
 			Temperature: true,
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: m.MaxTokens,
 			Output:  m.MaxOutputTokens,
 		},
-		Modalities: llm.Modalities{
+		Modalities: profile.Modalities{
 			Inputs:  inputs,
-			Outputs: []llm.Modality{llm.ModalityText},
+			Outputs: []profile.Modality{profile.ModalityText},
 		},
 	}
 }
@@ -307,10 +309,10 @@ func toModelProfile(m AvailableModel) llm.ModelProfile {
 // By default (when RawProfiles is false), it returns clean, compacted profiles
 // for each canonical model family with reasoning effort options surfaced.
 // When RawProfiles is true, it returns the raw uncompacted endpoints and variants.
-func (p *Provider) ListProfiles() []llm.ModelProfile {
+func (p *Provider) ListProfiles() []profile.Profile {
 	p.ensureProfiles()
 
-	merged := make(map[string]llm.ModelProfile, len(staticProfiles)+len(p.cached))
+	merged := make(map[string]profile.Profile, len(staticProfiles)+len(p.cached))
 	maps.Copy(merged, staticProfiles)
 
 	p.cachedMu.RLock()
@@ -320,7 +322,7 @@ func (p *Provider) ListProfiles() []llm.ModelProfile {
 	p.cachedMu.RUnlock()
 
 	p.overrides.Range(func(k, v any) bool {
-		merged[k.(string)] = v.(llm.ModelProfile)
+		merged[k.(string)] = v.(profile.Profile)
 		return true
 	})
 
@@ -328,7 +330,7 @@ func (p *Provider) ListProfiles() []llm.ModelProfile {
 		merged = compactModelProfiles(merged)
 	}
 
-	result := make([]llm.ModelProfile, 0, len(merged))
+	result := make([]profile.Profile, 0, len(merged))
 	for _, m := range merged {
 		result = append(result, m)
 	}
@@ -337,9 +339,9 @@ func (p *Provider) ListProfiles() []llm.ModelProfile {
 
 // GetProfile returns the profile for the given model ID, checking overrides,
 // cached dynamic models, and canonical aliases before falling back to the static catalog.
-func (p *Provider) GetProfile(id string) (llm.ModelProfile, bool) {
+func (p *Provider) GetProfile(id string) (profile.Profile, bool) {
 	if v, ok := p.overrides.Load(id); ok {
-		return v.(llm.ModelProfile), true
+		return v.(profile.Profile), true
 	}
 
 	p.ensureProfiles()
@@ -376,11 +378,11 @@ func (p *Provider) GetProfile(id string) (llm.ModelProfile, bool) {
 		return prof, true
 	}
 
-	return llm.ModelProfile{}, false
+	return profile.Profile{}, false
 }
 
-func compactModelProfiles(raw map[string]llm.ModelProfile) map[string]llm.ModelProfile {
-	families := make(map[string]llm.ModelProfile)
+func compactModelProfiles(raw map[string]profile.Profile) map[string]profile.Profile {
+	families := make(map[string]profile.Profile)
 	familyEfforts := make(map[string]map[string]bool)
 
 	for id, prof := range raw {
@@ -424,7 +426,7 @@ func compactModelProfiles(raw map[string]llm.ModelProfile) map[string]llm.ModelP
 			}
 		}
 		if len(values) > 0 {
-			prof.Capabilities.ReasoningOptions = []llm.ReasoningOption{
+			prof.Capabilities.ReasoningOptions = []profile.ReasoningOption{
 				{Type: "effort", Values: values},
 			}
 		}
@@ -435,13 +437,13 @@ func compactModelProfiles(raw map[string]llm.ModelProfile) map[string]llm.ModelP
 }
 
 // SearchProfiles returns profiles whose ID or Name contains query (case-insensitive).
-func (p *Provider) SearchProfiles(query string) []llm.ModelProfile {
-	return llm.SearchProfiles(p.ListProfiles(), query)
+func (p *Provider) SearchProfiles(query string) []profile.Profile {
+	return profile.Search(p.ListProfiles(), query)
 }
 
 // OverrideProfile stores a custom profile for id, shadowing any static entry.
-func (p *Provider) OverrideProfile(id string, profile llm.ModelProfile) {
-	p.overrides.Store(id, profile)
+func (p *Provider) OverrideProfile(id string, prof profile.Profile) {
+	p.overrides.Store(id, prof)
 }
 
 // ListQuotas returns the current quota information for all models exposed by the backend.

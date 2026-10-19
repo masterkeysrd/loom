@@ -16,10 +16,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-var (
-	_ decision.Provider        = (*Provider)(nil)
-	_ decision.ProfileProvider = (*Provider)(nil)
-)
+var _ decision.Provider = (*Provider)(nil)
 
 // Evaluate executes a decision evaluation request for the given questions using
 // Ollama's native SystemOne API.

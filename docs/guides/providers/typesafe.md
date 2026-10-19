@@ -12,7 +12,7 @@ TypeSafe AI provides dedicated System One endpoints:
 - **Evaluation**: `POST https://api.typesafe.ai/v1/systemone`
 - **Model Discovery**: `GET https://api.typesafe.ai/v1/models`
 
-`loomtypesafe.Provider` natively implements both [`decision.Provider`](../decision.md) and `decision.ProfileProvider`, allowing it to be plugged directly into `decision.NewModel` without any adapter.
+`loomtypesafe.Provider` natively implements both [`decision.Provider`](../decision.md) and `profile.Provider`, allowing it to be plugged directly into `decision.NewModel` without any adapter.
 
 ### Key Capabilities
 - **Ultra-low latency & cost**: Purpose-built decision inference at **$0.042 per 1M input tokens** ($0 output tokens).

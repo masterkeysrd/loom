@@ -12,6 +12,7 @@ import (
 
 	"github.com/masterkeysrd/loom/decision"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/packages/param"
@@ -23,7 +24,7 @@ import (
 func TestInterfaceCompliance(t *testing.T) {
 	p := &Provider{}
 	var _ decision.Provider = p
-	var _ decision.ProfileProvider = p
+	var _ profile.Provider = p
 	if p.Name() != "openai" {
 		t.Fatalf("expected provider name 'openai', got %q", p.Name())
 	}

@@ -1,4 +1,4 @@
-package llm
+package profile
 
 import (
 	"strings"
@@ -6,27 +6,32 @@ import (
 	"github.com/masterkeysrd/loom/message"
 )
 
-// ModelProfile describes the capabilities and metadata of a specific LLM model.
-// Providers embed a map of ModelProfile values (generated via go:generate) and
-// expose them through the catalog methods on [Provider].
-type ModelProfile struct {
-	ID           string        `json:"id"`
-	Name         string        `json:"name"`
-	Family       string        `json:"family,omitempty"`
-	Knowledge    string        `json:"knowledge,omitempty"`
-	ReleaseDate  string        `json:"release_date,omitempty"`
-	LastUpdated  string        `json:"last_updated,omitempty"`
-	Capabilities Capabilities  `json:"capabilities"`
-	Limits       ProfileLimits `json:"limits"`
-	Modalities   Modalities    `json:"modalities"`
-	OpenWeights  bool          `json:"open_weights,omitempty"`
-	Pricing      Pricing       `json:"pricing,omitempty"`
+// Provider is an optional interface that model backends may implement to expose
+// model catalog metadata, limits, capabilities, and pricing information.
+type Provider interface {
+	GetProfile(id string) (Profile, bool)
+}
+
+// Profile describes the capabilities, limits, modalities, and pricing metadata
+// of a specific AI model across completion, decision, and embedding workloads.
+type Profile struct {
+	ID           string       `json:"id"`
+	Name         string       `json:"name"`
+	Family       string       `json:"family,omitempty"`
+	Knowledge    string       `json:"knowledge,omitempty"`
+	ReleaseDate  string       `json:"release_date,omitempty"`
+	LastUpdated  string       `json:"last_updated,omitempty"`
+	Capabilities Capabilities `json:"capabilities"`
+	Limits       Limits       `json:"limits"`
+	Modalities   Modalities   `json:"modalities"`
+	OpenWeights  bool         `json:"open_weights,omitempty"`
+	Pricing      Pricing      `json:"pricing,omitempty"`
 }
 
 // EstimateCost calculates the estimated financial cost of a request based on
 // the provided token details. It automatically handles tiered pricing logic
 // if the model's profile defines it.
-func (p ModelProfile) EstimateCost(details message.TokenDetails) (message.CostDetails, message.Cost) {
+func (p Profile) EstimateCost(details message.TokenDetails) (message.CostDetails, message.Cost) {
 	// 1. Select the appropriate pricing tier.
 	// Some models (like Anthropic/Gemini) charge more if the total context window is large.
 	pricing := p.Pricing
@@ -62,6 +67,7 @@ func (p ModelProfile) EstimateCost(details message.TokenDetails) (message.CostDe
 	return costs, total
 }
 
+// Pricing defines per-million-token pricing and optional context-window tiers.
 type Pricing struct {
 	Input        float64       `json:"input"`
 	Output       float64       `json:"output"`
@@ -71,6 +77,7 @@ type Pricing struct {
 	TieredLimits []TierPricing `json:"tiers,omitempty"`
 }
 
+// TierPricing defines pricing overrides when total token usage exceeds TierLimit.
 type TierPricing struct {
 	Input      float64 `json:"input"`
 	Output     float64 `json:"output"`
@@ -80,6 +87,7 @@ type TierPricing struct {
 	TierLimit  int     `json:"limit"`
 }
 
+// Capabilities describes the supported operations and features of a model.
 type Capabilities struct {
 	Completion       bool              `json:"completion"`
 	Decision         bool              `json:"decision"`
@@ -91,16 +99,19 @@ type Capabilities struct {
 	ReasoningOptions []ReasoningOption `json:"reasoning_options,omitempty"`
 }
 
+// ReasoningOption describes a supported reasoning parameter configuration.
 type ReasoningOption struct {
 	Type   string   `json:"type"`
 	Values []string `json:"values,omitempty"`
 }
 
+// Modalities lists the supported input and output modalities of a model.
 type Modalities struct {
 	Inputs  []Modality `json:"inputs"`
 	Outputs []Modality `json:"outputs"`
 }
 
+// Modality represents a data modality supported by a model.
 type Modality string
 
 const (
@@ -112,18 +123,18 @@ const (
 	ModalityEmbedding Modality = "embedding"
 )
 
-type ProfileLimits struct {
+// Limits defines token and vector dimensionality limits for a model.
+type Limits struct {
 	Context    int `json:"context"`
 	Output     int `json:"output"`
 	Dimensions int `json:"dimensions,omitempty"`
 }
 
-// SearchProfiles returns all entries from profiles whose ID or DisplayName
-// contains query (case-insensitive). It is a shared helper intended to be
-// called by each provider's SearchProfiles implementation.
-func SearchProfiles(profiles []ModelProfile, query string) []ModelProfile {
+// Search returns all entries from profiles whose ID or Name contains query
+// (case-insensitive).
+func Search(profiles []Profile, query string) []Profile {
 	query = strings.ToLower(query)
-	var result []ModelProfile
+	var result []Profile
 	for _, p := range profiles {
 		if strings.Contains(strings.ToLower(p.ID), query) ||
 			strings.Contains(strings.ToLower(p.Name), query) {

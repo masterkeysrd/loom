@@ -6,6 +6,7 @@ import (
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 )
 
 type middlewareMockProvider struct {
@@ -22,8 +23,8 @@ func (m *middlewareMockProvider) Stream(ctx context.Context, req *llm.Request) (
 	return func(yield func(message.AssistantChunk, error) bool) {}, nil
 }
 
-func (m *middlewareMockProvider) GetProfile(id string) (llm.ModelProfile, bool) {
-	return llm.ModelProfile{}, false
+func (m *middlewareMockProvider) GetProfile(id string) (profile.Profile, bool) {
+	return profile.Profile{}, false
 }
 
 func TestModel_Middleware(t *testing.T) {

@@ -1,13 +1,17 @@
 package llm
 
-import "context"
+import (
+	"context"
+
+	"github.com/masterkeysrd/loom/profile"
+)
 
 // Runtime provides runtime context containing execution details.
 type Runtime struct {
 	RunID    string
 	Model    string
 	Provider string
-	Profile  *ModelProfile
+	Profile  *profile.Profile
 	Config   *ModelConfig
 }
 

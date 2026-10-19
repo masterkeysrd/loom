@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 )
 
 type mockProvider struct {
@@ -18,8 +19,8 @@ func (m *mockProvider) Stream(ctx context.Context, req *Request) (StreamResponse
 	m.lastRequest = req
 	return func(yield func(message.AssistantChunk, error) bool) {}, nil
 }
-func (m *mockProvider) GetProfile(id string) (ModelProfile, bool) {
-	return ModelProfile{}, false
+func (m *mockProvider) GetProfile(id string) (profile.Profile, bool) {
+	return profile.Profile{}, false
 }
 
 func TestWithStructuredOutput(t *testing.T) {

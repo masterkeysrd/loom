@@ -3,7 +3,7 @@ package loomollama
 import (
 	"testing"
 
-	"github.com/masterkeysrd/loom/llm"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/types/model"
 )
@@ -20,28 +20,28 @@ func TestToModelProfile(t *testing.T) {
 		},
 	}
 
-	profile := toModelProfile("gemma3", resp)
+	prof := toModelProfile("gemma3", resp)
 
-	if profile.ID != "gemma3" {
-		t.Errorf("expected ID gemma3, got %s", profile.ID)
+	if prof.ID != "gemma3" {
+		t.Errorf("expected ID gemma3, got %s", prof.ID)
 	}
 
-	if profile.Family != "gemma3" {
-		t.Errorf("expected family gemma3, got %s", profile.Family)
+	if prof.Family != "gemma3" {
+		t.Errorf("expected family gemma3, got %s", prof.Family)
 	}
 
-	if !profile.OpenWeights {
+	if !prof.OpenWeights {
 		t.Error("expected OpenWeights to be true")
 	}
 
 	// ModelInfo should override Parameters
-	if profile.Limits.Context != 131072 {
-		t.Errorf("expected context limit 131072, got %d", profile.Limits.Context)
+	if prof.Limits.Context != 131072 {
+		t.Errorf("expected context limit 131072, got %d", prof.Limits.Context)
 	}
 
 	hasVision := false
-	for _, m := range profile.Modalities.Inputs {
-		if m == llm.ModalityImage {
+	for _, m := range prof.Modalities.Inputs {
+		if m == profile.ModalityImage {
 			hasVision = true
 			break
 		}
@@ -50,27 +50,27 @@ func TestToModelProfile(t *testing.T) {
 		t.Error("expected vision modality to be present")
 	}
 
-	if !profile.Capabilities.Completion {
+	if !prof.Capabilities.Completion {
 		t.Error("expected Completion capability to be true")
 	}
 
-	if profile.Capabilities.Decision {
+	if prof.Capabilities.Decision {
 		t.Error("expected Decision capability to be false")
 	}
 
-	if profile.Capabilities.Embedding {
+	if prof.Capabilities.Embedding {
 		t.Error("expected Embedding capability to be false")
 	}
 
-	if !profile.Capabilities.Attachment {
+	if !prof.Capabilities.Attachment {
 		t.Error("expected Attachment capability to be true")
 	}
 
-	if !profile.Capabilities.ToolCall {
+	if !prof.Capabilities.ToolCall {
 		t.Error("expected ToolCall capability to be true")
 	}
 
-	if !profile.Capabilities.Reasoning {
+	if !prof.Capabilities.Reasoning {
 		t.Error("expected Reasoning capability to be true")
 	}
 }

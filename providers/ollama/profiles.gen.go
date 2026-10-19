@@ -1,5 +1,5 @@
 package loomollama
 
-import "github.com/masterkeysrd/loom/llm"
+import "github.com/masterkeysrd/loom/profile"
 
-var staticProfiles = map[string]llm.ModelProfile{}
+var staticProfiles = map[string]profile.Profile{}

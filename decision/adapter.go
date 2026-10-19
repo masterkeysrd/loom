@@ -11,11 +11,12 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 )
 
 var (
-	_ Provider        = (*LLMAdapter)(nil)
-	_ ProfileProvider = (*LLMAdapter)(nil)
+	_ Provider         = (*LLMAdapter)(nil)
+	_ profile.Provider = (*LLMAdapter)(nil)
 )
 
 // LLMAdapter adapts any [llm.Model] to implement the [Provider] interface,
@@ -25,7 +26,7 @@ type LLMAdapter struct {
 	model     *llm.Model
 	modelName string
 	provider  llm.Provider
-	profile   *llm.ModelProfile
+	profile   *profile.Profile
 }
 
 // NewLLMAdapter creates a new decision provider backed by an LLM model.
@@ -35,13 +36,13 @@ func NewLLMAdapter(model *llm.Model) (*LLMAdapter, error) {
 		return nil, errors.New("decision: model cannot be nil")
 	}
 
-	name, provider, profile := extractModelInfo(model)
+	name, provider, prof := extractModelInfo(model)
 
 	return &LLMAdapter{
 		model:     model,
 		modelName: name,
 		provider:  provider,
-		profile:   profile,
+		profile:   prof,
 	}, nil
 }
 
@@ -70,7 +71,7 @@ func (a *LLMAdapter) Name() string {
 }
 
 // GetProfile returns the model profile if available from the underlying provider or model.
-func (a *LLMAdapter) GetProfile(id string) (llm.ModelProfile, bool) {
+func (a *LLMAdapter) GetProfile(id string) (profile.Profile, bool) {
 	if a.provider != nil {
 		if p, ok := a.provider.GetProfile(id); ok {
 			return p, true
@@ -79,7 +80,7 @@ func (a *LLMAdapter) GetProfile(id string) (llm.ModelProfile, bool) {
 	if a.profile != nil && (id == "" || id == a.modelName || id == a.profile.Name) {
 		return *a.profile, true
 	}
-	return llm.ModelProfile{}, false
+	return profile.Profile{}, false
 }
 
 // Evaluate evaluates one or more decision questions against the input context using structured LLM generation.
@@ -701,7 +702,7 @@ func cleanJSON(s string) string {
 	return s
 }
 
-func extractModelInfo(m *llm.Model) (string, llm.Provider, *llm.ModelProfile) {
+func extractModelInfo(m *llm.Model) (string, llm.Provider, *profile.Profile) {
 	if m == nil {
 		return "", nil, nil
 	}

@@ -14,6 +14,7 @@ import (
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/stream"
 	"github.com/ollama/ollama/api"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -21,7 +22,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-var _ llm.Provider = (*Provider)(nil)
+var (
+	_ llm.Provider     = (*Provider)(nil)
+	_ profile.Provider = (*Provider)(nil)
+)
 
 const defaultContextLength = 4096
 
@@ -78,8 +82,8 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 	}
 
 	if _, hasCtx := ollamaRequest.Options["num_ctx"]; !hasCtx {
-		if profile, ok := p.GetProfile(request.Model); ok && profile.Limits.Context > 0 {
-			ollamaRequest.Options["num_ctx"] = profile.Limits.Context
+		if prof, ok := p.GetProfile(request.Model); ok && prof.Limits.Context > 0 {
+			ollamaRequest.Options["num_ctx"] = prof.Limits.Context
 		}
 	}
 
@@ -133,7 +137,7 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 // ListProfiles returns all known Ollama model profiles. It first queries the
 // local Ollama instance for installed models, registering any new ones as
 // skeleton profiles in the runtime cache.
-func (p *Provider) ListProfiles() []llm.ModelProfile {
+func (p *Provider) ListProfiles() []profile.Profile {
 	// Discover models via tags
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -145,7 +149,7 @@ func (p *Provider) ListProfiles() []llm.ModelProfile {
 				if _, ok := staticProfiles[id]; !ok {
 					// Add a skeleton profile so it shows up in searches.
 					// Full metadata will be fetched on first GetProfile.
-					p.overrides.Store(id, llm.ModelProfile{
+					p.overrides.Store(id, profile.Profile{
 						ID:     id,
 						Name:   id,
 						Family: m.Details.Family,
@@ -155,13 +159,13 @@ func (p *Provider) ListProfiles() []llm.ModelProfile {
 		}
 	}
 
-	merged := make(map[string]llm.ModelProfile, len(staticProfiles))
+	merged := make(map[string]profile.Profile, len(staticProfiles))
 	maps.Copy(merged, staticProfiles)
 	p.overrides.Range(func(k, v any) bool {
-		merged[k.(string)] = v.(llm.ModelProfile)
+		merged[k.(string)] = v.(profile.Profile)
 		return true
 	})
-	result := make([]llm.ModelProfile, 0, len(merged))
+	result := make([]profile.Profile, 0, len(merged))
 	for _, m := range merged {
 		result = append(result, m)
 	}
@@ -172,50 +176,50 @@ func (p *Provider) ListProfiles() []llm.ModelProfile {
 // and the static catalog first; if not found, it attempts to fetch full
 // metadata (context window, capabilities) from the Ollama API and caches the
 // result.
-func (p *Provider) GetProfile(id string) (llm.ModelProfile, bool) {
+func (p *Provider) GetProfile(id string) (profile.Profile, bool) {
 	if v, ok := p.overrides.Load(id); ok {
-		profile := v.(llm.ModelProfile)
+		prof := v.(profile.Profile)
 		// If it's just a skeleton (missing limits), try to upgrade it
-		if profile.Limits.Context == 0 {
+		if prof.Limits.Context == 0 {
 			if upgraded, err := p.fetchAndCacheProfile(id); err == nil {
 				return upgraded, true
 			}
 		}
-		return profile, true
+		return prof, true
 	}
 	if m, ok := staticProfiles[id]; ok {
 		return m, true
 	}
 
 	// Lazy fetch full details if not even a skeleton exists
-	if profile, err := p.fetchAndCacheProfile(id); err == nil {
-		return profile, true
+	if prof, err := p.fetchAndCacheProfile(id); err == nil {
+		return prof, true
 	}
 
-	return llm.ModelProfile{}, false
+	return profile.Profile{}, false
 }
 
-func (p *Provider) fetchAndCacheProfile(id string) (llm.ModelProfile, error) {
+func (p *Provider) fetchAndCacheProfile(id string) (profile.Profile, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
 	resp, err := p.client.Show(ctx, &api.ShowRequest{Model: id})
 	if err != nil {
-		return llm.ModelProfile{}, err
+		return profile.Profile{}, err
 	}
 
-	profile := toModelProfile(id, resp)
-	p.overrides.Store(id, profile)
-	return profile, nil
+	prof := toModelProfile(id, resp)
+	p.overrides.Store(id, prof)
+	return prof, nil
 }
 
-func toModelProfile(id string, resp *api.ShowResponse) llm.ModelProfile {
-	p := llm.ModelProfile{
+func toModelProfile(id string, resp *api.ShowResponse) profile.Profile {
+	p := profile.Profile{
 		ID:          id,
 		Name:        id,
 		Family:      resp.Details.Family,
 		OpenWeights: true, // Ollama runs open-weights models
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true, // Assume true for modern Ollama models by default
 			Temperature: true,
 			ToolCall:    true, // Assume true for modern Ollama models by default
@@ -242,7 +246,7 @@ func toModelProfile(id string, resp *api.ShowResponse) llm.ModelProfile {
 			case "tools":
 				p.Capabilities.ToolCall = true
 			case "vision":
-				p.Modalities.Inputs = append(p.Modalities.Inputs, llm.ModalityImage)
+				p.Modalities.Inputs = append(p.Modalities.Inputs, profile.ModalityImage)
 				p.Capabilities.Attachment = true
 			case "thinking":
 				p.Capabilities.Reasoning = true
@@ -251,8 +255,8 @@ func toModelProfile(id string, resp *api.ShowResponse) llm.ModelProfile {
 	}
 
 	// Always add text modality
-	p.Modalities.Inputs = append(p.Modalities.Inputs, llm.ModalityText)
-	p.Modalities.Outputs = append(p.Modalities.Outputs, llm.ModalityText)
+	p.Modalities.Inputs = append(p.Modalities.Inputs, profile.ModalityText)
+	p.Modalities.Outputs = append(p.Modalities.Outputs, profile.ModalityText)
 
 	// Context window discovery:
 	// 1. Try to parse from Parameters string (Modelfile overrides)
@@ -302,13 +306,13 @@ func toInt(v any) (int, bool) {
 
 // SearchProfiles returns profiles whose ID or DisplayName contains query
 // (case-insensitive).
-func (p *Provider) SearchProfiles(query string) []llm.ModelProfile {
-	return llm.SearchProfiles(p.ListProfiles(), query)
+func (p *Provider) SearchProfiles(query string) []profile.Profile {
+	return profile.Search(p.ListProfiles(), query)
 }
 
 // OverrideProfile stores a custom profile for id, shadowing any static entry.
 // This is also the mechanism for registering locally-pulled Ollama models so
 // that profile metadata (context window, tool support) is available at runtime.
-func (p *Provider) OverrideProfile(id string, profile llm.ModelProfile) {
-	p.overrides.Store(id, profile)
+func (p *Provider) OverrideProfile(id string, prof profile.Profile) {
+	p.overrides.Store(id, prof)
 }

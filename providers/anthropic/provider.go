@@ -10,12 +10,16 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/stream"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/trace"
 )
 
-var _ llm.Provider = (*Provider)(nil)
+var (
+	_ llm.Provider     = (*Provider)(nil)
+	_ profile.Provider = (*Provider)(nil)
+)
 
 const (
 	// MetadataCache is the ID for the prompt caching message extension.
@@ -174,8 +178,8 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 
 // ListProfiles returns all known Anthropic model profiles, with runtime
 // overrides merged on top of the generated static catalog.
-func (p *Provider) ListProfiles() []llm.ModelProfile {
-	merged := make(map[string]llm.ModelProfile, len(staticProfiles))
+func (p *Provider) ListProfiles() []profile.Profile {
+	merged := make(map[string]profile.Profile, len(staticProfiles))
 	for k, v := range staticProfiles {
 		if override, ok := staticProfileOverrides[k]; ok {
 			merged[k] = override(v)
@@ -184,10 +188,10 @@ func (p *Provider) ListProfiles() []llm.ModelProfile {
 		}
 	}
 	p.overrides.Range(func(k, v any) bool {
-		merged[k.(string)] = v.(llm.ModelProfile)
+		merged[k.(string)] = v.(profile.Profile)
 		return true
 	})
-	result := make([]llm.ModelProfile, 0, len(merged))
+	result := make([]profile.Profile, 0, len(merged))
 	for _, m := range merged {
 		result = append(result, m)
 	}
@@ -196,9 +200,9 @@ func (p *Provider) ListProfiles() []llm.ModelProfile {
 
 // GetProfile returns the profile for the given model ID, checking overrides
 // before falling back to the generated static catalog.
-func (p *Provider) GetProfile(id string) (llm.ModelProfile, bool) {
+func (p *Provider) GetProfile(id string) (profile.Profile, bool) {
 	if v, ok := p.overrides.Load(id); ok {
-		return v.(llm.ModelProfile), true
+		return v.(profile.Profile), true
 	}
 	m, ok := staticProfiles[id]
 	if ok {
@@ -211,13 +215,13 @@ func (p *Provider) GetProfile(id string) (llm.ModelProfile, bool) {
 
 // SearchProfiles returns profiles whose ID or DisplayName contains query
 // (case-insensitive).
-func (p *Provider) SearchProfiles(query string) []llm.ModelProfile {
-	return llm.SearchProfiles(p.ListProfiles(), query)
+func (p *Provider) SearchProfiles(query string) []profile.Profile {
+	return profile.Search(p.ListProfiles(), query)
 }
 
 // OverrideProfile stores a custom profile for id, shadowing any static entry
 // with the same ID. Useful for adding unreleased or private model variants at
 // runtime without regenerating the static catalog.
-func (p *Provider) OverrideProfile(id string, profile llm.ModelProfile) {
-	p.overrides.Store(id, profile)
+func (p *Provider) OverrideProfile(id string, prof profile.Profile) {
+	p.overrides.Store(id, prof)
 }

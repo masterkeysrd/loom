@@ -18,13 +18,14 @@ import (
 
 	"github.com/masterkeysrd/loom/decision"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
 var (
-	_ decision.Provider        = (*Provider)(nil)
-	_ decision.ProfileProvider = (*Provider)(nil)
+	_ decision.Provider = (*Provider)(nil)
+	_ profile.Provider  = (*Provider)(nil)
 )
 
 const (
@@ -50,7 +51,7 @@ type LongContext struct {
 // ExtensionID returns the extension identifier for LongContext.
 func (LongContext) ExtensionID() string { return LongContextExtensionID }
 
-// Provider implements decision.Provider and decision.ProfileProvider for TypeSafe AI.
+// Provider implements decision.Provider and profile.Provider for TypeSafe AI.
 type Provider struct {
 	apiKey     string
 	baseURL    *url.URL

@@ -212,9 +212,9 @@ var profileTemplate = template.Must(template.New("").
 
 package {{.Package}}
 
-import "github.com/masterkeysrd/loom/llm"
+import "github.com/masterkeysrd/loom/profile"
 
-var staticProfiles = map[string]llm.ModelProfile{
+var staticProfiles = map[string]profile.Profile{
 {{- range .Models }}
 	{{ printf "%q" .ID }}: {
 		ID:          {{ printf "%q" .ID }},
@@ -229,7 +229,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		{{- if .LastUpdated }}
 		LastUpdated: {{ printf "%q" .LastUpdated }},
 		{{- end }}
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  {{ .IsCompletion }},
 			Decision:    {{ .IsDecision }},
 			Embedding:   {{ .IsEmbedding }},
@@ -238,7 +238,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			ToolCall:    {{ .ToolCall }},
 			Temperature: {{ .Temperature }},
 			{{- if .ReasoningOptions }}
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{{- range .ReasoningOptions }}
 				{
 					Type: {{ printf "%q" .Type }},
@@ -254,33 +254,33 @@ var staticProfiles = map[string]llm.ModelProfile{
 			},
 			{{- end }}
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: {{ .Limit.Context }},
 			Output:  {{ .OutputLimit }},
 			{{- if .DimensionsLimit }}
 			Dimensions: {{ .DimensionsLimit }},
 			{{- end }}
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
 				{{- range .Modalities.Input }}
 				{{ format_modality . }},
 				{{- end }}
 			},
-			Outputs: []llm.Modality{
+			Outputs: []profile.Modality{
 				{{- range .Modalities.Output }}
 				{{ format_modality . }},
 				{{- end }}
 			},
 		},
 		OpenWeights: {{ .OpenWeights }},
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      {{ .Cost.Input }},
 			Output:     {{ .Cost.Output }},
 			CacheRead:  {{ .Cost.CacheRead }},
 			CacheWrite: {{ .Cost.CacheWrite }},
 			{{- if .Cost.Tiers }}
-			TieredLimits: []llm.TierPricing{
+			TieredLimits: []profile.TierPricing{
 				{{- range .Cost.Tiers }}
 				{
 					Input:      {{ .Input }},
@@ -301,17 +301,17 @@ var staticProfiles = map[string]llm.ModelProfile{
 func formatModality(m string) string {
 	switch m {
 	case "text":
-		return "llm.ModalityText"
+		return "profile.ModalityText"
 	case "image":
-		return "llm.ModalityImage"
+		return "profile.ModalityImage"
 	case "audio":
-		return "llm.ModalityAudio"
+		return "profile.ModalityAudio"
 	case "video":
-		return "llm.ModalityVideo"
+		return "profile.ModalityVideo"
 	case "pdf":
-		return "llm.ModalityPDF"
+		return "profile.ModalityPDF"
 	case "embedding":
-		return "llm.ModalityEmbedding"
+		return "profile.ModalityEmbedding"
 	default:
 		return fmt.Sprintf("// Unknown modality: %q", m)
 	}

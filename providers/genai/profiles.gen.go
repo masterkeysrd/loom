@@ -4,9 +4,9 @@
 
 package loomgenai
 
-import "github.com/masterkeysrd/loom/llm"
+import "github.com/masterkeysrd/loom/profile"
 
-var staticProfiles = map[string]llm.ModelProfile{
+var staticProfiles = map[string]profile.Profile{
 	"deep-research-max-preview-04-2026": {
 		ID:          "deep-research-max-preview-04-2026",
 		Name:        "Deep Research Max Preview (Apr-21-2026)",
@@ -14,7 +14,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-04-21",
 		LastUpdated: "2026-04-21",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -23,30 +23,30 @@ var staticProfiles = map[string]llm.ModelProfile{
 			ToolCall:    true,
 			Temperature: true,
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 131072,
 			Output:  65536,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityVideo,
-				llm.ModalityAudio,
-				llm.ModalityPDF,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
+				profile.ModalityAudio,
+				profile.ModalityPDF,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      2,
 			Output:     12,
 			CacheRead:  0.2,
 			CacheWrite: 0,
-			TieredLimits: []llm.TierPricing{
+			TieredLimits: []profile.TierPricing{
 				{
 					Input:      4,
 					Output:     18,
@@ -64,7 +64,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-04-21",
 		LastUpdated: "2026-04-21",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -73,30 +73,30 @@ var staticProfiles = map[string]llm.ModelProfile{
 			ToolCall:    true,
 			Temperature: true,
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 131072,
 			Output:  65536,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityVideo,
-				llm.ModalityAudio,
-				llm.ModalityPDF,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
+				profile.ModalityAudio,
+				profile.ModalityPDF,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      2,
 			Output:     12,
 			CacheRead:  0.2,
 			CacheWrite: 0,
-			TieredLimits: []llm.TierPricing{
+			TieredLimits: []profile.TierPricing{
 				{
 					Input:      4,
 					Output:     18,
@@ -114,7 +114,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-01",
 		ReleaseDate: "2025-10-07",
 		LastUpdated: "2025-10-07",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -123,26 +123,26 @@ var staticProfiles = map[string]llm.ModelProfile{
 			ToolCall:    true,
 			Temperature: true,
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 128000,
 			Output:  64000,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      1.25,
 			Output:     10,
 			CacheRead:  0,
 			CacheWrite: 0,
-			TieredLimits: []llm.TierPricing{
+			TieredLimits: []profile.TierPricing{
 				{
 					Input:      2.5,
 					Output:     15,
@@ -160,7 +160,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-01",
 		ReleaseDate: "2025-06-17",
 		LastUpdated: "2025-06-17",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -168,7 +168,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "toggle",
 				},
@@ -177,24 +177,24 @@ var staticProfiles = map[string]llm.ModelProfile{
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 1048576,
 			Output:  65536,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityAudio,
-				llm.ModalityVideo,
-				llm.ModalityPDF,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityAudio,
+				profile.ModalityVideo,
+				profile.ModalityPDF,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0.3,
 			Output:     2.5,
 			CacheRead:  0.03,
@@ -208,7 +208,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2024-06",
 		ReleaseDate: "2025-08-26",
 		LastUpdated: "2025-08-26",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -217,22 +217,22 @@ var staticProfiles = map[string]llm.ModelProfile{
 			ToolCall:    false,
 			Temperature: true,
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 32768,
 			Output:  32768,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0.3,
 			Output:     30,
 			CacheRead:  0.075,
@@ -246,7 +246,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-01",
 		ReleaseDate: "2025-06-17",
 		LastUpdated: "2025-06-17",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -254,7 +254,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "toggle",
 				},
@@ -263,24 +263,24 @@ var staticProfiles = map[string]llm.ModelProfile{
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 1048576,
 			Output:  65536,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityAudio,
-				llm.ModalityVideo,
-				llm.ModalityPDF,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityAudio,
+				profile.ModalityVideo,
+				profile.ModalityPDF,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0.1,
 			Output:     0.4,
 			CacheRead:  0.01,
@@ -294,7 +294,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-01",
 		ReleaseDate: "2025-05-01",
 		LastUpdated: "2025-05-01",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -303,20 +303,20 @@ var staticProfiles = map[string]llm.ModelProfile{
 			ToolCall:    false,
 			Temperature: true,
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 8192,
 			Output:  16384,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityAudio,
+			Outputs: []profile.Modality{
+				profile.ModalityAudio,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0.5,
 			Output:     10,
 			CacheRead:  0,
@@ -330,7 +330,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-01",
 		ReleaseDate: "2025-06-17",
 		LastUpdated: "2025-06-17",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -338,35 +338,35 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "budget_tokens",
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 1048576,
 			Output:  65536,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityAudio,
-				llm.ModalityVideo,
-				llm.ModalityPDF,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityAudio,
+				profile.ModalityVideo,
+				profile.ModalityPDF,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      1.25,
 			Output:     10,
 			CacheRead:  0.125,
 			CacheWrite: 0,
-			TieredLimits: []llm.TierPricing{
+			TieredLimits: []profile.TierPricing{
 				{
 					Input:      2.5,
 					Output:     15,
@@ -384,7 +384,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-01",
 		ReleaseDate: "2025-05-01",
 		LastUpdated: "2025-05-01",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -393,20 +393,20 @@ var staticProfiles = map[string]llm.ModelProfile{
 			ToolCall:    false,
 			Temperature: true,
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 8192,
 			Output:  16384,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityAudio,
+			Outputs: []profile.Modality{
+				profile.ModalityAudio,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      1,
 			Output:     20,
 			CacheRead:  0,
@@ -420,7 +420,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-01",
 		ReleaseDate: "2025-12-17",
 		LastUpdated: "2025-12-17",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -428,7 +428,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
 					Values: []string{
@@ -440,24 +440,24 @@ var staticProfiles = map[string]llm.ModelProfile{
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 1048576,
 			Output:  65536,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityVideo,
-				llm.ModalityAudio,
-				llm.ModalityPDF,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
+				profile.ModalityAudio,
+				profile.ModalityPDF,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0.5,
 			Output:     3,
 			CacheRead:  0.05,
@@ -471,7 +471,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-05-28",
 		LastUpdated: "2026-05-28",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -479,7 +479,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    false,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
 					Values: []string{
@@ -489,22 +489,22 @@ var staticProfiles = map[string]llm.ModelProfile{
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 65536,
 			Output:  32768,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      2,
 			Output:     120,
 			CacheRead:  0,
@@ -518,7 +518,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-01",
 		ReleaseDate: "2025-11-20",
 		LastUpdated: "2025-11-20",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -527,22 +527,22 @@ var staticProfiles = map[string]llm.ModelProfile{
 			ToolCall:    false,
 			Temperature: true,
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 131072,
 			Output:  32768,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      2,
 			Output:     120,
 			CacheRead:  0,
@@ -556,7 +556,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-05-28",
 		LastUpdated: "2026-05-28",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -564,7 +564,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    false,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
 					Values: []string{
@@ -574,24 +574,24 @@ var staticProfiles = map[string]llm.ModelProfile{
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 131072,
 			Output:  32768,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityVideo,
-				llm.ModalityPDF,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
+				profile.ModalityPDF,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0.5,
 			Output:     60,
 			CacheRead:  0,
@@ -605,7 +605,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-02-26",
 		LastUpdated: "2026-02-26",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -613,7 +613,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    false,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
 					Values: []string{
@@ -623,23 +623,23 @@ var staticProfiles = map[string]llm.ModelProfile{
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 65536,
 			Output:  65536,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityPDF,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityPDF,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0.5,
 			Output:     60,
 			CacheRead:  0,
@@ -653,7 +653,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-05-07",
 		LastUpdated: "2026-05-07",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -661,7 +661,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
 					Values: []string{
@@ -673,24 +673,24 @@ var staticProfiles = map[string]llm.ModelProfile{
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 1048576,
 			Output:  65536,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityVideo,
-				llm.ModalityAudio,
-				llm.ModalityPDF,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
+				profile.ModalityAudio,
+				profile.ModalityPDF,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0.25,
 			Output:     1.5,
 			CacheRead:  0.025,
@@ -704,7 +704,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-06-30",
 		LastUpdated: "2026-06-30",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -712,7 +712,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
 					Values: []string{
@@ -722,22 +722,22 @@ var staticProfiles = map[string]llm.ModelProfile{
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 65536,
 			Output:  4096,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0.25,
 			Output:     30,
 			CacheRead:  0,
@@ -751,7 +751,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-03-03",
 		LastUpdated: "2026-03-03",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -759,7 +759,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
 					Values: []string{
@@ -771,24 +771,24 @@ var staticProfiles = map[string]llm.ModelProfile{
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 1048576,
 			Output:  65536,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityVideo,
-				llm.ModalityAudio,
-				llm.ModalityPDF,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
+				profile.ModalityAudio,
+				profile.ModalityPDF,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0.25,
 			Output:     1.5,
 			CacheRead:  0.025,
@@ -802,7 +802,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-03-26",
 		LastUpdated: "2026-03-26",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -810,7 +810,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
 					Values: []string{
@@ -822,24 +822,24 @@ var staticProfiles = map[string]llm.ModelProfile{
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 131072,
 			Output:  65536,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityVideo,
-				llm.ModalityAudio,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
+				profile.ModalityAudio,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityAudio,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityAudio,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0.75,
 			Output:     4.5,
 			CacheRead:  0,
@@ -853,7 +853,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-04-15",
 		LastUpdated: "2026-04-15",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -862,20 +862,20 @@ var staticProfiles = map[string]llm.ModelProfile{
 			ToolCall:    false,
 			Temperature: true,
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 8192,
 			Output:  16384,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityAudio,
+			Outputs: []profile.Modality{
+				profile.ModalityAudio,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      1,
 			Output:     20,
 			CacheRead:  0,
@@ -889,7 +889,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-02-19",
 		LastUpdated: "2026-02-19",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -897,7 +897,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
 					Values: []string{
@@ -908,29 +908,29 @@ var staticProfiles = map[string]llm.ModelProfile{
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 1048576,
 			Output:  65536,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityVideo,
-				llm.ModalityAudio,
-				llm.ModalityPDF,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
+				profile.ModalityAudio,
+				profile.ModalityPDF,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      2,
 			Output:     12,
 			CacheRead:  0.2,
 			CacheWrite: 0,
-			TieredLimits: []llm.TierPricing{
+			TieredLimits: []profile.TierPricing{
 				{
 					Input:      4,
 					Output:     18,
@@ -948,7 +948,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-02-19",
 		LastUpdated: "2026-02-19",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -956,7 +956,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
 					Values: []string{
@@ -967,29 +967,29 @@ var staticProfiles = map[string]llm.ModelProfile{
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 1048576,
 			Output:  65536,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityVideo,
-				llm.ModalityAudio,
-				llm.ModalityPDF,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
+				profile.ModalityAudio,
+				profile.ModalityPDF,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      2,
 			Output:     12,
 			CacheRead:  0.2,
 			CacheWrite: 0,
-			TieredLimits: []llm.TierPricing{
+			TieredLimits: []profile.TierPricing{
 				{
 					Input:      4,
 					Output:     18,
@@ -1007,7 +1007,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-05-19",
 		LastUpdated: "2026-05-19",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -1015,7 +1015,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
 					Values: []string{
@@ -1027,24 +1027,24 @@ var staticProfiles = map[string]llm.ModelProfile{
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 1048576,
 			Output:  65536,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityVideo,
-				llm.ModalityAudio,
-				llm.ModalityPDF,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
+				profile.ModalityAudio,
+				profile.ModalityPDF,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      1.5,
 			Output:     9,
 			CacheRead:  0.15,
@@ -1058,7 +1058,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2026-03",
 		ReleaseDate: "2026-07-21",
 		LastUpdated: "2026-07-21",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -1066,7 +1066,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
 					Values: []string{
@@ -1078,24 +1078,24 @@ var staticProfiles = map[string]llm.ModelProfile{
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 1048576,
 			Output:  65536,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityVideo,
-				llm.ModalityAudio,
-				llm.ModalityPDF,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
+				profile.ModalityAudio,
+				profile.ModalityPDF,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0.3,
 			Output:     2.5,
 			CacheRead:  0.03,
@@ -1109,7 +1109,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-06-09",
 		LastUpdated: "2026-06-09",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -1118,21 +1118,21 @@ var staticProfiles = map[string]llm.ModelProfile{
 			ToolCall:    false,
 			Temperature: true,
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 16384,
 			Output:  32768,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityAudio,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityAudio,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityAudio,
-				llm.ModalityText,
+			Outputs: []profile.Modality{
+				profile.ModalityAudio,
+				profile.ModalityText,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      3.5,
 			Output:     21,
 			CacheRead:  0,
@@ -1146,7 +1146,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2026-03",
 		ReleaseDate: "2026-07-21",
 		LastUpdated: "2026-07-21",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -1154,7 +1154,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
 					Values: []string{
@@ -1166,24 +1166,24 @@ var staticProfiles = map[string]llm.ModelProfile{
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 1048576,
 			Output:  65536,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityVideo,
-				llm.ModalityAudio,
-				llm.ModalityPDF,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
+				profile.ModalityAudio,
+				profile.ModalityPDF,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0.75,
 			Output:     3.75,
 			CacheRead:  0.075,
@@ -1197,7 +1197,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2026-03",
 		ReleaseDate: "2026-08-13",
 		LastUpdated: "2026-08-13",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -1205,7 +1205,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
 					Values: []string{
@@ -1216,24 +1216,24 @@ var staticProfiles = map[string]llm.ModelProfile{
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 1048576,
 			Output:  65536,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityVideo,
-				llm.ModalityAudio,
-				llm.ModalityPDF,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
+				profile.ModalityAudio,
+				profile.ModalityPDF,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0.75,
 			Output:     3.75,
 			CacheRead:  0.075,
@@ -1246,7 +1246,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Family:      "gemini-flash",
 		ReleaseDate: "2026-09-02",
 		LastUpdated: "2026-09-02",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -1254,7 +1254,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
 					Values: []string{
@@ -1265,24 +1265,24 @@ var staticProfiles = map[string]llm.ModelProfile{
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 1048576,
 			Output:  65536,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityVideo,
-				llm.ModalityAudio,
-				llm.ModalityPDF,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
+				profile.ModalityAudio,
+				profile.ModalityPDF,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0.75,
 			Output:     3.75,
 			CacheRead:  0.075,
@@ -1296,7 +1296,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2026-03",
 		ReleaseDate: "2026-10-13",
 		LastUpdated: "2026-10-13",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -1304,7 +1304,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
 					Values: []string{
@@ -1315,24 +1315,24 @@ var staticProfiles = map[string]llm.ModelProfile{
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 1048576,
 			Output:  32768,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityVideo,
-				llm.ModalityAudio,
-				llm.ModalityPDF,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
+				profile.ModalityAudio,
+				profile.ModalityPDF,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      2,
 			Output:     10,
 			CacheRead:  0.1,
@@ -1346,7 +1346,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-05",
 		ReleaseDate: "2025-05-20",
 		LastUpdated: "2025-05-20",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  false,
 			Decision:    false,
 			Embedding:   true,
@@ -1355,20 +1355,20 @@ var staticProfiles = map[string]llm.ModelProfile{
 			ToolCall:    false,
 			Temperature: false,
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 2048,
 			Output:  0,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0.15,
 			Output:     0,
 			CacheRead:  0,
@@ -1382,7 +1382,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2025-11",
 		ReleaseDate: "2026-04-22",
 		LastUpdated: "2026-04-22",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  false,
 			Decision:    false,
 			Embedding:   true,
@@ -1391,24 +1391,24 @@ var staticProfiles = map[string]llm.ModelProfile{
 			ToolCall:    false,
 			Temperature: false,
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 8192,
 			Output:  0,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityAudio,
-				llm.ModalityVideo,
-				llm.ModalityPDF,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityAudio,
+				profile.ModalityVideo,
+				profile.ModalityPDF,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0.2,
 			Output:     0,
 			CacheRead:  0,
@@ -1422,7 +1422,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2026-03",
 		ReleaseDate: "2026-08-13",
 		LastUpdated: "2026-08-13",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -1430,7 +1430,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
 					Values: []string{
@@ -1441,24 +1441,24 @@ var staticProfiles = map[string]llm.ModelProfile{
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 1048576,
 			Output:  65536,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityVideo,
-				llm.ModalityAudio,
-				llm.ModalityPDF,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
+				profile.ModalityAudio,
+				profile.ModalityPDF,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0.75,
 			Output:     3.75,
 			CacheRead:  0.075,
@@ -1472,7 +1472,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Knowledge:   "2026-03",
 		ReleaseDate: "2026-07-21",
 		LastUpdated: "2026-07-21",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -1480,7 +1480,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
 					Values: []string{
@@ -1492,24 +1492,24 @@ var staticProfiles = map[string]llm.ModelProfile{
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 1048576,
 			Output:  65536,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityVideo,
-				llm.ModalityAudio,
-				llm.ModalityPDF,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
+				profile.ModalityAudio,
+				profile.ModalityPDF,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0.3,
 			Output:     2.5,
 			CacheRead:  0.03,
@@ -1522,7 +1522,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Family:      "gemini",
 		ReleaseDate: "2026-06-30",
 		LastUpdated: "2026-06-30",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -1531,22 +1531,22 @@ var staticProfiles = map[string]llm.ModelProfile{
 			ToolCall:    false,
 			Temperature: true,
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 131072,
 			Output:  65536,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityVideo,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityVideo,
+			Outputs: []profile.Modality{
+				profile.ModalityVideo,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      1.5,
 			Output:     17.5,
 			CacheRead:  0,
@@ -1559,7 +1559,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Family:      "gemma",
 		ReleaseDate: "2026-04-02",
 		LastUpdated: "2026-04-02",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -1567,27 +1567,27 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "toggle",
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 262144,
 			Output:  32768,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
 			},
 		},
 		OpenWeights: true,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0,
 			Output:     0,
 			CacheRead:  0,
@@ -1600,7 +1600,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Family:      "gemma",
 		ReleaseDate: "2026-04-02",
 		LastUpdated: "2026-04-02",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -1608,27 +1608,27 @@ var staticProfiles = map[string]llm.ModelProfile{
 			Reasoning:   true,
 			ToolCall:    true,
 			Temperature: true,
-			ReasoningOptions: []llm.ReasoningOption{
+			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "toggle",
 				},
 			},
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 262144,
 			Output:  32768,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
 			},
 		},
 		OpenWeights: true,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0,
 			Output:     0,
 			CacheRead:  0,
@@ -1641,7 +1641,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Family:      "lyria",
 		ReleaseDate: "2026-03-25",
 		LastUpdated: "2026-03-25",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -1650,22 +1650,22 @@ var staticProfiles = map[string]llm.ModelProfile{
 			ToolCall:    false,
 			Temperature: true,
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 1048576,
 			Output:  65536,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityAudio,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityAudio,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0,
 			Output:     0,
 			CacheRead:  0,
@@ -1678,7 +1678,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Family:      "lyria",
 		ReleaseDate: "2026-03-25",
 		LastUpdated: "2026-03-25",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -1687,22 +1687,22 @@ var staticProfiles = map[string]llm.ModelProfile{
 			ToolCall:    false,
 			Temperature: true,
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 1048576,
 			Output:  65536,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityAudio,
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityAudio,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0,
 			Output:     0,
 			CacheRead:  0,
@@ -1715,7 +1715,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Family:      "veo",
 		ReleaseDate: "2025-10-15",
 		LastUpdated: "2026-01-01",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -1724,22 +1724,22 @@ var staticProfiles = map[string]llm.ModelProfile{
 			ToolCall:    false,
 			Temperature: false,
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 480,
 			Output:  8192,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
-				llm.ModalityVideo,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityVideo,
+			Outputs: []profile.Modality{
+				profile.ModalityVideo,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0,
 			Output:     0,
 			CacheRead:  0,
@@ -1752,7 +1752,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Family:      "veo",
 		ReleaseDate: "2025-10-15",
 		LastUpdated: "2026-01",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -1761,21 +1761,21 @@ var staticProfiles = map[string]llm.ModelProfile{
 			ToolCall:    false,
 			Temperature: false,
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 480,
 			Output:  8192,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityVideo,
+			Outputs: []profile.Modality{
+				profile.ModalityVideo,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0,
 			Output:     0,
 			CacheRead:  0,
@@ -1788,7 +1788,7 @@ var staticProfiles = map[string]llm.ModelProfile{
 		Family:      "veo",
 		ReleaseDate: "2026-03-31",
 		LastUpdated: "2026-03-31",
-		Capabilities: llm.Capabilities{
+		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
 			Embedding:   false,
@@ -1797,21 +1797,21 @@ var staticProfiles = map[string]llm.ModelProfile{
 			ToolCall:    false,
 			Temperature: false,
 		},
-		Limits: llm.ProfileLimits{
+		Limits: profile.Limits{
 			Context: 480,
 			Output:  8192,
 		},
-		Modalities: llm.Modalities{
-			Inputs: []llm.Modality{
-				llm.ModalityText,
-				llm.ModalityImage,
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
 			},
-			Outputs: []llm.Modality{
-				llm.ModalityVideo,
+			Outputs: []profile.Modality{
+				profile.ModalityVideo,
 			},
 		},
 		OpenWeights: false,
-		Pricing: llm.Pricing{
+		Pricing: profile.Pricing{
 			Input:      0,
 			Output:     0,
 			CacheRead:  0,

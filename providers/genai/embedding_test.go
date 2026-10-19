@@ -10,6 +10,7 @@ import (
 
 	"github.com/masterkeysrd/loom/embedding"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"google.golang.org/genai"
@@ -18,7 +19,7 @@ import (
 func TestEmbeddingInterfaceCompliance(t *testing.T) {
 	p := &Provider{}
 	var _ embedding.Provider = p
-	var _ embedding.ProfileProvider = p
+	var _ profile.Provider = p
 }
 
 func TestToEmbedContentArgs(t *testing.T) {

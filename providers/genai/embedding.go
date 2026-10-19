@@ -13,10 +13,7 @@ import (
 	"google.golang.org/genai"
 )
 
-var (
-	_ embedding.Provider        = (*Provider)(nil)
-	_ embedding.ProfileProvider = (*Provider)(nil)
-)
+var _ embedding.Provider = (*Provider)(nil)
 
 // Embed generates vector embeddings for the given request using Google GenAI's EmbedContent API.
 func (p *Provider) Embed(ctx context.Context, req *embedding.Request) (*embedding.Response, error) {

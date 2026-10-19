@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/masterkeysrd/loom/decision"
-	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/stream"
 	"github.com/masterkeysrd/loom/telemetry"
 )
@@ -36,7 +36,7 @@ func (w *mockStreamWriter) Write(ctx context.Context, data any) error {
 type mockDecisionProvider struct {
 	name         string
 	evaluateFunc func(ctx context.Context, req *decision.Request) (*decision.Response, error)
-	profiles     map[string]llm.ModelProfile
+	profiles     map[string]profile.Profile
 }
 
 func (m *mockDecisionProvider) Name() string {
@@ -53,9 +53,9 @@ func (m *mockDecisionProvider) Evaluate(ctx context.Context, req *decision.Reque
 	}, nil
 }
 
-func (m *mockDecisionProvider) GetProfile(id string) (llm.ModelProfile, bool) {
+func (m *mockDecisionProvider) GetProfile(id string) (profile.Profile, bool) {
 	if m.profiles == nil {
-		return llm.ModelProfile{}, false
+		return profile.Profile{}, false
 	}
 	p, ok := m.profiles[id]
 	return p, ok
@@ -115,11 +115,11 @@ func TestNewModel(t *testing.T) {
 	t.Run("with profile provider", func(t *testing.T) {
 		p := &mockDecisionProvider{
 			name: "profile-p",
-			profiles: map[string]llm.ModelProfile{
+			profiles: map[string]profile.Profile{
 				"smart-model": {
 					ID:   "smart-model",
 					Name: "Smart Model",
-					Pricing: llm.Pricing{
+					Pricing: profile.Pricing{
 						Input:  2.5,
 						Output: 10.0,
 					},
@@ -228,11 +228,11 @@ func TestModel_Evaluate(t *testing.T) {
 					},
 				}, nil
 			},
-			profiles: map[string]llm.ModelProfile{
+			profiles: map[string]profile.Profile{
 				"eval-model": {
 					ID:   "eval-model",
 					Name: "Evaluator Model",
-					Pricing: llm.Pricing{
+					Pricing: profile.Pricing{
 						Input:  1.0, // $1 per million => 1000 nano per token
 						Output: 2.0, // $2 per million => 2000 nano per token
 					},

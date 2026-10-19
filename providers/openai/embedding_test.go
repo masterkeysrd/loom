@@ -12,6 +12,7 @@ import (
 
 	"github.com/masterkeysrd/loom/embedding"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/packages/param"
@@ -23,7 +24,7 @@ import (
 func TestEmbeddingInterfaceCompliance(t *testing.T) {
 	p := &Provider{}
 	var _ embedding.Provider = p
-	var _ embedding.ProfileProvider = p
+	var _ profile.Provider = p
 }
 
 func TestToEmbeddingNewParams(t *testing.T) {

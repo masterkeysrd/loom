@@ -15,10 +15,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-var (
-	_ decision.Provider        = (*Provider)(nil)
-	_ decision.ProfileProvider = (*Provider)(nil)
-)
+var _ decision.Provider = (*Provider)(nil)
 
 // Evaluate executes a decision evaluation request for the given questions using OpenAI's Decisions API.
 func (p *Provider) Evaluate(ctx context.Context, request *decision.Request) (*decision.Response, error) {

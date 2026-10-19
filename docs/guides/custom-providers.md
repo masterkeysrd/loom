@@ -8,10 +8,10 @@ To create a custom provider, you must implement the following interface:
 
 ```go
 type Provider interface {
+    profile.Provider
+
     Name() string
     Stream(context.Context, *Request) (StreamResponse, error)
-    ListProfiles() []ModelProfile
-    GetProfile(id string) (ModelProfile, bool)
 }
 ```
 

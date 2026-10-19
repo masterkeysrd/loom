@@ -10,6 +10,7 @@ import (
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	loomantigravity "github.com/masterkeysrd/loom/providers/antigravity"
 )
 
@@ -163,13 +164,13 @@ func main() {
 			}
 			for _, in := range p.Modalities.Inputs {
 				switch in {
-				case llm.ModalityImage:
+				case profile.ModalityImage:
 					caps = append(caps, "Vision")
-				case llm.ModalityVideo:
+				case profile.ModalityVideo:
 					caps = append(caps, "Video")
-				case llm.ModalityPDF:
+				case profile.ModalityPDF:
 					caps = append(caps, "PDF")
-				case llm.ModalityAudio:
+				case profile.ModalityAudio:
 					caps = append(caps, "Audio")
 				}
 			}

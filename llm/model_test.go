@@ -6,6 +6,7 @@ import (
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/stream"
 )
 
@@ -23,16 +24,16 @@ func (m *modelMockProvider) Stream(ctx context.Context, req *llm.Request) (llm.S
 	return func(yield func(message.AssistantChunk, error) bool) {}, nil
 }
 
-func (m *modelMockProvider) GetProfile(id string) (llm.ModelProfile, bool) {
+func (m *modelMockProvider) GetProfile(id string) (profile.Profile, bool) {
 	if id == "test-model" {
-		return llm.ModelProfile{
-			Limits: llm.ProfileLimits{
+		return profile.Profile{
+			Limits: profile.Limits{
 				Output:  4096,
 				Context: 8192,
 			},
 		}, true
 	}
-	return llm.ModelProfile{}, false
+	return profile.Profile{}, false
 }
 
 func TestNewModel_DefaultsMaxTokensFromProfile(t *testing.T) {

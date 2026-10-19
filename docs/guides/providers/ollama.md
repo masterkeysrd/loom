@@ -30,10 +30,10 @@ model := llm.NewModel(provider, "llama3.1")
 Unlike cloud providers, Ollama's available models depend on what you have installed locally. You can register your local models with Loom to ensure context window metadata is available:
 
 ```go
-provider.OverrideProfile("my-local-llama", llm.ModelProfile{
+provider.OverrideProfile("my-local-llama", profile.Profile{
     ID: "my-local-llama",
     DisplayName: "Local Llama 3",
-    Limits: llm.ModelLimits{
+    Limits: profile.Limits{
         Context: 8192,
     },
 })

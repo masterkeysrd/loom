@@ -13,10 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-var (
-	_ embedding.Provider        = (*Provider)(nil)
-	_ embedding.ProfileProvider = (*Provider)(nil)
-)
+var _ embedding.Provider = (*Provider)(nil)
 
 // Embed generates vector embeddings for the given request using OpenAI's Embeddings API.
 func (p *Provider) Embed(ctx context.Context, request *embedding.Request) (*embedding.Response, error) {

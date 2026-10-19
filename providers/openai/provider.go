@@ -8,6 +8,7 @@ import (
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/stream"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
@@ -16,7 +17,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-var _ llm.Provider = (*Provider)(nil)
+var (
+	_ llm.Provider     = (*Provider)(nil)
+	_ profile.Provider = (*Provider)(nil)
+)
 
 // PromptCache is an extension that configures OpenAI's prompt caching behavior.
 type PromptCache struct {
@@ -116,8 +120,8 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 }
 
 // ListProfiles returns all known OpenAI model profiles.
-func (p *Provider) ListProfiles() []llm.ModelProfile {
-	merged := make(map[string]llm.ModelProfile, len(staticProfiles))
+func (p *Provider) ListProfiles() []profile.Profile {
+	merged := make(map[string]profile.Profile, len(staticProfiles))
 	for k, v := range staticProfiles {
 		if override, ok := staticProfileOverrides[k]; ok {
 			merged[k] = override(v)
@@ -126,10 +130,10 @@ func (p *Provider) ListProfiles() []llm.ModelProfile {
 		}
 	}
 	p.overrides.Range(func(k, v any) bool {
-		merged[k.(string)] = v.(llm.ModelProfile)
+		merged[k.(string)] = v.(profile.Profile)
 		return true
 	})
-	result := make([]llm.ModelProfile, 0, len(merged))
+	result := make([]profile.Profile, 0, len(merged))
 	for _, m := range merged {
 		result = append(result, m)
 	}
@@ -137,9 +141,9 @@ func (p *Provider) ListProfiles() []llm.ModelProfile {
 }
 
 // GetProfile returns the profile for the given model ID.
-func (p *Provider) GetProfile(id string) (llm.ModelProfile, bool) {
+func (p *Provider) GetProfile(id string) (profile.Profile, bool) {
 	if v, ok := p.overrides.Load(id); ok {
-		return v.(llm.ModelProfile), true
+		return v.(profile.Profile), true
 	}
 	m, ok := staticProfiles[id]
 	if ok {
@@ -151,11 +155,11 @@ func (p *Provider) GetProfile(id string) (llm.ModelProfile, bool) {
 }
 
 // SearchProfiles returns profiles whose ID or DisplayName contains query.
-func (p *Provider) SearchProfiles(query string) []llm.ModelProfile {
-	return llm.SearchProfiles(p.ListProfiles(), query)
+func (p *Provider) SearchProfiles(query string) []profile.Profile {
+	return profile.Search(p.ListProfiles(), query)
 }
 
 // OverrideProfile stores a custom profile for id.
-func (p *Provider) OverrideProfile(id string, profile llm.ModelProfile) {
-	p.overrides.Store(id, profile)
+func (p *Provider) OverrideProfile(id string, prof profile.Profile) {
+	p.overrides.Store(id, prof)
 }

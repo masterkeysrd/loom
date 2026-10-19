@@ -80,7 +80,7 @@ model, err := decision.NewModel(provider, "nimble", nil)
 ### TypeSafe AI Native SystemOne API
 TypeSafe AI provides dedicated, high-speed System One endpoints (`POST https://api.typesafe.ai/v1/systemone` and `GET https://api.typesafe.ai/v1/models`) specifically architected for deterministic probabilistic decision-making.
 
-Loom's `loomtypesafe.Provider` implements `decision.Provider` and `decision.ProfileProvider` out of the box:
+Loom's `loomtypesafe.Provider` implements `decision.Provider` and `profile.Provider` out of the box:
 
 ```go
 import (

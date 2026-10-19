@@ -14,10 +14,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-var (
-	_ embedding.Provider        = (*Provider)(nil)
-	_ embedding.ProfileProvider = (*Provider)(nil)
-)
+var _ embedding.Provider = (*Provider)(nil)
 
 // Embed generates vector embeddings for the given request using Ollama's /api/embed endpoint.
 func (p *Provider) Embed(ctx context.Context, req *embedding.Request) (*embedding.Response, error) {

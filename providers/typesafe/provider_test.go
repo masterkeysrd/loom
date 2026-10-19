@@ -13,8 +13,8 @@ import (
 	"testing"
 
 	"github.com/masterkeysrd/loom/decision"
-	loomtypesafe "github.com/masterkeysrd/loom/decision/typesafe"
 	"github.com/masterkeysrd/loom/message"
+	loomtypesafe "github.com/masterkeysrd/loom/providers/typesafe"
 )
 
 func TestNewProvider(t *testing.T) {

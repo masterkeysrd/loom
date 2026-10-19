@@ -15,7 +15,7 @@ export ANTHROPIC_API_KEY='your-api-key-here'
 ```go
 import (
     "github.com/masterkeysrd/loom/llm"
-    "github.com/masterkeysrd/loom/llm/anthropic"
+    "github.com/masterkeysrd/loom/providers/anthropic"
 )
 
 provider, err := loomanthropic.NewDefaultProvider()

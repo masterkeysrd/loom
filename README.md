@@ -57,7 +57,7 @@ import (
 
     "github.com/masterkeysrd/loom/graph"
     "github.com/masterkeysrd/loom/llm"
-    "github.com/masterkeysrd/loom/llm/openai"
+    "github.com/masterkeysrd/loom/providers/openai"
     "github.com/masterkeysrd/loom/message"
 )
 
@@ -189,11 +189,12 @@ trimmed, _ := message.TrimMessages(ctx, history, 4000, &message.TrimConfig{
 
 | Provider | Package |
 |---|---|
-| OpenAI | `github.com/masterkeysrd/loom/llm/openai` |
-| Anthropic | `github.com/masterkeysrd/loom/llm/anthropic` |
-| Google Gemini | `github.com/masterkeysrd/loom/llm/genai` |
-| Google Antigravity | `github.com/masterkeysrd/loom/llm/antigravity` |
-| Ollama | `github.com/masterkeysrd/loom/llm/ollama` |
+| OpenAI | `github.com/masterkeysrd/loom/providers/openai` |
+| Anthropic | `github.com/masterkeysrd/loom/providers/anthropic` |
+| Google Gemini | `github.com/masterkeysrd/loom/providers/genai` |
+| Google Antigravity | `github.com/masterkeysrd/loom/providers/antigravity` |
+| Ollama | `github.com/masterkeysrd/loom/providers/ollama` |
+| TypeSafe AI | `github.com/masterkeysrd/loom/providers/typesafe` |
 
 ## License
 

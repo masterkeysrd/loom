@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/masterkeysrd/loom/llm"
-	loomantigravity "github.com/masterkeysrd/loom/llm/antigravity"
 	"github.com/masterkeysrd/loom/message"
+	loomantigravity "github.com/masterkeysrd/loom/providers/antigravity"
 )
 
 func main() {

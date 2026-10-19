@@ -18,11 +18,11 @@ The `llm` package provides a provider-agnostic abstraction for interacting with 
 Loom ships with support for major LLM providers. Each can be configured with default environment variables or by passing a custom client.
 
 ### OpenAI
-- **Package**: `github.com/masterkeysrd/loom/llm/openai`
+- **Package**: `github.com/masterkeysrd/loom/providers/openai`
 - **Auth**: `OPENAI_API_KEY` environment variable.
 
 ```go
-import "github.com/masterkeysrd/loom/llm/openai"
+import "github.com/masterkeysrd/loom/providers/openai"
 
 // Use defaults (reads OPENAI_API_KEY)
 p, _ := loomopenai.NewDefaultProvider()
@@ -33,32 +33,32 @@ p := loomopenai.NewProvider(client)
 ```
 
 ### Anthropic
-- **Package**: `github.com/masterkeysrd/loom/llm/anthropic`
+- **Package**: `github.com/masterkeysrd/loom/providers/anthropic`
 - **Auth**: `ANTHROPIC_API_KEY` environment variable.
 
 ```go
-import "github.com/masterkeysrd/loom/llm/anthropic"
+import "github.com/masterkeysrd/loom/providers/anthropic"
 
 p, _ := loomanthropic.NewDefaultProvider()
 ```
 
 ### Google Gemini
-- **Package**: `github.com/masterkeysrd/loom/llm/genai`
+- **Package**: `github.com/masterkeysrd/loom/providers/genai`
 - **Auth**: `GOOGLE_API_KEY` environment variable.
 
 ```go
-import "github.com/masterkeysrd/loom/llm/genai"
+import "github.com/masterkeysrd/loom/providers/genai"
 
 p, _ := loomgenai.NewDefaultProvider(ctx)
 ```
 
 ### Google Antigravity (Cloud Code)
-- **Package**: `github.com/masterkeysrd/loom/llm/antigravity`
+- **Package**: `github.com/masterkeysrd/loom/providers/antigravity`
 - **Auth**: OAuth 2.0 PKCE (with automatic token persistence and refresh), or `ANTIGRAVITY_TOKEN` / `GOOGLE_ACCESS_TOKEN`.
 - **Features**: Live model discovery, thinking effort (`low`/`medium`/`high`), dynamic alias resolution, and quota tracking (`QuotaProvider`).
 
 ```go
-import "github.com/masterkeysrd/loom/llm/antigravity"
+import "github.com/masterkeysrd/loom/providers/antigravity"
 
 // OAuth 2.0 PKCE with auto-refresh and disk persistence
 oauth, _ := loomantigravity.NewOAuth2TokenProvider(loomantigravity.OAuth2Config{})
@@ -68,11 +68,11 @@ p, _ := loomantigravity.NewProvider(&loomantigravity.Config{
 ```
 
 ### Ollama (Local)
-- **Package**: `github.com/masterkeysrd/loom/llm/ollama`
+- **Package**: `github.com/masterkeysrd/loom/providers/ollama`
 - **Config**: `OLLAMA_HOST` (defaults to `http://localhost:11434`).
 
 ```go
-import "github.com/masterkeysrd/loom/llm/ollama"
+import "github.com/masterkeysrd/loom/providers/ollama"
 
 p, _ := loomollama.NewDefaultProvider()
 ```

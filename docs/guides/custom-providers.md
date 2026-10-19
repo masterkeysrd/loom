@@ -93,4 +93,4 @@ registry.Register("my-provider", func() (llm.Provider, error) {
 
 - Implementing a custom provider allows Loom to talk to any internal or specialized LLM API.
 - Focus on accurate mapping of `llm.Request` and `message.AssistantChunk`.
-- Use the `llm/openai` or `llm/anthropic` packages as reference implementations.
+- Use the `providers/openai` or `providers/anthropic` packages as reference implementations.

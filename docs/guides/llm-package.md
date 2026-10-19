@@ -15,7 +15,7 @@ The `llm.Model` provides a fluent API for configuring and calling LLMs.
 ```go
 import (
     "github.com/masterkeysrd/loom/llm"
-    "github.com/masterkeysrd/loom/llm/openai"
+    "github.com/masterkeysrd/loom/providers/openai"
 )
 
 // 1. Create a provider

@@ -200,7 +200,7 @@ nextSnapshot, _ := g.Execute(ctx, nil, &snapshot.Location)
 ```
 
 ## 8. Provider Implementation (Core Extension)
-To update a provider (e.g., `llm/openai/mappings.go`):
+To update a provider (e.g., `providers/openai/mappings.go`):
 1.  **Request Mapping**: Translate `llm.Request` to the provider's `Params` struct.
 2.  **Multimodal**: Map media blocks (Image, Audio, Document).
 3.  **Structured Output**: Implement native schema enforcement (e.g., `json_schema`).

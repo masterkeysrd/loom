@@ -8,11 +8,11 @@ import (
 	"strings"
 
 	"github.com/masterkeysrd/loom/decision"
-	loomtypesafe "github.com/masterkeysrd/loom/decision/typesafe"
 	"github.com/masterkeysrd/loom/graph"
 	"github.com/masterkeysrd/loom/llm"
-	loomollama "github.com/masterkeysrd/loom/llm/ollama"
-	loomopenai "github.com/masterkeysrd/loom/llm/openai"
+	loomollama "github.com/masterkeysrd/loom/providers/ollama"
+	loomopenai "github.com/masterkeysrd/loom/providers/openai"
+	loomtypesafe "github.com/masterkeysrd/loom/providers/typesafe"
 	"github.com/masterkeysrd/loom/telemetry"
 )
 

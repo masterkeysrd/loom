@@ -16,7 +16,7 @@ export GOOGLE_API_KEY='your-api-key-here'
 import (
     "context"
     "github.com/masterkeysrd/loom/llm"
-    "github.com/masterkeysrd/loom/llm/genai"
+    "github.com/masterkeysrd/loom/providers/genai"
 )
 
 ctx := context.Background()

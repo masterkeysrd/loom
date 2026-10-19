@@ -43,7 +43,7 @@ Reads `TYPESAFE_API_KEY` and optional `TYPESAFE_BASE_URL` from the environment:
 ```go
 import (
     "github.com/masterkeysrd/loom/decision"
-    loomtypesafe "github.com/masterkeysrd/loom/decision/typesafe"
+    loomtypesafe "github.com/masterkeysrd/loom/providers/typesafe"
 )
 
 provider, err := loomtypesafe.NewDefaultProvider()
@@ -158,7 +158,7 @@ import (
     "log"
 
     "github.com/masterkeysrd/loom/decision"
-    loomtypesafe "github.com/masterkeysrd/loom/decision/typesafe"
+    loomtypesafe "github.com/masterkeysrd/loom/providers/typesafe"
 )
 
 func main() {

@@ -23,7 +23,7 @@ export OPENAI_API_KEY='your-api-key-here'
 ```go
 import (
     "github.com/masterkeysrd/loom/llm"
-    "github.com/masterkeysrd/loom/llm/openai"
+    "github.com/masterkeysrd/loom/providers/openai"
 )
 
 // Create the provider
@@ -100,7 +100,7 @@ import (
     "log"
 
     "github.com/masterkeysrd/loom/decision"
-    "github.com/masterkeysrd/loom/llm/openai"
+    "github.com/masterkeysrd/loom/providers/openai"
 )
 
 // 1. Create OpenAI provider

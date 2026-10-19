@@ -10,7 +10,7 @@ The provider supports three authentication methods:
 Automatically runs a local loopback server, requests authorization from Google, securely stores credentials in `~/.config/loom/antigravity_token.json`, and handles background token refresh:
 
 ```go
-import "github.com/masterkeysrd/loom/llm/antigravity"
+import "github.com/masterkeysrd/loom/providers/antigravity"
 
 oauthProvider, err := loomantigravity.NewOAuth2TokenProvider(loomantigravity.OAuth2Config{})
 if err != nil {
@@ -56,7 +56,7 @@ import (
     "log"
 
     "github.com/masterkeysrd/loom/llm"
-    loomantigravity "github.com/masterkeysrd/loom/llm/antigravity"
+    loomantigravity "github.com/masterkeysrd/loom/providers/antigravity"
     "github.com/masterkeysrd/loom/message"
 )
 

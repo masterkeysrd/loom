@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/masterkeysrd/loom/llm"
-	loomollama "github.com/masterkeysrd/loom/llm/ollama"
 	"github.com/masterkeysrd/loom/message"
+	loomollama "github.com/masterkeysrd/loom/providers/ollama"
 	"github.com/masterkeysrd/loom/telemetry"
 	"github.com/masterkeysrd/loom/tool"
 )

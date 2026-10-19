@@ -13,7 +13,7 @@ By default, Loom connects to the standard Ollama API at `http://localhost:11434`
 ```go
 import (
     "github.com/masterkeysrd/loom/llm"
-    "github.com/masterkeysrd/loom/llm/ollama"
+    "github.com/masterkeysrd/loom/providers/ollama"
 )
 
 provider, err := loomollama.NewDefaultProvider()
@@ -52,7 +52,7 @@ import (
     "log"
 
     "github.com/masterkeysrd/loom/decision"
-    "github.com/masterkeysrd/loom/llm/ollama"
+    "github.com/masterkeysrd/loom/providers/ollama"
 )
 
 // 1. Create Ollama provider (connects to http://localhost:11434 by default)

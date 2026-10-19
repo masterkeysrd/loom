@@ -29,13 +29,13 @@ Unlike open-ended generative chat completions ("System Two" reasoning), decision
 ### 1. OpenAI Native Decisions API
 - **Endpoint**: `/v1/decisions`
 - **Supported Models**: `gpt-6-luna`
-- **Provider**: `loomopenai.Provider` (from `github.com/masterkeysrd/loom/llm/openai`) implements `decision.Provider` directly.
+- **Provider**: `loomopenai.Provider` (from `github.com/masterkeysrd/loom/providers/openai`) implements `decision.Provider` directly.
 - **Telemetry**: Native OpenTelemetry span decoration (`openai.api.type = "decisions"`).
 
 ```go
 import (
     "github.com/masterkeysrd/loom/decision"
-    "github.com/masterkeysrd/loom/llm/openai"
+    "github.com/masterkeysrd/loom/providers/openai"
 )
 
 // Initialize OpenAI provider (reads OPENAI_API_KEY)
@@ -51,13 +51,13 @@ model, err := decision.NewModel(provider, "gpt-6-luna", nil)
 ### 2. Ollama Native SystemOne API
 - **Endpoint**: `/v1/systemone`
 - **Supported Models**: `nimble`, `clef`, `clef-flash`
-- **Provider**: `loomollama.Provider` (from `github.com/masterkeysrd/loom/llm/ollama`) implements `decision.Provider` directly.
+- **Provider**: `loomollama.Provider` (from `github.com/masterkeysrd/loom/providers/ollama`) implements `decision.Provider` directly.
 - **Telemetry**: Local execution with OpenTelemetry span decoration (`ollama.api.type = "systemone"`).
 
 ```go
 import (
     "github.com/masterkeysrd/loom/decision"
-    "github.com/masterkeysrd/loom/llm/ollama"
+    "github.com/masterkeysrd/loom/providers/ollama"
 )
 
 // Initialize Ollama provider (connects to http://localhost:11434 by default)
@@ -73,14 +73,14 @@ model, err := decision.NewModel(provider, "nimble", nil)
 ### 3. TypeSafe AI Native SystemOne API
 - **Endpoints**: `POST https://api.typesafe.ai/v1/systemone` and `GET https://api.typesafe.ai/v1/models`
 - **Supported Models**: `loomtypesafe.ModelJevLatest` (`"jev-latest"`), `loomtypesafe.ModelJevPreview` (`"jev-preview"`), `loomtypesafe.ModelJev1_14_0` (`"jev-1.14.0"`), `loomtypesafe.ModelJev1_13_0` (`"jev-1.13.0"`)
-- **Provider**: `loomtypesafe.Provider` (from `github.com/masterkeysrd/loom/decision/typesafe`) implements `decision.Provider` and `decision.ProfileProvider` directly.
+- **Provider**: `loomtypesafe.Provider` (from `github.com/masterkeysrd/loom/providers/typesafe`) implements `decision.Provider` and `decision.ProfileProvider` directly.
 - **Features**: Ultra-low latency, **$0.042 / 1M input tokens** ($0 output tokens), automatic gzip payload compression for requests $\ge$ 1 KiB, exponential retries on 429/529, and optional `loomtypesafe.LongContext` extension up to 262k context.
 - **Modality**: Text and structured JSON state (multimodal images not supported).
 
 ```go
 import (
     "github.com/masterkeysrd/loom/decision"
-    loomtypesafe "github.com/masterkeysrd/loom/decision/typesafe"
+    loomtypesafe "github.com/masterkeysrd/loom/providers/typesafe"
 )
 
 // Initialize TypeSafe AI provider (reads TYPESAFE_API_KEY)
@@ -103,7 +103,7 @@ model, err := decision.NewModel(provider, loomtypesafe.ModelJevLatest, nil)
 import (
     "github.com/masterkeysrd/loom/decision"
     "github.com/masterkeysrd/loom/llm"
-    "github.com/masterkeysrd/loom/llm/anthropic"
+    "github.com/masterkeysrd/loom/providers/anthropic"
 )
 
 // Standard LLM model (e.g., Anthropic Claude)

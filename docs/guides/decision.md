@@ -43,7 +43,7 @@ Loom's `loomopenai.Provider` implements `decision.Provider` out of the box:
 ```go
 import (
     "github.com/masterkeysrd/loom/decision"
-    "github.com/masterkeysrd/loom/llm/openai"
+    "github.com/masterkeysrd/loom/providers/openai"
 )
 
 // Uses OPENAI_API_KEY from environment
@@ -64,7 +64,7 @@ Loom's `loomollama.Provider` implements `decision.Provider` out of the box:
 ```go
 import (
     "github.com/masterkeysrd/loom/decision"
-    "github.com/masterkeysrd/loom/llm/ollama"
+    "github.com/masterkeysrd/loom/providers/ollama"
 )
 
 // Connects to http://localhost:11434 by default
@@ -85,7 +85,7 @@ Loom's `loomtypesafe.Provider` implements `decision.Provider` and `decision.Prof
 ```go
 import (
     "github.com/masterkeysrd/loom/decision"
-    loomtypesafe "github.com/masterkeysrd/loom/decision/typesafe"
+    loomtypesafe "github.com/masterkeysrd/loom/providers/typesafe"
 )
 
 // Uses TYPESAFE_API_KEY from environment
@@ -114,7 +114,7 @@ The adapter leverages constrained structured outputs (`WithStructuredOutput`) an
 import (
     "github.com/masterkeysrd/loom/decision"
     "github.com/masterkeysrd/loom/llm"
-    "github.com/masterkeysrd/loom/llm/anthropic"
+    "github.com/masterkeysrd/loom/providers/anthropic"
 )
 
 anthropicProvider, _ := loomanthropic.NewDefaultProvider()

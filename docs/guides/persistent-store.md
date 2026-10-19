@@ -10,10 +10,12 @@ The store follows a clean interface pattern: a core `Store` interface in the par
 store/
 ├── store.go        # Core Store interface
 ├── options.go      # Variadic options (PutOption, SearchOption, etc.)
+├── index.go        # Semantic indexing (IndexConfig, Embedder, vector helpers)
 ├── context.go      # WithStore / FromContext integration
 ├── generic.go      # Generic helpers: Get[T], Search[T]
 ├── memorydb/       # In-memory backend (dev / testing)
-└── sqlite/         # SQLite backend (production)
+├── sqlite/         # SQLite backend (pure-Go vector search via scalar function)
+└── pg/             # PostgreSQL backend (pgvector HNSW similarity search)
 ```
 
 ## Core Interface
@@ -24,7 +26,7 @@ The `Store` interface exposes four operations over a `namespace/key` address spa
 |-----------|---------|
 | `Put`     | Marshal `value` to JSON and store it under `namespace/key`. Upserts if the key exists. |
 | `Get`     | Retrieve a single item by `namespace/key` and unmarshal into a pointer. Returns `store.ErrNotFound` if missing. |
-| `Search`  | Find all items within a namespace. Supports filtering by prefix, limit, and offset. |
+| `Search`  | Find items within a namespace. Supports filtering by prefix, semantic query (`WithQuery`), limit, and offset. |
 | `Delete`  | Remove an item. Idempotent — returns `nil` if the key does not exist. |
 
 ### GORM-Style API
@@ -61,9 +63,9 @@ s := memorydb.New()
 builder.WithStore(s)
 ```
 
-### SQLite Backend (Production)
+### SQLite Backend (Single-Node Production)
 
-The `sqlite` backend persists namespaced key-value data to a `store_items` table, enabling durable long-term memory across process restarts.
+The `sqlite` backend persists namespaced key-value data to a `store_items` table, enabling durable long-term memory across process restarts with zero CGO dependencies.
 
 ```go
 import (
@@ -81,29 +83,81 @@ if err != nil { ... }
 builder.WithStore(s)
 ```
 
-The schema is managed automatically via a sequential migration runner:
+### PostgreSQL Backend (Distributed Production)
 
-```sql
-CREATE TABLE IF NOT EXISTS store_migrations (
-    version    INTEGER PRIMARY KEY,
-    applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-);
+The `pg` backend persists items in PostgreSQL using `JSONB` (and `pgvector` with an HNSW index when semantic search is configured).
 
-PRAGMA journal_mode=WAL;
+```go
+import (
+    "database/sql"
+    "github.com/masterkeysrd/loom/store/pg"
+    _ "github.com/lib/pq"
+)
 
-CREATE TABLE IF NOT EXISTS store_items (
-    namespace  TEXT NOT NULL,
-    key        TEXT NOT NULL,
-    value      BLOB NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    PRIMARY KEY (namespace, key)
-);
+db, err := sql.Open("postgres", os.Getenv("POSTGRES_DSN"))
+if err != nil { ... }
 
-CREATE INDEX IF NOT EXISTS idx_store_items_namespace ON store_items (namespace);
+s, err := pg.NewStore(db)
+if err != nil { ... }
+
+builder.WithStore(s)
 ```
 
-Call `sqlite.Migrate(db)` manually if you need to run migrations separately from `NewStore`. It is safe to call multiple times (idempotent).
+## Semantic Vector Search
+
+All three store backends (`memorydb`, `sqlite`, and `pg`) support automatic semantic indexing and similarity search. Pass a `store.IndexConfig` when constructing the store:
+
+```go
+import (
+    "github.com/masterkeysrd/loom/embedding"
+    loomopenai "github.com/masterkeysrd/loom/providers/openai"
+    "github.com/masterkeysrd/loom/store"
+    "github.com/masterkeysrd/loom/store/memorydb"
+)
+
+provider, _ := loomopenai.NewDefaultProvider()
+embedModel, _ := embedding.NewModel(provider, "text-embedding-3-small", nil)
+
+// Initialize the store with semantic search
+s := memorydb.New(memorydb.WithIndex(store.IndexConfig{
+    Embed:  embedModel,
+    Dims:   1536,             // Optional if embedModel has profile/configured dimensions
+    Fields: []string{"text"}, // gjson field paths to vectorize (empty embeds whole payload)
+}))
+
+type Document struct {
+    Text string `json:"text"`
+}
+
+// Store an item (automatically embeds the "text" field)
+_ = s.Put(ctx, "docs", "doc1", Document{Text: "Python tutorial for agents"})
+
+// Search semantically
+results, err := store.Search[Document](ctx, s, "docs",
+    store.WithQuery("programming guides"),
+    store.WithLimit(5),
+)
+```
+
+### How Each Backend Stores & Searches Embeddings
+
+| Backend | Vector Storage | Similarity Engine |
+|---------|----------------|-------------------|
+| `memorydb` | `embedding.Vector` on in-memory entry | `embedding.Vector.CosineSimilarity` |
+| `sqlite` | Separate `store_embeddings` table (`embedding BLOB`) | Registered pure-Go deterministic SQLite scalar function (`loom_vec_cosine`) |
+| `pg` | Separate `store_embeddings` table (`vector(dims)`) | Native `pgvector` cosine distance (`<=>`) with `hnsw (embedding vector_cosine_ops)` index |
+
+### Per-Put Indexing Controls
+
+You can disable indexing or override indexed `gjson` field paths for an individual `Put` call:
+
+```go
+// Skip embedding generation for this item
+_ = s.Put(ctx, "docs", "raw-config", cfg, store.WithIndexDisabled())
+
+// Embed specific nested fields or array queries for this item
+_ = s.Put(ctx, "docs", "article-1", article, store.WithIndexFields("title", "meta.summary", "sections.#.heading"))
+```
 
 ## Usage Patterns
 
@@ -169,10 +223,11 @@ func myTool(ctx context.Context, args MyArgs) (string, error) {
 
 ## Search Options
 
-The `Search` method supports variadic options for filtering and pagination:
+The `Search` method supports variadic options for filtering, semantic search, and pagination:
 
 | Option | Purpose |
 |--------|---------|
+| `WithQuery(query)` | Rank results by semantic similarity to `query` |
 | `WithKeyPrefix(prefix)` | Filter results to keys matching the given prefix |
 | `WithLimit(n)` | Cap the number of items returned |
 | `WithOffset(n)` | Skip the first N items (pagination) |
@@ -181,15 +236,16 @@ The `Search` method supports variadic options for filtering and pagination:
 var items []Item
 err := s.Search(ctx, "user:123", &items,
     store.WithKeyPrefix("mem:"),
+    store.WithQuery("recent project deadlines"),
     store.WithLimit(10),
-    store.WithOffset(20),
+    store.WithOffset(0),
 )
 ```
 
 ## Best Practices
 
 - **Namespace Convention**: Use hierarchical namespace strings for logical grouping, e.g., `"user:123:data"` or `"agent:knowledge"`.
-- **Thread Safety**: Both backends are safe for concurrent use — `memorydb` uses `sync.RWMutex`, `sqlite` relies on `sql.DB` internal locking.
+- **Thread Safety**: All backends are safe for concurrent use — `memorydb` uses `sync.RWMutex`, while `sqlite` and `pg` rely on `sql.DB` connection pooling.
 - **Idempotency**: `Delete` is idempotent (returns `nil` for missing keys). Design node functions to be idempotent where possible, since retries may occur.
 - **JSON Serialization**: All values are JSON-serialized. Ensure struct fields are JSON-serializable.
-- **Production Choice**: Use `sqlite` for production deployments where persistence across restarts is required. Use `memorydb` for development and tests.
+- **Backend Selection**: Use `memorydb` for development and unit tests, `sqlite` for single-node deployments (up to ~50k–100k vectors per namespace), and `pg` with `pgvector` for large-scale or multi-instance production deployments.

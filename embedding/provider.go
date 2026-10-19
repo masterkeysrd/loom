@@ -3,7 +3,6 @@ package embedding
 import (
 	"context"
 
-	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
 )
 
@@ -15,12 +14,6 @@ type Provider interface {
 
 	// Embed generates embeddings for the given request.
 	Embed(ctx context.Context, req *Request) (*Response, error)
-}
-
-// ProfileProvider is an optional interface that providers may implement to expose
-// model catalog metadata, limits, and pricing information.
-type ProfileProvider interface {
-	GetProfile(id string) (llm.ModelProfile, bool)
 }
 
 // Extension is the interface that all provider-specific configurations must

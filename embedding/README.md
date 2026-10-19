@@ -23,7 +23,7 @@ Embeddings convert text, images, audio, video, or documents into fixed-length `[
 
 ### 1. OpenAI Embeddings API
 - **Models**: `text-embedding-3-small`, `text-embedding-3-large`, `text-embedding-ada-002`
-- **Provider**: `loomopenai.Provider` (`github.com/masterkeysrd/loom/providers/openai`) implements `embedding.Provider` and `embedding.ProfileProvider`.
+- **Provider**: `loomopenai.Provider` (`github.com/masterkeysrd/loom/providers/openai`) implements `embedding.Provider` and `profile.Provider`.
 - **Features**: Batch text inputs, Matryoshka dimension reduction (`WithDimensions`), automatic `float64` $\to$ `float32` conversion, and OpenTelemetry span decoration (`openai.api.type = "embeddings"`).
 
 ```go
@@ -42,7 +42,7 @@ model, err := embedding.NewModel(provider, "text-embedding-3-small", nil)
 
 ### 2. Google Gemini Embeddings API
 - **Models**: `gemini-embedding-001`, `gemini-embedding-2`
-- **Provider**: `loomgenai.Provider` (`github.com/masterkeysrd/loom/providers/genai`) implements `embedding.Provider` and `embedding.ProfileProvider`.
+- **Provider**: `loomgenai.Provider` (`github.com/masterkeysrd/loom/providers/genai`) implements `embedding.Provider` and `profile.Provider`.
 - **Features**: Full **multimodal** support (text, images, audio, video, PDFs), native `TaskType` optimization (`RETRIEVAL_QUERY`, `RETRIEVAL_DOCUMENT`, etc.), and configurable `OutputDimensionality` (`WithDimensions`).
 
 ```go
@@ -63,7 +63,7 @@ model, err := embedding.NewModel(provider, "gemini-embedding-001", nil)
 ### 3. Ollama Local Embeddings API
 - **Endpoint**: `/api/embed`
 - **Models**: `nomic-embed-text`, `mxbai-embed-large`, `bge-m3`, `all-minilm`, `qwen3-embedding`
-- **Provider**: `loomollama.Provider` (`github.com/masterkeysrd/loom/providers/ollama`) implements `embedding.Provider` and `embedding.ProfileProvider`.
+- **Provider**: `loomollama.Provider` (`github.com/masterkeysrd/loom/providers/ollama`) implements `embedding.Provider` and `profile.Provider`.
 - **Features**: Local execution, batch text inputs, dimension truncation, and OpenTelemetry span decoration (`ollama.api.type = "embed"`).
 
 ```go
@@ -161,5 +161,5 @@ dims := v1.Dimension()              // len(v1)
 ## Observability & Stream Events
 
 1. **OpenTelemetry**: `TelemetryMiddleware` is attached by default when calling `embedding.NewModel`. Every call records a client span named `embed {model}` with `gen_ai.operation.name = "embeddings"`, `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.response.model`, and `gen_ai.usage.input_tokens`, plus `gen_ai.client.operation.duration` and `gen_ai.client.token.usage` histograms.
-2. **Token Cost Estimation**: If the provider implements `embedding.ProfileProvider`, `Model.Embed` automatically computes `resp.Metrics.Cost` and `resp.Metrics.TotalCost` from `resp.Metrics.Tokens`.
+2. **Token Cost Estimation**: If the provider implements `profile.Provider`, `Model.Embed` automatically computes `resp.Metrics.Cost` and `resp.Metrics.TotalCost` from `resp.Metrics.Tokens`.
 3. **Stream Events**: When a `stream.Writer` is present in `ctx`, `Model.Embed` emits an `on_embedding` event with source `embedding:{model}`.

@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/masterkeysrd/loom/embedding"
-	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/stream"
 	"github.com/masterkeysrd/loom/telemetry"
 )
@@ -36,7 +36,7 @@ func (w *mockStreamWriter) Write(ctx context.Context, data any) error {
 type mockEmbeddingProvider struct {
 	name      string
 	embedFunc func(ctx context.Context, req *embedding.Request) (*embedding.Response, error)
-	profiles  map[string]llm.ModelProfile
+	profiles  map[string]profile.Profile
 }
 
 func (m *mockEmbeddingProvider) Name() string {
@@ -57,9 +57,9 @@ func (m *mockEmbeddingProvider) Embed(ctx context.Context, req *embedding.Reques
 	}, nil
 }
 
-func (m *mockEmbeddingProvider) GetProfile(id string) (llm.ModelProfile, bool) {
+func (m *mockEmbeddingProvider) GetProfile(id string) (profile.Profile, bool) {
 	if m.profiles == nil {
-		return llm.ModelProfile{}, false
+		return profile.Profile{}, false
 	}
 	p, ok := m.profiles[id]
 	return p, ok
@@ -257,14 +257,14 @@ func TestNewModelAndFluentConfig(t *testing.T) {
 	t.Run("with profile provider and fluent cloning", func(t *testing.T) {
 		p := &mockEmbeddingProvider{
 			name: "openai",
-			profiles: map[string]llm.ModelProfile{
+			profiles: map[string]profile.Profile{
 				"text-embedding-3-small": {
 					ID:   "text-embedding-3-small",
 					Name: "Text Embedding 3 Small",
-					Capabilities: llm.Capabilities{
+					Capabilities: profile.Capabilities{
 						Embedding: true,
 					},
-					Pricing: llm.Pricing{
+					Pricing: profile.Pricing{
 						Input: 0.02,
 					},
 				},
@@ -366,11 +366,11 @@ func TestModelEmbedAndConvenienceMethods(t *testing.T) {
 					},
 				}, nil
 			},
-			profiles: map[string]llm.ModelProfile{
+			profiles: map[string]profile.Profile{
 				"text-embedding-3-small": {
 					ID:   "text-embedding-3-small",
 					Name: "Text Embedding 3 Small",
-					Pricing: llm.Pricing{
+					Pricing: profile.Pricing{
 						Input: 1.0, // $1 per million => 1000 nano-dollars per token
 					},
 				},
@@ -550,5 +550,55 @@ func TestTelemetryMiddleware(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+func TestModelDimensions(t *testing.T) {
+	p := &mockEmbeddingProvider{
+		name: "openai",
+		profiles: map[string]profile.Profile{
+			"text-embedding-3-small": {
+				ID:     "text-embedding-3-small",
+				Limits: profile.Limits{Dimensions: 1536},
+			},
+		},
+	}
+
+	m, err := embedding.NewModel(p, "text-embedding-3-small", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Dimensions() != 1536 {
+		t.Fatalf("expected Dimensions() == 1536 from profile, got %d", m.Dimensions())
+	}
+
+	mCustom := m.WithDimensions(256)
+	if mCustom.Dimensions() != 256 {
+		t.Fatalf("expected Dimensions() == 256 from config override, got %d", mCustom.Dimensions())
+	}
+}
+
+func TestVectorBytesAndCosineBytes(t *testing.T) {
+	v1 := embedding.Vector{1, 0, 0, 1, 2}
+	v2 := embedding.Vector{1, 0, 0, 1, 2}
+	v3 := embedding.Vector{0, 1, 1, 0, 0}
+
+	b1 := v1.Bytes()
+	b2 := embedding.EncodeVector(v2)
+	b3 := embedding.EncodeVector(v3)
+
+	decoded := embedding.DecodeVector(b1)
+	if !reflect.DeepEqual(decoded, v1) {
+		t.Fatalf("expected %v, got %v", v1, decoded)
+	}
+
+	simIdentical := embedding.CosineSimilarityBytes(b1, b2)
+	if math.Abs(simIdentical-1.0) > 1e-5 {
+		t.Fatalf("expected byte similarity ~1.0, got %v", simIdentical)
+	}
+
+	simOrthogonal := embedding.CosineSimilarityBytes(b1, b3)
+	if math.Abs(simOrthogonal) > 1e-5 {
+		t.Fatalf("expected orthogonal byte similarity ~0.0, got %v", simOrthogonal)
 	}
 }

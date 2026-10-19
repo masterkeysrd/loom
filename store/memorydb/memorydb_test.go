@@ -6,9 +6,24 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/masterkeysrd/loom/embedding"
 	"github.com/masterkeysrd/loom/store"
 	"github.com/masterkeysrd/loom/store/memorydb"
 )
+
+type mockEmbedProvider struct {
+	fn func(text string) embedding.Vector
+}
+
+func (m *mockEmbedProvider) Name() string { return "mock" }
+
+func (m *mockEmbedProvider) Embed(_ context.Context, req *embedding.Request) (*embedding.Response, error) {
+	vecs := make([]embedding.Vector, len(req.Inputs))
+	for i, in := range req.Inputs {
+		vecs[i] = m.fn(in.Text)
+	}
+	return &embedding.Response{Model: req.Model, Embeddings: vecs}, nil
+}
 
 type testItem struct {
 	Name  string   `json:"name"`
@@ -231,5 +246,73 @@ func TestConcurrentAccess(t *testing.T) {
 	}
 	if len(items) != 10 {
 		t.Fatalf("expected 10 items after concurrent writes, got %d", len(items))
+	}
+}
+
+func TestSemanticSearch(t *testing.T) {
+	provider := &mockEmbedProvider{
+		fn: func(text string) embedding.Vector {
+			switch text {
+			case "Python tutorial for agents", "programming guides":
+				return embedding.Vector{1, 0, 0}
+			case "Go concurrency patterns":
+				return embedding.Vector{0.8, 0.6, 0}
+			case "Sourdough bread recipe":
+				return embedding.Vector{0, 1, 0}
+			default:
+				return embedding.Vector{0, 0, 1}
+			}
+		},
+	}
+	embedModel, err := embedding.NewModel(provider, "mock-embed", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s := memorydb.New(memorydb.WithIndex(store.IndexConfig{
+		Embed:  embedModel,
+		Dims:   3,
+		Fields: []string{"name"},
+	}))
+	ctx := context.Background()
+
+	if err := s.Put(ctx, "docs", "doc1", testItem{Name: "Sourdough bread recipe"}); err != nil {
+		t.Fatalf("Put doc1: %v", err)
+	}
+	if err := s.Put(ctx, "docs", "doc2", testItem{Name: "Python tutorial for agents"}); err != nil {
+		t.Fatalf("Put doc2: %v", err)
+	}
+	if err := s.Put(ctx, "docs", "doc3", testItem{Name: "Go concurrency patterns"}); err != nil {
+		t.Fatalf("Put doc3: %v", err)
+	}
+	// Item with indexing disabled should be stored for Get/Prefix search, but excluded from semantic search.
+	if err := s.Put(ctx, "docs", "doc4", testItem{Name: "Python tutorial for agents"}, store.WithIndexDisabled()); err != nil {
+		t.Fatalf("Put doc4: %v", err)
+	}
+
+	var results []testItem
+	if err := s.Search(ctx, "docs", &results, store.WithQuery("programming guides"), store.WithLimit(2)); err != nil {
+		t.Fatalf("Search with query: %v", err)
+	}
+
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	if results[0].Name != "Python tutorial for agents" {
+		t.Fatalf("expected top result %q, got %q", "Python tutorial for agents", results[0].Name)
+	}
+	if results[1].Name != "Go concurrency patterns" {
+		t.Fatalf("expected second result %q, got %q", "Go concurrency patterns", results[1].Name)
+	}
+}
+
+func TestSemanticSearchWithoutIndex(t *testing.T) {
+	s := memorydb.New()
+	ctx := context.Background()
+
+	var results []testItem
+	err := s.Search(ctx, "docs", &results, store.WithQuery("query"))
+	if err != store.ErrIndexNotConfigured {
+		t.Fatalf("expected ErrIndexNotConfigured, got %v", err)
 	}
 }

@@ -21,8 +21,11 @@
 //
 // # Backends
 //
-// Two backend implementations are provided:
+// Three backend implementations are provided:
 //
 //   - [memorydb.New] — in-memory store for development and testing.
-//   - [sqlite.NewStore] — persistent SQLite backend for production.
+//   - [sqlite.NewStore] — persistent SQLite backend for single-node production.
+//   - [pg.NewStore] — persistent PostgreSQL backend (with pgvector support) for distributed production.
+//
+// All backends support optional semantic vector indexing via [IndexConfig] and [WithQuery].
 package store

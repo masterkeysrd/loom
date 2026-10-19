@@ -17,6 +17,14 @@ var migrations = []string{
 		PRIMARY KEY (namespace, key)
 	);`,
 	`CREATE INDEX IF NOT EXISTS idx_store_items_namespace ON store_items (namespace);`,
+	`CREATE TABLE IF NOT EXISTS store_embeddings (
+		namespace TEXT NOT NULL,
+		key       TEXT NOT NULL,
+		embedding BLOB NOT NULL,
+		PRIMARY KEY (namespace, key),
+		FOREIGN KEY (namespace, key) REFERENCES store_items(namespace, key) ON DELETE CASCADE
+	);`,
+	`CREATE INDEX IF NOT EXISTS idx_store_embeddings_namespace ON store_embeddings (namespace);`,
 }
 
 // Migrate applies all pending schema migrations to db.

@@ -8,6 +8,10 @@ import (
 // ErrNotFound is returned when a requested key does not exist in the store.
 var ErrNotFound = errors.New("store: item not found")
 
+// ErrIndexNotConfigured is returned when a semantic search query is provided
+// to a store that was not initialized with an [IndexConfig].
+var ErrIndexNotConfigured = errors.New("store: semantic search index is not configured")
+
 // Store is the core key-value interface. Callers pass a pointer and the
 // store populates it (GORM/json.Unmarshal style). No json.RawMessage
 // leaks into the public API.

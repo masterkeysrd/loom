@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"maps"
 
-	"github.com/masterkeysrd/loom/llm"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/stream"
 )
 
@@ -28,13 +28,13 @@ type ModelConfig struct {
 type Model struct {
 	name       string
 	provider   Provider
-	profile    *llm.ModelProfile
+	profile    *profile.Profile
 	config     *ModelConfig
 	middleware []Middleware
 }
 
 // NewModel constructs a [Model] configured with the specified provider and model name.
-// If provider implements [ProfileProvider], its catalog is checked for profile information.
+// If provider implements [profile.Provider], its catalog is checked for profile information.
 // [TelemetryMiddleware] is attached by default.
 func NewModel(provider Provider, name string, config *ModelConfig) (*Model, error) {
 	if provider == nil {
@@ -44,10 +44,10 @@ func NewModel(provider Provider, name string, config *ModelConfig) (*Model, erro
 		return nil, fmt.Errorf("embedding: model name cannot be empty")
 	}
 
-	var profile *llm.ModelProfile
-	if pp, ok := provider.(ProfileProvider); ok {
+	var prof *profile.Profile
+	if pp, ok := provider.(profile.Provider); ok {
 		if p, found := pp.GetProfile(name); found {
-			profile = &p
+			prof = &p
 		}
 	}
 
@@ -60,7 +60,7 @@ func NewModel(provider Provider, name string, config *ModelConfig) (*Model, erro
 	m := &Model{
 		name:       name,
 		provider:   provider,
-		profile:    profile,
+		profile:    prof,
 		config:     config,
 		middleware: make([]Middleware, 0, 1),
 	}
@@ -82,13 +82,26 @@ func (m *Model) Provider() Provider {
 }
 
 // Profile returns the model profile if available, or nil otherwise.
-func (m *Model) Profile() *llm.ModelProfile {
+func (m *Model) Profile() *profile.Profile {
 	return m.profile
 }
 
 // Config returns the current [ModelConfig].
 func (m *Model) Config() *ModelConfig {
 	return m.config
+}
+
+// Dimensions returns the configured output vector dimensionality, falling back
+// to the model profile's default [profile.Limits.Dimensions] if available.
+// Returns 0 if unknown.
+func (m *Model) Dimensions() int {
+	if m.config != nil && m.config.Dimensions != nil && *m.config.Dimensions > 0 {
+		return *m.config.Dimensions
+	}
+	if m.profile != nil && m.profile.Limits.Dimensions > 0 {
+		return m.profile.Limits.Dimensions
+	}
+	return 0
 }
 
 // WithConfig returns a clone of the model with the given [ModelConfig].

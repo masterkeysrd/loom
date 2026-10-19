@@ -183,4 +183,3 @@ type countTokensEnvelope struct {
 type CountTokensResponse struct {
 	TotalTokens int `json:"totalTokens"`
 }
-

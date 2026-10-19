@@ -550,4 +550,3 @@ func (c *Client) CountTokens(ctx context.Context, req CountTokensRequest) (*Coun
 
 	return &countResp, nil
 }
-

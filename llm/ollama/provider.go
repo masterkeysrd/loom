@@ -216,6 +216,7 @@ func toModelProfile(id string, resp *api.ShowResponse) llm.ModelProfile {
 		Family:      resp.Details.Family,
 		OpenWeights: true, // Ollama runs open-weights models
 		Capabilities: llm.Capabilities{
+			Completion:  true, // Assume true for modern Ollama models by default
 			Temperature: true,
 			ToolCall:    true, // Assume true for modern Ollama models by default
 		},
@@ -227,17 +228,17 @@ func toModelProfile(id string, resp *api.ShowResponse) llm.ModelProfile {
 
 	// Map modalities and capabilities
 	if len(resp.Capabilities) > 0 {
-		hasTools := false
-		for _, cap := range resp.Capabilities {
-			if string(cap) == "tools" {
-				hasTools = true
-				break
-			}
-		}
-		p.Capabilities.ToolCall = hasTools
+		p.Capabilities.Completion = false
+		p.Capabilities.ToolCall = false
 
 		for _, cap := range resp.Capabilities {
 			switch string(cap) {
+			case "completion":
+				p.Capabilities.Completion = true
+			case "decision":
+				p.Capabilities.Decision = true
+			case "tools":
+				p.Capabilities.ToolCall = true
 			case "vision":
 				p.Modalities.Inputs = append(p.Modalities.Inputs, llm.ModalityImage)
 				p.Capabilities.Attachment = true

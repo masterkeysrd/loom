@@ -286,6 +286,7 @@ func toModelProfile(m AvailableModel) llm.ModelProfile {
 		Name:   m.DisplayName,
 		Family: family,
 		Capabilities: llm.Capabilities{
+			Completion:  true,
 			Attachment:  m.SupportsImages || m.SupportsVideo || len(m.SupportedMimeTypes) > 0,
 			Reasoning:   m.SupportsThinking,
 			ToolCall:    true,
@@ -548,4 +549,3 @@ func (p *Provider) CountTokens(ctx context.Context, messages message.MessageList
 
 	return resp.TotalTokens, nil
 }
-

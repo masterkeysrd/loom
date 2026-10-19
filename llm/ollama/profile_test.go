@@ -50,6 +50,14 @@ func TestToModelProfile(t *testing.T) {
 		t.Error("expected vision modality to be present")
 	}
 
+	if !profile.Capabilities.Completion {
+		t.Error("expected Completion capability to be true")
+	}
+
+	if profile.Capabilities.Decision {
+		t.Error("expected Decision capability to be false")
+	}
+
 	if !profile.Capabilities.Attachment {
 		t.Error("expected Attachment capability to be true")
 	}
@@ -60,6 +68,33 @@ func TestToModelProfile(t *testing.T) {
 
 	if !profile.Capabilities.Reasoning {
 		t.Error("expected Reasoning capability to be true")
+	}
+}
+
+func TestToModelProfileDecisionCapability(t *testing.T) {
+	resp := &api.ShowResponse{
+		Details: api.ModelDetails{
+			Family: "nimble",
+		},
+		Capabilities: []model.Capability{"decision", "vision"},
+	}
+
+	profile := toModelProfile("nimble", resp)
+
+	if !profile.Capabilities.Decision {
+		t.Error("expected Decision capability to be true")
+	}
+
+	if profile.Capabilities.Completion {
+		t.Error("expected Completion capability to be false for decision-only model")
+	}
+
+	if profile.Capabilities.ToolCall {
+		t.Error("expected ToolCall capability to be false")
+	}
+
+	if !profile.Capabilities.Attachment {
+		t.Error("expected Attachment capability to be true")
 	}
 }
 
@@ -89,5 +124,13 @@ func TestToModelProfileDefaultContext(t *testing.T) {
 
 	if profile.Limits.Context != 4096 {
 		t.Errorf("expected default context limit 4096, got %d", profile.Limits.Context)
+	}
+
+	if !profile.Capabilities.Completion {
+		t.Error("expected default Completion capability to be true when capabilities list is empty")
+	}
+
+	if profile.Capabilities.Decision {
+		t.Error("expected default Decision capability to be false when capabilities list is empty")
 	}
 }

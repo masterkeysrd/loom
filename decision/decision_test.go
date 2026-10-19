@@ -717,4 +717,3 @@ func TestTelemetryMiddleware(t *testing.T) {
 		})
 	}
 }
-

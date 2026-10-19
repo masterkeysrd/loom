@@ -484,3 +484,19 @@ func TestProvider_Evaluate_NilProviderOrClient(t *testing.T) {
 		t.Errorf("expected error for nil request")
 	}
 }
+
+func TestProvider_GetProfile_GPT6LunaDecisionOverride(t *testing.T) {
+	client := openai.NewClient(option.WithAPIKey("test"))
+	p := NewProvider(&client)
+
+	profile, ok := p.GetProfile("gpt-6-luna")
+	if !ok {
+		t.Fatal("expected profile for gpt-6-luna to exist")
+	}
+	if !profile.Capabilities.Completion {
+		t.Error("expected gpt-6-luna Completion capability to be true")
+	}
+	if !profile.Capabilities.Decision {
+		t.Error("expected gpt-6-luna Decision capability to be true via staticProfileOverrides")
+	}
+}

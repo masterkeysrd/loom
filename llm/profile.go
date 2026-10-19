@@ -81,6 +81,8 @@ type TierPricing struct {
 }
 
 type Capabilities struct {
+	Completion       bool              `json:"completion"`
+	Decision         bool              `json:"decision"`
 	Attachment       bool              `json:"attachment"`
 	Reasoning        bool              `json:"reasoning"`
 	ToolCall         bool              `json:"tool_call"`

@@ -194,14 +194,14 @@ type Config struct {
 	Elicitation ElicitationProvider `json:"-"`
 
 	// Callbacks for dynamic updates from the server
-	OnToolsChanged     func(ctx context.Context)                                                             `json:"-"`
-	OnPromptsChanged   func(ctx context.Context)                                                             `json:"-"`
-	OnResourcesChanged func(ctx context.Context)                                                             `json:"-"`
-	OnResourceUpdated  func(ctx context.Context, uri string)                                                 `json:"-"`
+	OnToolsChanged     func(ctx context.Context)             `json:"-"`
+	OnPromptsChanged   func(ctx context.Context)             `json:"-"`
+	OnResourcesChanged func(ctx context.Context)             `json:"-"`
+	OnResourceUpdated  func(ctx context.Context, uri string) `json:"-"`
 	// OnLogMessage receives log notifications from the server.
 	// Deprecated: MCP logging is deprecated as of protocol version 2026-07-28 (SEP-2577) in favor of OpenTelemetry or stderr.
-	OnLogMessage       func(ctx context.Context, level string, logger string, data any)                      `json:"-"`
-	OnProgress         func(ctx context.Context, token any, progress float64, total float64, message string) `json:"-"`
+	OnLogMessage func(ctx context.Context, level string, logger string, data any)                      `json:"-"`
+	OnProgress   func(ctx context.Context, token any, progress float64, total float64, message string) `json:"-"`
 }
 
 // AuthProvider defines a standard interface for generating an MCP OAuthHandler.

@@ -438,7 +438,6 @@ func ToCountTokensRequest(messages message.MessageList) (CountTokensRequest, err
 	return CountTokensRequest{Contents: contents}, nil
 }
 
-
 // sanitizeSchema converts a standard JSON Schema (such as from jsonschema.For or an MCP server)
 // into Google's strict Schema proto format accepted by Cloud Code and Gemini endpoints.
 // Specifically:

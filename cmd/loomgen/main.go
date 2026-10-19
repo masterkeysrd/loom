@@ -33,7 +33,7 @@ func main() {
 }
 
 func generateLLMProfiles() error {
-	const modelsDevURL = "https://models.dev/api.json"
+	const modelsDevURL = "https://models.dev/api.json?type=all"
 
 	flagSet := flag.NewFlagSet("llm-profiles", flag.ExitOnError)
 	var (
@@ -56,7 +56,12 @@ func generateLLMProfiles() error {
 	}
 
 	fmt.Printf("Fetching profiles for %q from models.dev...\n", provider)
-	resp, err := http.Get(modelsDevURL)
+	req, err := http.NewRequest(http.MethodGet, modelsDevURL, nil)
+	if err != nil {
+		return fmt.Errorf("request creation failed: %w", err)
+	}
+	req.Header.Set("User-Agent", "loomgen/1.0")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("fetch failed: %w", err)
 	}
@@ -121,6 +126,7 @@ type providerEntry struct {
 
 type modelEntry struct {
 	ID               string `json:"id"`
+	Type             string `json:"type"`
 	Name             string `json:"name"`
 	Family           string `json:"family"`
 	Knowledge        string `json:"knowledge"`
@@ -161,6 +167,14 @@ type modelEntry struct {
 	} `json:"cost"`
 }
 
+func (m modelEntry) IsCompletion() bool {
+	return m.Type == ""
+}
+
+func (m modelEntry) IsDecision() bool {
+	return m.Type == "decision"
+}
+
 var profileTemplate = template.Must(template.New("").
 	Funcs(template.FuncMap{
 		"format_modality": formatModality,
@@ -190,6 +204,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 		LastUpdated: {{ printf "%q" .LastUpdated }},
 		{{- end }}
 		Capabilities: llm.Capabilities{
+			Completion:  {{ .IsCompletion }},
+			Decision:    {{ .IsDecision }},
 			Attachment:  {{ .Attachment }},
 			Reasoning:   {{ .Reasoning }},
 			ToolCall:    {{ .ToolCall }},

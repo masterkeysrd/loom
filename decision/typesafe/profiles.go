@@ -35,7 +35,9 @@ var models = map[string]llm.ModelProfile{
 				llm.ModalityText,
 			},
 		},
-		Capabilities: llm.Capabilities{},
+		Capabilities: llm.Capabilities{
+			Decision: true,
+		},
 	},
 	ModelJevPreview: {
 		ID:     ModelJevPreview,
@@ -56,7 +58,9 @@ var models = map[string]llm.ModelProfile{
 				llm.ModalityText,
 			},
 		},
-		Capabilities: llm.Capabilities{},
+		Capabilities: llm.Capabilities{
+			Decision: true,
+		},
 	},
 	ModelJev1_14_0: {
 		ID:     ModelJev1_14_0,
@@ -77,7 +81,9 @@ var models = map[string]llm.ModelProfile{
 				llm.ModalityText,
 			},
 		},
-		Capabilities: llm.Capabilities{},
+		Capabilities: llm.Capabilities{
+			Decision: true,
+		},
 	},
 	ModelJev1_13_0: {
 		ID:     ModelJev1_13_0,
@@ -98,7 +104,9 @@ var models = map[string]llm.ModelProfile{
 				llm.ModalityText,
 			},
 		},
-		Capabilities: llm.Capabilities{},
+		Capabilities: llm.Capabilities{
+			Decision: true,
+		},
 	},
 }
 

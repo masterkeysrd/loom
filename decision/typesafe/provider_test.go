@@ -74,6 +74,9 @@ func TestNewProvider(t *testing.T) {
 			if profile.Pricing.Input != 0.042 {
 				t.Errorf("expected pricing input 0.042, got %f", profile.Pricing.Input)
 			}
+			if !profile.Capabilities.Decision {
+				t.Errorf("expected Decision capability to be true for model %q", mID)
+			}
 		}
 
 		// Unknown model lookup

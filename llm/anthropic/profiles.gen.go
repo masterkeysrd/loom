@@ -14,6 +14,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2026-06-07",
 		LastUpdated: "2026-06-09",
 		Capabilities: llm.Capabilities{
+			Completion:  true,
+			Decision:    false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -61,6 +63,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2026-09-01",
 		LastUpdated: "2026-09-01",
 		Capabilities: llm.Capabilities{
+			Completion:  true,
+			Decision:    false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -108,6 +112,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2025-10-15",
 		LastUpdated: "2025-10-15",
 		Capabilities: llm.Capabilities{
+			Completion:  true,
+			Decision:    false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -148,6 +154,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2025-10-15",
 		LastUpdated: "2025-10-15",
 		Capabilities: llm.Capabilities{
+			Completion:  true,
+			Decision:    false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -188,6 +196,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2026-10-07",
 		LastUpdated: "2026-10-07",
 		Capabilities: llm.Capabilities{
+			Completion:  true,
+			Decision:    false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -247,6 +257,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2025-11-24",
 		LastUpdated: "2025-11-24",
 		Capabilities: llm.Capabilities{
+			Completion:  true,
+			Decision:    false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -295,6 +307,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2025-11-24",
 		LastUpdated: "2025-11-01",
 		Capabilities: llm.Capabilities{
+			Completion:  true,
+			Decision:    false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -343,6 +357,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2026-02-04",
 		LastUpdated: "2026-03-13",
 		Capabilities: llm.Capabilities{
+			Completion:  true,
+			Decision:    false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -392,6 +408,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2026-04-14",
 		LastUpdated: "2026-04-16",
 		Capabilities: llm.Capabilities{
+			Completion:  true,
+			Decision:    false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -439,6 +457,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2026-05-28",
 		LastUpdated: "2026-05-28",
 		Capabilities: llm.Capabilities{
+			Completion:  true,
+			Decision:    false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -486,6 +506,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2026-07-24",
 		LastUpdated: "2026-07-24",
 		Capabilities: llm.Capabilities{
+			Completion:  true,
+			Decision:    false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -533,6 +555,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2026-09-22",
 		LastUpdated: "2026-09-22",
 		Capabilities: llm.Capabilities{
+			Completion:  true,
+			Decision:    false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -580,6 +604,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2025-09-29",
 		LastUpdated: "2025-09-29",
 		Capabilities: llm.Capabilities{
+			Completion:  true,
+			Decision:    false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -620,6 +646,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2025-09-29",
 		LastUpdated: "2025-09-29",
 		Capabilities: llm.Capabilities{
+			Completion:  true,
+			Decision:    false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -660,6 +688,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2026-02-17",
 		LastUpdated: "2026-03-13",
 		Capabilities: llm.Capabilities{
+			Completion:  true,
+			Decision:    false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -709,6 +739,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2026-06-29",
 		LastUpdated: "2026-06-30",
 		Capabilities: llm.Capabilities{
+			Completion:  true,
+			Decision:    false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
@@ -759,6 +791,8 @@ var staticProfiles = map[string]llm.ModelProfile{
 		ReleaseDate: "2026-09-28",
 		LastUpdated: "2026-09-28",
 		Capabilities: llm.Capabilities{
+			Completion:  true,
+			Decision:    false,
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,

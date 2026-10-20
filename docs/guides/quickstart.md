@@ -36,10 +36,10 @@ builder := graph.New[AppState]()
 
 ## 3. Add Nodes
 
-Nodes are where the logic happens. A node takes the current state and returns a `Command`, which tells the Loom engine how to update the state or where to go next.
+Nodes are where the logic happens. A node takes the current state and returns a `Command`, which tells the Loom engine how to update the state or where to go next. Wrap node functions with `graph.NodeFunc[State]` to implement `graph.Node[State]`:
 
 ```go
-builder.AddNode("Categorize", func(ctx context.Context, state AppState) (graph.Command[AppState], error) {
+builder.AddNode("Categorize", graph.NodeFunc[AppState](func(ctx context.Context, state AppState) (graph.Command[AppState], error) {
     category := "general"
     if strings.Contains(strings.ToLower(state.Input), "math") {
         category = "math"
@@ -50,7 +50,7 @@ builder.AddNode("Categorize", func(ctx context.Context, state AppState) (graph.C
         s.Category = category
         return s
     }), nil
-})
+}))
 ```
 
 ## 4. Define the Workflow (Edges)
@@ -83,7 +83,7 @@ g, _ := builder.Build()
 
 // Execute the graph
 initialState := AppState{Input: "What is 2+2?"}
-snapshot, _ := g.Execute(ctx, graph.Update(func(s AppState) AppState {
+snapshot, _ := g.Execute(ctx, graph.Update[AppState](func(s AppState) AppState {
     return initialState
 }), nil)
 
@@ -94,6 +94,7 @@ fmt.Println("Final Output:", snapshot.State.Output)
 
 Now that you've built your first graph, check out these advanced guides:
 
+- [Graph Workflows](./graphs.md): Deep dive into parallel fan-out/fan-in, sub-graphs (`AsNode`/`MapNode`), node middleware, retries, and execution safety.
 - [Conversations](./conversations.md): Deep dive into message roles, multimodal content, and history.
 - [LLM Package](./llm-package.md): Deep dive into the Model API and Registry.
 - [LLM Providers](./providers/openai.md): Learn about [OpenAI](./providers/openai.md), [Anthropic](./providers/anthropic.md), [Gemini](./providers/google.md), and [Ollama](./providers/ollama.md).

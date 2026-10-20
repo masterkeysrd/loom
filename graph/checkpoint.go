@@ -25,6 +25,21 @@ type Checkpointer interface {
 	Record(context.Context, Checkpoint) error
 }
 
+// NoopCheckpointer is the default [Checkpointer] used when no persistent
+// checkpointer is configured. Load always reports no checkpoint found and
+// Record is a no-op.
+type NoopCheckpointer struct{}
+
+// Load implements [Checkpointer] and always returns nil, nil.
+func (NoopCheckpointer) Load(context.Context, Location) (*Checkpoint, error) {
+	return nil, nil
+}
+
+// Record implements [Checkpointer] and is a no-op.
+func (NoopCheckpointer) Record(context.Context, Checkpoint) error {
+	return nil
+}
+
 // StateMap is a map of channel names to JSON bytes.
 type StateMap map[string][]byte
 

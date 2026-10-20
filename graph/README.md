@@ -142,3 +142,91 @@ g, _ := graph.New[MyState]().
 ```
 
 If context cancellation or deadline expiration occurs, `RetryMiddleware` aborts immediately without waiting or retrying.
+
+## Sub-graphs (`AsNode` and `MapNode`)
+
+Loom allows entire compiled graphs to be embedded as nodes within other graphs using `AsNode()`. This enables modular workflow composition, reusable agent building blocks, and nested hierarchical architectures.
+
+### Same State Embedding
+
+When a sub-graph operates on the same state type as the parent graph, convert it directly with `childGraph.AsNode()`:
+
+```go
+childGraph, _ := childBuilder.Build()
+
+parentBuilder := graph.New[MyState]().
+    AddNode("setup", setupNode).
+    AddNode("subgraph", childGraph.AsNode()).
+    AddNode("teardown", teardownNode).
+    AddEdge(graph.START, "setup").
+    AddEdge("setup", "subgraph").
+    AddEdge("subgraph", "teardown").
+    AddEdge("teardown", graph.END)
+```
+
+- **Namespace Scoping**: When executing inside a parent graph with a checkpoint location, the sub-graph automatically scopes its checkpoint namespace using LangGraph-style hierarchical segmentation: `<node_name>:<task_id>` (joined across nesting levels with `|`, e.g., `parent_ns|subgraph:<task_id>` or `sub1:<task_id_1>|sub2:<task_id_2>`).
+  - `task_id` is deterministically derived from `(ThreadID, CheckpointNS, Step, NodeName)` using SHA-1.
+  - On interrupt and resume, the step counter is preserved, guaranteeing the resumed sub-graph receives the **exact same `CheckpointNS`** and resumes from its paused checkpoint.
+  - On loops across distinct steps, different task IDs are minted, preventing namespace collisions across iterations.
+- **Node Name Validation**: User-defined node names cannot contain `|` or `:` as these characters are reserved for sub-graph namespace delimiters (`|` as `NSSep` and `:` as `NSEnd`). Slashes (e.g. `"tools/search"`) and other alphanumeric characters are fully supported.
+- **Interrupt Propagation**: If a node in the sub-graph returns an interrupt (such as `InterruptCmd` or `InterruptUpdate`), the sub-graph execution pauses, and `AsNode` returns an `InterruptUpdate` command that pauses the parent graph while preserving all state modifications made up to that point.
+
+### State Mapping with `MapNode`
+
+When a sub-graph operates on a different, specialized child state, adapt it to the parent graph's state using `MapNode`:
+
+```go
+type ParentState struct {
+    UserID string
+    Result int
+}
+
+type ChildState struct {
+    Inputs []int
+    Total  int
+}
+
+// Map parent state to child state and back
+subNode := graph.MapNode(
+    childGraph.AsNode(),
+    func(parent ParentState) ChildState {
+        return ChildState{Inputs: []int{10, 20, 30}}
+    },
+    func(parent ParentState, child ChildState) ParentState {
+        parent.Result = child.Total
+        return parent
+    },
+)
+
+parentBuilder.AddNode("calculator", subNode)
+```
+
+`MapNode` seamlessly propagates interrupts and state mutations from the child node back to the parent state.
+
+## Parallel Node Execution (Fan-out / Fan-in)
+
+Loom natively supports concurrent node execution. When multiple edges originate from the same node (or from `START`), the engine executes all target nodes concurrently in separate goroutines.
+
+```go
+builder := graph.New[MyState]()
+
+// Fan-out: START branches into three concurrent tasks
+builder.AddEdge(graph.START, "fetchDocs")
+builder.AddEdge(graph.START, "fetchUserHistory")
+builder.AddEdge(graph.START, "checkPermissions")
+
+// Fan-in: all branches converge on a single join node
+builder.AddEdge("fetchDocs", "aggregate")
+builder.AddEdge("fetchUserHistory", "aggregate")
+builder.AddEdge("checkPermissions", "aggregate")
+builder.AddEdge("aggregate", graph.END)
+```
+
+### Key Semantics:
+- **State Isolation**: Each parallel node receives its own deep copy of the state (`state.Copy()`), preventing concurrent data races during execution.
+- **Deterministic Merge**: Commands returned by parallel nodes are applied in deterministic slice order upon completion.
+- **Fan-in Deduplication**: When multiple parallel edges converge on the same downstream node, Loom deduplicates the next-node list while preserving encounter order, ensuring the downstream join node is executed only once.
+- **Error Propagation**: If any parallel branch returns an error, the execution aborts and returns the first encountered error wrapped as `failed to execute node: ...`.
+- **Interrupt Handling**: If any concurrent node returns an interrupt command, the combined command is treated as an interrupt, pausing execution and saving the merged state.
+- **Step Counting**: All executed parallel nodes are accounted for when checking `WithMaxSteps`.
+

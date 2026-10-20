@@ -210,3 +210,36 @@ kbTool, err := retriever.NewTool(
 container := tool.NewContainer(kbTool)
 chatModel = chatModel.BindToolDefs(container.Definitions()...)
 ```
+
+---
+
+## 5. End-to-End Example (`examples/rag`)
+
+Loom includes a complete, runnable end-to-end RAG example in [`examples/rag/main.go`](../../examples/rag/main.go). It demonstrates:
+- Streaming documents lazily with `document.NewFSLoader`.
+- Chunking Markdown by heading hierarchy with `document.NewMarkdownSplitter`.
+- In-memory vector store indexing (`vectorstore/memory`) with dense embeddings.
+- Hybrid lexical (BM25) and semantic retrieval with Reciprocal Rank Fusion (`retriever.NewMerger`).
+- A stateful RAG graph workflow (`retrieve` $\to$ `generate`) using `graph.Builder`.
+
+### Running with Ollama (Local)
+
+Ensure Ollama is running and has the required models installed (`ollama pull gemma3` and `ollama pull nomic-embed-text`):
+
+```bash
+go run ./examples/rag -provider ollama
+```
+
+You can customize the query and models using CLI flags:
+
+```bash
+go run ./examples/rag -provider ollama -llm-model gemma3 -embed-model nomic-embed-text -query "How does Loom checkpoint graph state?"
+```
+
+### Running with OpenAI
+
+```bash
+export OPENAI_API_KEY="sk-..."
+go run ./examples/rag -provider openai -query "How do decision models route graph workflows?"
+```
+

@@ -1,7 +1,9 @@
 package graph
 
 import (
+	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/masterkeysrd/loom/store"
 )
@@ -23,9 +25,10 @@ type Builder[S State[S]] struct {
 // The graph is given the name "default"; override it with [Builder.WithName].
 func New[S State[S]]() *Builder[S] {
 	return &Builder[S]{
-		name:  "default",
-		nodes: make(map[string]Node[S]),
-		edges: make(map[string][]Edge[S]),
+		name:         "default",
+		nodes:        make(map[string]Node[S]),
+		edges:        make(map[string][]Edge[S]),
+		checkpointer: NoopCheckpointer{},
 	}
 }
 
@@ -41,6 +44,9 @@ func (b *Builder[State]) WithName(name string) *Builder[State] {
 // When set, the graph persists a [Snapshot] to durable storage after each node
 // and can be resumed later via [Graph.Execute] with a [Location].
 func (b *Builder[State]) WithCheckpointer(checkpointer Checkpointer) *Builder[State] {
+	if checkpointer == nil {
+		checkpointer = NoopCheckpointer{}
+	}
 	b.checkpointer = checkpointer
 	return b
 }
@@ -117,6 +123,12 @@ func (b *Builder[State]) WithMiddleware(mws ...Middleware[State]) *Builder[State
 // Build compiles the builder configuration into a runnable [Graph].
 // It implicitly injects the virtual [START] and [END] nodes before returning.
 func (b *Builder[State]) Build() (*Graph[State], error) {
+	for name := range b.nodes {
+		if name != START && name != END && strings.ContainsAny(name, "|:") {
+			return nil, fmt.Errorf("invalid node name %q: node names cannot contain '|' or ':'", name)
+		}
+	}
+
 	// Add start and end nodes if they don't exist
 	b.nodes[START] = &startNode[State]{}
 	b.nodes[END] = &endNode[State]{}

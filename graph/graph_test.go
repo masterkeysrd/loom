@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -21,11 +23,24 @@ type mockCheckpointer struct {
 func (m *mockCheckpointer) Load(ctx context.Context, loc graph.Location) (*graph.Checkpoint, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	cp, ok := m.checkpoints[loc.CheckpointID]
-	if !ok {
-		return nil, nil // Contract: return nil, nil when not found
+	if loc.CheckpointID != "" {
+		cp, ok := m.checkpoints[loc.CheckpointID]
+		if !ok {
+			return nil, nil // Contract: return nil, nil when not found
+		}
+		return &cp, nil
 	}
-	return &cp, nil
+	// When CheckpointID is empty, find the most recent checkpoint matching ThreadID and CheckpointNS
+	var latest *graph.Checkpoint
+	for _, cp := range m.checkpoints {
+		if cp.Location.ThreadID == loc.ThreadID && cp.Location.CheckpointNS == loc.CheckpointNS {
+			if latest == nil || cp.Timestamp.After(latest.Timestamp) {
+				cpCopy := cp
+				latest = &cpCopy
+			}
+		}
+	}
+	return latest, nil
 }
 
 func (m *mockCheckpointer) Record(ctx context.Context, cp graph.Checkpoint) error {
@@ -646,5 +661,836 @@ func TestRetryMiddleware_ExceedsMaxAttempts(t *testing.T) {
 	}
 	if attempts != 3 {
 		t.Errorf("expected 3 attempts, got %d", attempts)
+	}
+}
+
+func TestSubgraph_AsNode_SameState(t *testing.T) {
+	childBuilder := graph.New[TestState]().WithName("child_graph")
+	childBuilder.AddNode("c1", graph.NodeFunc(func(ctx context.Context, s TestState) (graph.Command[TestState], error) {
+		return graph.Update[TestState](func(state TestState) TestState {
+			state.Count += 10
+			state.Message += "c1"
+			return state
+		}), nil
+	}))
+	childBuilder.AddNode("c2", graph.NodeFunc(func(ctx context.Context, s TestState) (graph.Command[TestState], error) {
+		return graph.Update[TestState](func(state TestState) TestState {
+			state.Count += 5
+			state.Message += "->c2"
+			return state
+		}), nil
+	}))
+	childBuilder.AddEdge(graph.START, "c1")
+	childBuilder.AddEdge("c1", "c2")
+	childBuilder.AddEdge("c2", graph.END)
+
+	childGraph, err := childBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parentBuilder := graph.New[TestState]().WithName("parent_graph")
+	parentBuilder.AddNode("pre", graph.NodeFunc(func(ctx context.Context, s TestState) (graph.Command[TestState], error) {
+		return graph.Update[TestState](func(state TestState) TestState {
+			state.Count = 1
+			state.Message = "start->"
+			return state
+		}), nil
+	}))
+	parentBuilder.AddNode("subgraph", childGraph.AsNode())
+	parentBuilder.AddNode("post", graph.NodeFunc(func(ctx context.Context, s TestState) (graph.Command[TestState], error) {
+		return graph.Update[TestState](func(state TestState) TestState {
+			state.Count *= 2
+			state.Message += "->done"
+			return state
+		}), nil
+	}))
+	parentBuilder.AddEdge(graph.START, "pre")
+	parentBuilder.AddEdge("pre", "subgraph")
+	parentBuilder.AddEdge("subgraph", "post")
+	parentBuilder.AddEdge("post", graph.END)
+
+	parentGraph, err := parentBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	snap, err := parentGraph.Execute(context.Background(), nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !snap.IsDone() {
+		t.Fatalf("expected graph to be done")
+	}
+	// pre: 1, child: +10 +5 = 16, post: 16*2 = 32
+	if snap.State.Count != 32 {
+		t.Errorf("expected count 32, got %d", snap.State.Count)
+	}
+	expectedMsg := "start->c1->c2->done"
+	if snap.State.Message != expectedMsg {
+		t.Errorf("expected message %q, got %q", expectedMsg, snap.State.Message)
+	}
+}
+
+type ParentState struct {
+	User       string `json:"user"`
+	ChildTotal int    `json:"child_total"`
+}
+
+func (p ParentState) Copy() ParentState { return p }
+
+type ChildState struct {
+	Items []int `json:"items"`
+	Sum   int   `json:"sum"`
+}
+
+func (c ChildState) Copy() ChildState {
+	cp := c
+	if len(c.Items) > 0 {
+		cp.Items = slices.Clone(c.Items)
+	}
+	return cp
+}
+
+func TestSubgraph_AsNode_MapNode_DifferentState(t *testing.T) {
+	childBuilder := graph.New[ChildState]().WithName("child_calc")
+	childBuilder.AddNode("calc", graph.NodeFunc(func(ctx context.Context, s ChildState) (graph.Command[ChildState], error) {
+		return graph.Update[ChildState](func(state ChildState) ChildState {
+			sum := 0
+			for _, item := range state.Items {
+				sum += item
+			}
+			state.Sum = sum
+			return state
+		}), nil
+	}))
+	childBuilder.AddEdge(graph.START, "calc")
+	childBuilder.AddEdge("calc", graph.END)
+
+	childGraph, err := childBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parentBuilder := graph.New[ParentState]().WithName("parent_graph")
+	parentBuilder.AddNode("setup", graph.NodeFunc(func(ctx context.Context, s ParentState) (graph.Command[ParentState], error) {
+		return graph.Update[ParentState](func(p ParentState) ParentState {
+			p.User = "Alice"
+			return p
+		}), nil
+	}))
+
+	subNode := graph.MapNode(
+		childGraph.AsNode(),
+		func(p ParentState) ChildState {
+			return ChildState{Items: []int{10, 20, 30}}
+		},
+		func(p ParentState, c ChildState) ParentState {
+			p.ChildTotal = c.Sum
+			return p
+		},
+	)
+	parentBuilder.AddNode("subgraph", subNode)
+	parentBuilder.AddNode("finalize", graph.NodeFunc(func(ctx context.Context, s ParentState) (graph.Command[ParentState], error) {
+		return graph.Update[ParentState](func(p ParentState) ParentState {
+			p.ChildTotal += 5
+			return p
+		}), nil
+	}))
+
+	parentBuilder.AddEdge(graph.START, "setup")
+	parentBuilder.AddEdge("setup", "subgraph")
+	parentBuilder.AddEdge("subgraph", "finalize")
+	parentBuilder.AddEdge("finalize", graph.END)
+
+	parentGraph, err := parentBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	snap, err := parentGraph.Execute(context.Background(), nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !snap.IsDone() {
+		t.Fatalf("expected graph to be done")
+	}
+	if snap.State.User != "Alice" {
+		t.Errorf("expected user Alice, got %q", snap.State.User)
+	}
+	if snap.State.ChildTotal != 65 {
+		t.Errorf("expected total 65 (60+5), got %d", snap.State.ChildTotal)
+	}
+}
+
+func TestSubgraph_InterruptPropagation(t *testing.T) {
+	childBuilder := graph.New[TestState]().WithName("child_interrupt")
+	childBuilder.AddNode("step1", graph.NodeFunc(func(ctx context.Context, s TestState) (graph.Command[TestState], error) {
+		return graph.Update[TestState](func(state TestState) TestState {
+			state.Count = 100
+			state.Message = "before_interrupt"
+			return state
+		}), nil
+	}))
+	childBuilder.AddNode("interrupter", graph.NodeFunc(func(ctx context.Context, s TestState) (graph.Command[TestState], error) {
+		return graph.InterruptUpdate[TestState](func(state TestState) TestState {
+			state.Count = 150
+			state.Message += "->interrupted"
+			return state
+		}), nil
+	}))
+	childBuilder.AddNode("step3", graph.NodeFunc(func(ctx context.Context, s TestState) (graph.Command[TestState], error) {
+		return graph.Update[TestState](func(state TestState) TestState {
+			state.Count += 1000
+			return state
+		}), nil
+	}))
+	childBuilder.AddEdge(graph.START, "step1")
+	childBuilder.AddEdge("step1", "interrupter")
+	childBuilder.AddEdge("interrupter", "step3")
+	childBuilder.AddEdge("step3", graph.END)
+
+	childGraph, err := childBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parentBuilder := graph.New[TestState]().WithName("parent_interrupt")
+	parentBuilder.AddNode("sub", childGraph.AsNode())
+	parentBuilder.AddNode("after", graph.NodeFunc(func(ctx context.Context, s TestState) (graph.Command[TestState], error) {
+		return graph.Update[TestState](func(state TestState) TestState {
+			state.Count += 5000
+			return state
+		}), nil
+	}))
+	parentBuilder.AddEdge(graph.START, "sub")
+	parentBuilder.AddEdge("sub", "after")
+	parentBuilder.AddEdge("after", graph.END)
+
+	parentGraph, err := parentBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	snap, err := parentGraph.Execute(context.Background(), nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if snap.IsDone() {
+		t.Fatalf("expected graph to pause on interrupt, but IsDone() was true")
+	}
+	if snap.State.Count != 150 {
+		t.Errorf("expected count 150 from InterruptUpdate, got %d", snap.State.Count)
+	}
+	if snap.State.Message != "before_interrupt->interrupted" {
+		t.Errorf("expected message 'before_interrupt->interrupted', got %q", snap.State.Message)
+	}
+	if !slices.Equal(snap.Next, []string{"sub"}) {
+		t.Errorf("expected next node to be [sub], got %v", snap.Next)
+	}
+}
+
+type ParallelState struct {
+	A         string `json:"a"`
+	B         string `json:"b"`
+	C         string `json:"c"`
+	Joined    string `json:"joined"`
+	JoinCount int    `json:"join_count"`
+}
+
+func (p ParallelState) Copy() ParallelState { return p }
+
+func TestParallelExecution_FanOutFanIn(t *testing.T) {
+	builder := graph.New[ParallelState]().WithName("fan_out_fan_in")
+
+	start := time.Now()
+	builder.AddNode("branchA", graph.NodeFunc(func(ctx context.Context, s ParallelState) (graph.Command[ParallelState], error) {
+		time.Sleep(20 * time.Millisecond)
+		return graph.Update[ParallelState](func(state ParallelState) ParallelState {
+			state.A = "apple"
+			return state
+		}), nil
+	}))
+	builder.AddNode("branchB", graph.NodeFunc(func(ctx context.Context, s ParallelState) (graph.Command[ParallelState], error) {
+		time.Sleep(20 * time.Millisecond)
+		return graph.Update[ParallelState](func(state ParallelState) ParallelState {
+			state.B = "banana"
+			return state
+		}), nil
+	}))
+	builder.AddNode("branchC", graph.NodeFunc(func(ctx context.Context, s ParallelState) (graph.Command[ParallelState], error) {
+		time.Sleep(20 * time.Millisecond)
+		return graph.Update[ParallelState](func(state ParallelState) ParallelState {
+			state.C = "cherry"
+			return state
+		}), nil
+	}))
+	builder.AddNode("join", graph.NodeFunc(func(ctx context.Context, s ParallelState) (graph.Command[ParallelState], error) {
+		return graph.Update[ParallelState](func(state ParallelState) ParallelState {
+			state.Joined = state.A + "," + state.B + "," + state.C
+			state.JoinCount++
+			return state
+		}), nil
+	}))
+
+	builder.AddEdge(graph.START, "branchA")
+	builder.AddEdge(graph.START, "branchB")
+	builder.AddEdge(graph.START, "branchC")
+	builder.AddEdge("branchA", "join")
+	builder.AddEdge("branchB", "join")
+	builder.AddEdge("branchC", "join")
+	builder.AddEdge("join", graph.END)
+
+	g, err := builder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	snap, err := g.Execute(context.Background(), nil, nil)
+	duration := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !snap.IsDone() {
+		t.Fatalf("expected graph to be done")
+	}
+	if snap.State.A != "apple" || snap.State.B != "banana" || snap.State.C != "cherry" {
+		t.Errorf("unexpected branch states: %+v", snap.State)
+	}
+	if snap.State.Joined != "apple,banana,cherry" {
+		t.Errorf("expected joined 'apple,banana,cherry', got %q", snap.State.Joined)
+	}
+	if snap.State.JoinCount != 1 {
+		t.Errorf("expected join node to execute exactly 1 time, got %d", snap.State.JoinCount)
+	}
+	if duration >= 150*time.Millisecond {
+		t.Logf("warning: execution took %v", duration)
+	}
+}
+
+func TestParallelExecution_ErrorPropagation(t *testing.T) {
+	builder := graph.New[TestState]().WithName("parallel_error")
+	expectedErr := errors.New("boom in branch")
+
+	builder.AddNode("branchOk", graph.NodeFunc(func(ctx context.Context, s TestState) (graph.Command[TestState], error) {
+		time.Sleep(10 * time.Millisecond)
+		return graph.Update[TestState](func(state TestState) TestState {
+			state.Count = 1
+			return state
+		}), nil
+	}))
+	builder.AddNode("branchFail", graph.NodeFunc(func(ctx context.Context, s TestState) (graph.Command[TestState], error) {
+		time.Sleep(10 * time.Millisecond)
+		return nil, expectedErr
+	}))
+
+	builder.AddEdge(graph.START, "branchOk")
+	builder.AddEdge(graph.START, "branchFail")
+	builder.AddEdge("branchOk", graph.END)
+	builder.AddEdge("branchFail", graph.END)
+
+	g, err := builder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = g.Execute(context.Background(), nil, nil)
+	if err == nil {
+		t.Fatalf("expected error from branchFail, got nil")
+	}
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf("expected error to wrap expectedErr, got: %v", err)
+	}
+}
+
+func TestParallelExecution_MaxSteps(t *testing.T) {
+	builder := graph.New[ParallelState]().WithName("parallel_max_steps").WithMaxSteps(2)
+
+	builder.AddNode("b1", graph.NodeFunc(func(ctx context.Context, s ParallelState) (graph.Command[ParallelState], error) {
+		return nil, nil
+	}))
+	builder.AddNode("b2", graph.NodeFunc(func(ctx context.Context, s ParallelState) (graph.Command[ParallelState], error) {
+		return nil, nil
+	}))
+	builder.AddNode("b3", graph.NodeFunc(func(ctx context.Context, s ParallelState) (graph.Command[ParallelState], error) {
+		return nil, nil
+	}))
+
+	builder.AddEdge(graph.START, "b1")
+	builder.AddEdge(graph.START, "b2")
+	builder.AddEdge(graph.START, "b3")
+	builder.AddEdge("b1", graph.END)
+	builder.AddEdge("b2", graph.END)
+	builder.AddEdge("b3", graph.END)
+
+	g, err := builder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = g.Execute(context.Background(), nil, nil)
+	if err == nil {
+		t.Fatalf("expected ErrMaxStepsExceeded, got nil")
+	}
+	if !errors.Is(err, graph.ErrMaxStepsExceeded) {
+		t.Fatalf("expected ErrMaxStepsExceeded, got: %v", err)
+	}
+}
+
+func TestParallelExecution_Interrupt(t *testing.T) {
+	builder := graph.New[ParallelState]().WithName("parallel_interrupt")
+
+	builder.AddNode("b1", graph.NodeFunc(func(ctx context.Context, s ParallelState) (graph.Command[ParallelState], error) {
+		return graph.Update[ParallelState](func(state ParallelState) ParallelState {
+			state.A = "from_b1"
+			return state
+		}), nil
+	}))
+	builder.AddNode("b2_interrupt", graph.NodeFunc(func(ctx context.Context, s ParallelState) (graph.Command[ParallelState], error) {
+		return graph.InterruptUpdate[ParallelState](func(state ParallelState) ParallelState {
+			state.B = "from_b2_interrupted"
+			return state
+		}), nil
+	}))
+
+	builder.AddEdge(graph.START, "b1")
+	builder.AddEdge(graph.START, "b2_interrupt")
+	builder.AddEdge("b1", graph.END)
+	builder.AddEdge("b2_interrupt", graph.END)
+
+	g, err := builder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	snap, err := g.Execute(context.Background(), nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if snap.IsDone() {
+		t.Fatalf("expected graph to pause on interrupt")
+	}
+	if snap.State.A != "from_b1" {
+		t.Errorf("expected A to be 'from_b1', got %q", snap.State.A)
+	}
+	if snap.State.B != "from_b2_interrupted" {
+		t.Errorf("expected B to be 'from_b2_interrupted', got %q", snap.State.B)
+	}
+}
+
+func TestParallelExecution_Stream(t *testing.T) {
+	builder := graph.New[ParallelState]().WithName("parallel_stream")
+
+	builder.AddNode("nodeA", graph.NodeFunc(func(ctx context.Context, s ParallelState) (graph.Command[ParallelState], error) {
+		if rt, ok := graph.RuntimeFromContext(ctx); ok && rt.Stream != nil {
+			_ = rt.Stream.Write(ctx, "event_from_A")
+		}
+		return graph.Update[ParallelState](func(state ParallelState) ParallelState {
+			state.A = "doneA"
+			return state
+		}), nil
+	}))
+
+	builder.AddNode("nodeB", graph.NodeFunc(func(ctx context.Context, s ParallelState) (graph.Command[ParallelState], error) {
+		if rt, ok := graph.RuntimeFromContext(ctx); ok && rt.Stream != nil {
+			_ = rt.Stream.Write(ctx, "event_from_B")
+		}
+		return graph.Update[ParallelState](func(state ParallelState) ParallelState {
+			state.B = "doneB"
+			return state
+		}), nil
+	}))
+
+	builder.AddEdge(graph.START, "nodeA")
+	builder.AddEdge(graph.START, "nodeB")
+	builder.AddEdge("nodeA", graph.END)
+	builder.AddEdge("nodeB", graph.END)
+
+	g, err := builder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	seq, err := g.Stream(context.Background(), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var eventCount int
+	for _, err := range seq {
+		if err != nil {
+			t.Fatalf("stream error: %v", err)
+		}
+		eventCount++
+	}
+	if eventCount == 0 {
+		t.Errorf("expected stream events, got 0")
+	}
+}
+
+func TestSubgraph_LocationScoping(t *testing.T) {
+	var observedLoc graph.Location
+
+	childBuilder := graph.New[TestState]().WithName("child")
+	childBuilder.AddNode("child_node", graph.NodeFunc(func(ctx context.Context, s TestState) (graph.Command[TestState], error) {
+		if rt, ok := graph.RuntimeFromContext(ctx); ok {
+			observedLoc = rt.Location
+		}
+		return nil, nil
+	}))
+	childBuilder.AddEdge(graph.START, "child_node")
+	childBuilder.AddEdge("child_node", graph.END)
+
+	childGraph, err := childBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parentBuilder := graph.New[TestState]().WithName("parent")
+	parentBuilder.AddNode("nested_subgraph", childGraph.AsNode())
+	parentBuilder.AddEdge(graph.START, "nested_subgraph")
+	parentBuilder.AddEdge("nested_subgraph", graph.END)
+
+	parentGraph, err := parentBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	initialLoc := &graph.Location{
+		ThreadID:     "thread-abc",
+		CheckpointNS: "parent_ns",
+	}
+
+	_, err = parentGraph.Execute(context.Background(), nil, initialLoc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if observedLoc.ThreadID != "thread-abc" {
+		t.Errorf("expected ThreadID thread-abc, got %q", observedLoc.ThreadID)
+	}
+
+	// Format: "parent_ns|nested_subgraph:<task_id>"
+	expectedPrefix := "parent_ns" + graph.NSSep + "nested_subgraph" + graph.NSEnd
+	if !strings.HasPrefix(observedLoc.CheckpointNS, expectedPrefix) {
+		t.Fatalf("expected CheckpointNS prefix %q, got %q", expectedPrefix, observedLoc.CheckpointNS)
+	}
+	taskID := strings.TrimPrefix(observedLoc.CheckpointNS, expectedPrefix)
+	if _, err := uuid.Parse(taskID); err != nil {
+		t.Errorf("expected valid uuid for taskID, got %q (err: %v)", taskID, err)
+	}
+
+	// 2-level nested subgraphs: should produce "sub1:<task_id_1>|sub2:<task_id_2>"
+	var leafLoc graph.Location
+	leafBuilder := graph.New[TestState]().WithName("leaf_graph")
+	leafBuilder.AddNode("leaf", graph.NodeFunc(func(ctx context.Context, s TestState) (graph.Command[TestState], error) {
+		if rt, ok := graph.RuntimeFromContext(ctx); ok {
+			leafLoc = rt.Location
+		}
+		return nil, nil
+	}))
+	leafBuilder.AddEdge(graph.START, "leaf")
+	leafBuilder.AddEdge("leaf", graph.END)
+	leafGraph, err := leafBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	midBuilder := graph.New[TestState]().WithName("mid_graph")
+	midBuilder.AddNode("sub2", leafGraph.AsNode())
+	midBuilder.AddEdge(graph.START, "sub2")
+	midBuilder.AddEdge("sub2", graph.END)
+	midGraph, err := midBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	topBuilder := graph.New[TestState]().WithName("top_graph")
+	topBuilder.AddNode("sub1", midGraph.AsNode())
+	topBuilder.AddEdge(graph.START, "sub1")
+	topBuilder.AddEdge("sub1", graph.END)
+	topGraph, err := topBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = topGraph.Execute(context.Background(), nil, &graph.Location{ThreadID: "t-nested", CheckpointNS: ""})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	parts := strings.Split(leafLoc.CheckpointNS, graph.NSSep)
+	if len(parts) != 2 {
+		t.Fatalf("expected 2 parts separated by %q, got %d in %q", graph.NSSep, len(parts), leafLoc.CheckpointNS)
+	}
+	if !strings.HasPrefix(parts[0], "sub1"+graph.NSEnd) {
+		t.Errorf("expected parts[0] to start with 'sub1:', got %q", parts[0])
+	}
+	if _, err := uuid.Parse(strings.TrimPrefix(parts[0], "sub1"+graph.NSEnd)); err != nil {
+		t.Errorf("expected valid uuid in parts[0], got %q", parts[0])
+	}
+	if !strings.HasPrefix(parts[1], "sub2"+graph.NSEnd) {
+		t.Errorf("expected parts[1] to start with 'sub2:', got %q", parts[1])
+	}
+	if _, err := uuid.Parse(strings.TrimPrefix(parts[1], "sub2"+graph.NSEnd)); err != nil {
+		t.Errorf("expected valid uuid in parts[1], got %q", parts[1])
+	}
+}
+
+type LoopState struct {
+	Iteration int      `json:"iteration"`
+	Locations []string `json:"locations"`
+}
+
+func (s LoopState) Copy() LoopState {
+	cp := s
+	if len(s.Locations) > 0 {
+		cp.Locations = slices.Clone(s.Locations)
+	}
+	return cp
+}
+
+func TestSubgraph_InterruptResumeSameTaskID(t *testing.T) {
+	cp := &mockCheckpointer{
+		checkpoints: make(map[string]graph.Checkpoint),
+	}
+
+	var childRuns []string
+
+	childBuilder := graph.New[TestState]().WithName("child").WithCheckpointer(cp)
+	childBuilder.AddNode("step1", graph.NodeFunc(func(ctx context.Context, s TestState) (graph.Command[TestState], error) {
+		if rt, ok := graph.RuntimeFromContext(ctx); ok {
+			childRuns = append(childRuns, rt.Location.CheckpointNS)
+		}
+		return graph.Update[TestState](func(st TestState) TestState {
+			st.Count = 10
+			return st
+		}), nil
+	}))
+	childBuilder.AddNode("pause", graph.NodeFunc(func(ctx context.Context, s TestState) (graph.Command[TestState], error) {
+		if s.Count < 20 {
+			return graph.InterruptUpdate[TestState](func(st TestState) TestState {
+				st.Count = 20
+				return st
+			}), nil
+		}
+		return nil, nil
+	}))
+	childBuilder.AddNode("step2", graph.NodeFunc(func(ctx context.Context, s TestState) (graph.Command[TestState], error) {
+		if rt, ok := graph.RuntimeFromContext(ctx); ok {
+			childRuns = append(childRuns, rt.Location.CheckpointNS)
+		}
+		return graph.Update[TestState](func(st TestState) TestState {
+			st.Count = 30
+			return st
+		}), nil
+	}))
+	childBuilder.AddEdge(graph.START, "step1")
+	childBuilder.AddEdge("step1", "pause")
+	childBuilder.AddEdge("pause", "step2")
+	childBuilder.AddEdge("step2", graph.END)
+
+	childGraph, err := childBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parentBuilder := graph.New[TestState]().WithName("parent").WithCheckpointer(cp)
+	parentBuilder.AddNode("sub", childGraph.AsNode())
+	parentBuilder.AddNode("done", graph.NodeFunc(func(ctx context.Context, s TestState) (graph.Command[TestState], error) {
+		return graph.Update[TestState](func(st TestState) TestState {
+			st.Count += 100
+			return st
+		}), nil
+	}))
+	parentBuilder.AddEdge(graph.START, "sub")
+	parentBuilder.AddEdge("sub", "done")
+	parentBuilder.AddEdge("done", graph.END)
+
+	parentGraph, err := parentBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	initLoc := &graph.Location{ThreadID: "t-resume", CheckpointNS: ""}
+	snap1, err := parentGraph.Execute(context.Background(), nil, initLoc)
+	if err != nil {
+		t.Fatalf("first run error: %v", err)
+	}
+	if snap1.IsDone() {
+		t.Fatalf("expected first run to be paused on interrupt")
+	}
+	if len(childRuns) != 1 {
+		t.Fatalf("expected 1 child run, got %d", len(childRuns))
+	}
+	firstNS := childRuns[0]
+
+	// Resume parent graph from snap1.Location
+	snap2, err := parentGraph.Execute(context.Background(), nil, &snap1.Location)
+	if err != nil {
+		t.Fatalf("resume run error: %v", err)
+	}
+	if !snap2.IsDone() {
+		t.Fatalf("expected resumed run to finish, got Next: %v", snap2.Next)
+	}
+	if snap2.State.Count != 130 {
+		t.Errorf("expected final count 130, got %d", snap2.State.Count)
+	}
+
+	if len(childRuns) != 2 {
+		t.Fatalf("expected 2 child runs after resume, got %d", len(childRuns))
+	}
+	secondNS := childRuns[1]
+
+	if !strings.HasPrefix(firstNS, "sub"+graph.NSEnd) {
+		t.Errorf("expected firstNS to start with 'sub:', got %q", firstNS)
+	}
+	if firstNS != secondNS {
+		t.Errorf("expected exact same CheckpointNS on resume, got initial %q != resume %q", firstNS, secondNS)
+	}
+}
+
+func TestSubgraph_LoopDifferentTaskID(t *testing.T) {
+	childBuilder := graph.New[LoopState]().WithName("child")
+	childBuilder.AddNode("record", graph.NodeFunc(func(ctx context.Context, s LoopState) (graph.Command[LoopState], error) {
+		if rt, ok := graph.RuntimeFromContext(ctx); ok {
+			loc := rt.Location.CheckpointNS
+			return graph.Update[LoopState](func(st LoopState) LoopState {
+				st.Locations = append(st.Locations, loc)
+				return st
+			}), nil
+		}
+		return nil, nil
+	}))
+	childBuilder.AddEdge(graph.START, "record")
+	childBuilder.AddEdge("record", graph.END)
+
+	childGraph, err := childBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parentBuilder := graph.New[LoopState]().WithName("parent")
+	parentBuilder.AddNode("sub", childGraph.AsNode())
+	parentBuilder.AddNode("increment", graph.NodeFunc(func(ctx context.Context, s LoopState) (graph.Command[LoopState], error) {
+		return graph.Update[LoopState](func(st LoopState) LoopState {
+			st.Iteration++
+			return st
+		}), nil
+	}))
+
+	parentBuilder.AddEdge(graph.START, "sub")
+	parentBuilder.AddEdge("sub", "increment")
+	parentBuilder.AddConditionalEdge("increment", "sub", func(s LoopState) bool {
+		return s.Iteration < 2
+	})
+	parentBuilder.AddConditionalEdge("increment", graph.END, func(s LoopState) bool {
+		return s.Iteration >= 2
+	})
+
+	parentGraph, err := parentBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	snap, err := parentGraph.Execute(context.Background(), nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !snap.IsDone() {
+		t.Fatalf("expected graph to complete")
+	}
+	if len(snap.State.Locations) != 2 {
+		t.Fatalf("expected 2 recorded locations across loop, got %d", len(snap.State.Locations))
+	}
+	loc1 := snap.State.Locations[0]
+	loc2 := snap.State.Locations[1]
+
+	if !strings.HasPrefix(loc1, "sub"+graph.NSEnd) {
+		t.Errorf("expected loc1 to start with 'sub:', got %q", loc1)
+	}
+	if !strings.HasPrefix(loc2, "sub"+graph.NSEnd) {
+		t.Errorf("expected loc2 to start with 'sub:', got %q", loc2)
+	}
+	if loc1 == loc2 {
+		t.Errorf("expected distinct CheckpointNS across loop iterations, got %q == %q", loc1, loc2)
+	}
+}
+
+func TestBuilder_InvalidNodeName(t *testing.T) {
+	dummyNode := graph.NodeFunc(func(ctx context.Context, s TestState) (graph.Command[TestState], error) {
+		return nil, nil
+	})
+
+	// Pipe '|' character should fail
+	b1 := graph.New[TestState]().AddNode("invalid|node", dummyNode)
+	if _, err := b1.Build(); err == nil {
+		t.Errorf("expected error for node name containing '|', got nil")
+	} else if !strings.Contains(err.Error(), "cannot contain '|' or ':'") {
+		t.Errorf("expected error message to mention '|' or ':', got %v", err)
+	}
+
+	// Colon ':' character should fail
+	b2 := graph.New[TestState]().AddNode("invalid:node", dummyNode)
+	if _, err := b2.Build(); err == nil {
+		t.Errorf("expected error for node name containing ':', got nil")
+	} else if !strings.Contains(err.Error(), "cannot contain '|' or ':'") {
+		t.Errorf("expected error message to mention '|' or ':', got %v", err)
+	}
+
+	// Slash '/' character should be allowed (e.g. tools/search)
+	b3 := graph.New[TestState]().AddNode("tools/search", dummyNode)
+	if _, err := b3.Build(); err != nil {
+		t.Errorf("expected slash '/' to be allowed in node name, got error: %v", err)
+	}
+}
+
+func TestSubgraph_MapNode_InterruptPropagation(t *testing.T) {
+	childBuilder := graph.New[ChildState]().WithName("child_map_interrupt")
+	childBuilder.AddNode("interrupter", graph.NodeFunc(func(ctx context.Context, s ChildState) (graph.Command[ChildState], error) {
+		return graph.InterruptUpdate[ChildState](func(c ChildState) ChildState {
+			c.Sum = 777
+			return c
+		}), nil
+	}))
+	childBuilder.AddEdge(graph.START, "interrupter")
+	childBuilder.AddEdge("interrupter", graph.END)
+
+	childGraph, err := childBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subNode := graph.MapNode(
+		childGraph.AsNode(),
+		func(p ParentState) ChildState {
+			return ChildState{Items: []int{1, 2, 3}}
+		},
+		func(p ParentState, c ChildState) ParentState {
+			p.ChildTotal = c.Sum
+			return p
+		},
+	)
+
+	parentBuilder := graph.New[ParentState]().WithName("parent_map_interrupt")
+	parentBuilder.AddNode("mapped", subNode)
+	parentBuilder.AddEdge(graph.START, "mapped")
+	parentBuilder.AddEdge("mapped", graph.END)
+
+	parentGraph, err := parentBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	snap, err := parentGraph.Execute(context.Background(), nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if snap.IsDone() {
+		t.Fatalf("expected graph to pause on interrupt from child MapNode")
+	}
+	if snap.State.ChildTotal != 777 {
+		t.Errorf("expected ChildTotal 777, got %d", snap.State.ChildTotal)
 	}
 }

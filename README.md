@@ -23,6 +23,7 @@ Unlike linear chains, `loom` provides a robust, state-first architecture inspire
 Detailed guides on how to use Loom's features:
 
 - [🚀 Quick Start Guide](./docs/guides/quickstart.md): Build your first graph-based agent.
+- [🕸️ Graph Workflows](./docs/guides/graphs.md): Parallel fan-out/fan-in, sub-graphs (`AsNode`/`MapNode`), retries, and step limits.
 - [🖥️ Loom Studio](./docs/guides/observability.md): The built-in visualization and debugging dashboard.
 - [💬 Conversations](./docs/guides/conversations.md): Message roles, multimodal content, and history.
 - [🧠 LLM Package](./docs/guides/llm-package.md): Learn about the Model API and Registry.
@@ -147,16 +148,46 @@ ctx = telemetry.WithContentRecording(ctx)
 ### The Graph
 
 A `Graph[State]` is a network of **nodes** connected by **edges**.
-- **Nodes**: Units of work that receive the current state and return a `Command`.
-- **Edges**: Paths between nodes. They can be direct or **conditional**.
-- **Commands**: Instructions to the engine on how to update state or control flow (e.g., `Update`, `Interrupt`).
+- **Nodes**: Units of work that receive the current state and return a `Command`. Wrap functions with `graph.NodeFunc`.
+- **Edges**: Transitions between nodes: unconditional (`AddEdge`), boolean predicates (`AddConditionalEdge`), or dynamic key dispatch (`AddRouteEdge`).
+- **Commands**: Instructions to the engine on how to update state or control flow (`Update`, `Interrupt`, `InterruptUpdate`).
+
+### Parallel Node Execution (Fan-out / Fan-in)
+
+Loom executes multiple outgoing edges concurrently using goroutines:
+- **State Isolation**: Every parallel branch receives an isolated `state.Copy()`.
+- **Deterministic Merge**: Commands returned by parallel nodes are applied deterministically in edge slice order.
+- **Fan-in Deduplication**: Downstream join nodes with multiple incoming edges are deduplicated and executed exactly once.
+- **Interrupt Handling**: If any concurrent node returns an interrupt command, the combined step pauses execution with `InterruptUpdate`.
+
+### Sub-graphs as Nodes (`AsNode` & `MapNode`)
+
+Compiled graphs can be nested as nodes within parent graphs:
+- **Same-State Sub-graphs**: Convert directly via `childGraph.AsNode()`.
+- **State Mapping**: Adapt different child state structs using `graph.MapNode(childGraph.AsNode(), toChild, fromChild)`.
+- **Hierarchical Namespaces**: Checkpoint namespaces follow LangGraph-style segmentation: `<node_name>:<task_id>` joined with `|` across levels (e.g. `research:4f8a...|web_search:9c2d...`).
+- **Interrupt Propagation**: Child interrupts bubble up automatically as `InterruptUpdate`, pausing the parent and resuming cleanly from the exact child checkpoint.
+
+### Execution Safety (`WithMaxSteps`)
+
+Guard cyclic agent workflows against runaway execution loops:
+- `builder.WithMaxSteps(limit)` or `g.SetMaxSteps(limit)` enforces a hard cap on user node steps.
+- If exceeded, execution aborts and returns an error wrapping `graph.ErrMaxStepsExceeded`.
+- Loom checks `ctx.Err()` at every step boundary and aborts immediately upon context cancellation or timeout.
+
+### Node Middleware & Retries (`RetryMiddleware`)
+
+Wrap nodes with reusable interceptors via `builder.WithMiddleware(...)`:
+- Middlewares execute outermost-first around user nodes.
+- Built-in `RetryMiddleware` provides exponential backoff (`WithMaxAttempts`, `WithInitialWait`, `WithMaxWait`, `WithMultiplier`, `WithShouldRetry`) with isolated state copies per attempt.
 
 ### Checkpointing & Resumption
 
 Loom saves a "checkpoint" of your state after every node execution. This allows you to:
-- Resume interrupted workflows.
-- Implement "human-in-the-loop" by interrupting a graph and waiting for external input.
+- Resume interrupted workflows from a saved `Location`.
+- Implement human-in-the-loop workflows with `graph.Interrupt()` or `graph.InterruptUpdate[S]()`.
 - Audit the entire execution history of an agent.
+- Default to `graph.NoopCheckpointer` for zero-overhead in-memory runs.
 
 ```go
 // Using SQLite for checkpointing
@@ -165,6 +196,7 @@ cp, _ := sqlite.NewCheckpointer(db)
 
 g, _ := graph.New[MyState]().
     WithCheckpointer(cp).
+    WithMaxSteps(25).
     // ...
     Build()
 ```
@@ -188,6 +220,18 @@ trimmed, _ := message.TrimMessages(ctx, history, 4000, &message.TrimConfig{
     IncludeSystem: true,
 })
 ```
+
+## Examples
+
+Explore runnable end-to-end examples in the [`examples/`](./examples/) directory:
+
+| Example | Path | Description |
+|---|---|---|
+| **RAG Agent** | [`examples/rag`](./examples/rag) | Lazy Markdown ingestion, hybrid BM25 + cosine vector retrieval, and RAG graph workflow (`go run ./examples/rag -provider ollama`). |
+| **Graph Agent** | [`examples/graph_agent`](./examples/graph_agent) | Directed agent loop with tool invocation, conditional routing, and state checkpointing. |
+| **Decision Models** | [`examples/decision`](./examples/decision) | Ultra-fast System One probabilistic classification and graph routing without LLM token overhead. |
+| **Tool Streaming** | [`examples/tool-streaming`](./examples/tool-streaming) | Real-time token streaming and interactive tool calling. |
+| **Mini REPL** | [`examples/mini_repl`](./examples/mini_repl) | Interactive terminal chat REPL with multi-turn conversation memory. |
 
 ## Supported Providers
 

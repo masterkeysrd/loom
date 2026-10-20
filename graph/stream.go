@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"sync"
 
 	"github.com/masterkeysrd/loom/message"
 	"github.com/masterkeysrd/loom/stream"
@@ -35,6 +36,7 @@ type StreamEvent struct {
 type ExecutionCtx struct {
 	GraphName string
 	NodeName  string
+	TaskID    string
 	Location  Location
 }
 
@@ -57,10 +59,14 @@ func ExecutionCtxFromContext(ctx context.Context) (ExecutionCtx, bool) {
 // function can receive generic graph events, LLM token chunks, and tool
 // streaming updates without additional bridging logic.
 type streamAdapter struct {
+	mu         sync.Mutex
 	eventYield func(StreamEvent, error) bool
 }
 
 func (s *streamAdapter) Write(ctx context.Context, data any) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	execCtx, _ := ExecutionCtxFromContext(ctx)
 	metadata, _ := stream.MetadataFromContext(ctx)
 

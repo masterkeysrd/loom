@@ -45,6 +45,7 @@ nav:
   - Installation: installation.md
   - Quick Start: guides/quickstart.md
   - Core Concepts:
+      - Graph Workflows: guides/graphs.md
       - Conversations & Messages: guides/conversations.md
       - LLM Package: guides/llm-package.md
       - Decision Models: guides/decision.md

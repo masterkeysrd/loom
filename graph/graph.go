@@ -6,6 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"iter"
+	"slices"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -53,6 +56,9 @@ func (g *Graph[S]) Checkpointer() Checkpointer {
 
 // SetCheckpointer sets the checkpointer of the graph.
 func (g *Graph[S]) SetCheckpointer(cp Checkpointer) {
+	if cp == nil {
+		cp = NoopCheckpointer{}
+	}
 	g.checkpointer = cp
 }
 
@@ -142,62 +148,137 @@ func (g *Graph[State]) Execute(ctx context.Context, input Command[State], loc *L
 			return snapshot, err
 		}
 
-		// For the moment only support one node.
-		if len(nodes) > 1 {
-			return snapshot, fmt.Errorf("multiple nodes to execute at once is not supported yet")
+		nextCheckpointUUID, err := uuid.NewV7()
+		if err != nil {
+			return snapshot, fmt.Errorf("failed to generate checkpoint ID: %w", err)
+		}
+		checkpointID := nextCheckpointUUID.String()
+		stepLoc := Location{
+			ThreadID:     snapshot.Location.ThreadID,
+			CheckpointNS: snapshot.Location.CheckpointNS,
+			CheckpointID: checkpointID,
 		}
 
-		nodeName := snapshot.Next[0]
-		node := nodes[0]
-
-		if nodeName != START {
-			if g.maxSteps > 0 && stepsInRun >= g.maxSteps {
-				return snapshot, fmt.Errorf("%w: limit of %d steps reached at node %q", ErrMaxStepsExceeded, g.maxSteps, nodeName)
+		// 1. Check maxSteps across snapshot.Next for all nodeName != START
+		for _, nodeName := range snapshot.Next {
+			if nodeName != START {
+				if g.maxSteps > 0 && stepsInRun >= g.maxSteps {
+					return snapshot, fmt.Errorf("%w: limit of %d steps reached at node %q", ErrMaxStepsExceeded, g.maxSteps, nodeName)
+				}
+				stepsInRun++
 			}
-			stepsInRun++
 		}
 
-		// Start node execution span using the pre-transition location
-		nodeCtx, span := rec.startNode(ctx, nodeName, snapshot.Location)
-		startTime := time.Now()
+		// 2. Prepare slices of size numNodes := len(nodes)
+		numNodes := len(nodes)
+		executedNames := make([]string, numNodes)
+		copy(executedNames, snapshot.Next)
 
-		execCtx := WithExecutionCtx(nodeCtx, ExecutionCtx{
-			GraphName: g.name,
-			NodeName:  nodeName,
-			Location:  snapshot.Location,
-		})
+		cmds := make([]Command[State], numNodes)
+		errs := make([]error, numNodes)
+		spans := make([]telemetry.Span, numNodes)
+		startTimes := make([]time.Time, numNodes)
+		execCtxs := make([]context.Context, numNodes)
+		wrappedNodes := make([]Node[State], numNodes)
 
-		execCtx = internalctx.WithState(execCtx, snapshot.State)
-		if g.store != nil {
-			execCtx = store.WithStore(execCtx, g.store)
-		}
 		var sw stream.Writer
-		if w, ok := stream.WriterFromContext(execCtx); ok {
+		if w, ok := stream.WriterFromContext(ctx); ok {
 			sw = w
 		}
 
-		rt := &Runtime{
-			RunID:    snapshot.Location.CheckpointID,
-			NodeName: nodeName,
-			Step:     currentStep,
-			Location: snapshot.Location,
-			State:    snapshot.State,
-			Store:    g.store,
-			Stream:   sw,
-		}
-		execCtx = WithRuntime(execCtx, rt)
+		// 3. In a single setup loop for i := 0; i < numNodes; i++:
+		for i := 0; i < numNodes; i++ {
+			nodeName := executedNames[i]
+			node := nodes[i]
 
-		if nodeName != START && nodeName != END && len(g.middleware) > 0 {
-			node = ChainMiddleware(node, g.middleware...)
+			taskID := computeTaskID(snapshot.Location.ThreadID, snapshot.Location.CheckpointNS, currentStep, nodeName)
+
+			nodeCtx, span := rec.startNode(ctx, nodeName, stepLoc)
+			spans[i] = span
+			startTimes[i] = time.Now()
+
+			execCtx := WithExecutionCtx(nodeCtx, ExecutionCtx{
+				GraphName: g.name,
+				NodeName:  nodeName,
+				TaskID:    taskID,
+				Location:  stepLoc,
+			})
+			stateCopy := snapshot.State.Copy()
+			execCtx = internalctx.WithState(execCtx, stateCopy)
+			if g.store != nil {
+				execCtx = store.WithStore(execCtx, g.store)
+			}
+			rt := &Runtime{
+				RunID:    stepLoc.CheckpointID,
+				TaskID:   taskID,
+				NodeName: nodeName,
+				Step:     currentStep,
+				Location: stepLoc,
+				State:    stateCopy,
+				Store:    g.store,
+				Stream:   sw,
+			}
+			execCtx = WithRuntime(execCtx, rt)
+
+			if nodeName != START && nodeName != END && len(g.middleware) > 0 {
+				node = ChainMiddleware(node, g.middleware...)
+			}
+
+			execCtxs[i] = execCtx
+			wrappedNodes[i] = node
 		}
 
-		cmd, err := node.Execute(execCtx, snapshot.State.Copy())
-		if err != nil {
-			rec.endNode(ctx, nodeName, span, startTime, err)
-			return snapshot, fmt.Errorf("failed to execute node: %w", err)
+		// 4. Execute:
+		var wg sync.WaitGroup
+		wg.Add(numNodes)
+		for i := 0; i < numNodes; i++ {
+			nodeState := snapshot.State.Copy()
+			go func(idx int, st State) {
+				defer wg.Done()
+				cmds[idx], errs[idx] = wrappedNodes[idx].Execute(execCtxs[idx], st)
+			}(i, nodeState)
+		}
+		wg.Wait()
+
+		// 5. Handle errors:
+		var firstErr error
+		for _, err := range errs {
+			if err != nil {
+				firstErr = err
+				break
+			}
+		}
+		if firstErr != nil {
+			for i := 0; i < numNodes; i++ {
+				rec.endNode(ctx, executedNames[i], spans[i], startTimes[i], errs[i])
+			}
+			return snapshot, fmt.Errorf("failed to execute node: %w", firstErr)
 		}
 
-		var interrupt bool
+		hasInterrupt := false
+		for _, cmd := range cmds {
+			if _, ok := cmd.(Interruptable); ok {
+				hasInterrupt = true
+				break
+			}
+		}
+
+		applyAll := func(s State) State {
+			for _, cmd := range cmds {
+				if cmd != nil {
+					s = cmd.Apply(s)
+				}
+			}
+			return s
+		}
+
+		var combinedCmd Command[State]
+		if hasInterrupt {
+			combinedCmd = InterruptUpdate[State](applyAll)
+		} else {
+			combinedCmd = Update[State](applyAll)
+		}
+
 		var beforeState State
 		if isFirstLoop && currentStep == 0 {
 			beforeState = initialBeforeState
@@ -206,25 +287,30 @@ func (g *Graph[State]) Execute(ctx context.Context, input Command[State], loc *L
 		}
 		isFirstLoop = false
 
-		snapshot, interrupt, err = g.transition(snapshot, cmd)
+		var interrupt bool
+		snapshot, interrupt, err = g.transition(snapshot, combinedCmd, checkpointID)
 		if err != nil {
-			rec.endNode(ctx, nodeName, span, startTime, err)
+			for i := 0; i < numNodes; i++ {
+				rec.endNode(ctx, executedNames[i], spans[i], startTimes[i], err)
+			}
 			return snapshot, fmt.Errorf("failed to transition to next nodes: %w", err)
 		}
 
-		// Update the span's checkpoint attribute to the post-transition checkpoint ID
-		span.SetAttributes(telemetry.WithLoomCheckpoint(snapshot.Location.CheckpointID))
+		for i := 0; i < numNodes; i++ {
+			rec.endNode(ctx, executedNames[i], spans[i], startTimes[i], nil)
+		}
 
-		// End the node execution span normally
-		rec.endNode(ctx, nodeName, span, startTime, nil)
-
-		currentStep++
 		source := "loop"
-		if nodeName == START {
+		if slices.Contains(executedNames, START) {
 			source = "input"
 		}
 
-		if err := g.recordCheckpoint(ctx, &snapshot, beforeState, nodeName, source, currentStep); err != nil {
+		if !interrupt {
+			currentStep++
+		}
+
+		checkpointNodeName := strings.Join(executedNames, ",")
+		if err := g.recordCheckpoint(ctx, &snapshot, beforeState, checkpointNodeName, source, currentStep); err != nil {
 			return snapshot, fmt.Errorf("failed to store checkpoint: %w", err)
 		}
 
@@ -280,10 +366,6 @@ func (g *Graph[State]) Stream(ctx context.Context, input Command[State], loc *Lo
 // Load retrieves a specific point-in-time snapshot without executing any nodes.
 // This is essential for UI rendering, history auditing, and time-travel debugging.
 func (g *Graph[State]) Load(ctx context.Context, loc Location) (*Snapshot[State], error) {
-	if g.checkpointer == nil {
-		return nil, errors.New("graph does not have a checkpointer configured")
-	}
-
 	checkpoint, err := g.checkpointer.Load(ctx, loc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load checkpoint: %w", err)
@@ -327,11 +409,11 @@ func (g *Graph[State]) getNodes(names []string) ([]Node[State], error) {
 	return nodes, nil
 }
 
-// transition applies a [Command] to the current [Snapshot], mints a new
+// transition applies a [Command] to the current [Snapshot], uses the pre-minted
 // checkpoint location, and resolves the next set of nodes via the edge table.
 // It returns the updated snapshot, a boolean indicating whether execution
 // should pause (true when cmd is [Interruptable]), and any error encountered.
-func (g *Graph[State]) transition(current Snapshot[State], cmd Command[State]) (Snapshot[State], bool, error) {
+func (g *Graph[State]) transition(current Snapshot[State], cmd Command[State], checkpointID string) (Snapshot[State], bool, error) {
 	current = current.Copy() // Avoid mutating the input snapshot
 
 	if cmd != nil {
@@ -342,15 +424,10 @@ func (g *Graph[State]) transition(current Snapshot[State], cmd Command[State]) (
 	current.Parent = &parent
 	current.CreateTime = time.Now()
 
-	checkpointID, err := uuid.NewV7()
-	if err != nil {
-		return current, false, fmt.Errorf("failed to generate checkpoint ID: %w", err)
-	}
-
 	current.Location = Location{
 		ThreadID:     parent.ThreadID,
 		CheckpointNS: parent.CheckpointNS,
-		CheckpointID: checkpointID.String(),
+		CheckpointID: checkpointID,
 	}
 
 	_, interrupt := cmd.(Interruptable)
@@ -358,6 +435,7 @@ func (g *Graph[State]) transition(current Snapshot[State], cmd Command[State]) (
 		return current, true, nil
 	}
 
+	var err error
 	current.Next, err = g.getNextNodes(current.Next, current.State)
 	if err != nil {
 		return current, false, fmt.Errorf("failed to get next nodes: %w", err)
@@ -386,7 +464,9 @@ func (g *Graph[State]) getNextNodes(current []string, state State) ([]string, er
 				continue
 			}
 			if nextNode != "" {
-				next = append(next, nextNode)
+				if !slices.Contains(next, nextNode) {
+					next = append(next, nextNode)
+				}
 			}
 		}
 	}
@@ -403,8 +483,8 @@ const CheckpointSavedEvent = "on_checkpoint_saved"
 // After persisting, it emits a [CheckpointSavedEvent] on the [stream.Writer]
 // stored in ctx (if any).
 func (g *Graph[State]) recordCheckpoint(ctx context.Context, snapshot *Snapshot[State], beforeState State, nodeName string, source string, step int) error {
-	if g.checkpointer == nil {
-		return nil // No checkpointer, skip storing
+	if _, ok := g.checkpointer.(NoopCheckpointer); ok || g.checkpointer == nil {
+		return nil // No persistent checkpointer, skip storing
 	}
 
 	beforeChannels, err := DecomposeState(beforeState)

@@ -12,6 +12,7 @@ import (
 // Runtime provides runtime context and utilities to executing nodes.
 type Runtime struct {
 	RunID    string
+	TaskID   string
 	NodeName string
 	Step     int
 	Location Location

@@ -38,3 +38,19 @@ func (c InterrupCmd[State]) Apply(s State) State {
 
 // Interrupt implements [Interruptable], marking this command as an interrupt.
 func (c InterrupCmd[State]) Interrupt() {}
+
+// InterruptUpdate is a [Command] that both updates the state and interrupts
+// graph execution. This is used when a node (such as a subgraph) partially
+// updates state before pausing for an interrupt.
+type InterruptUpdate[State any] func(State) State
+
+// Apply implements [Command] by calling the underlying function.
+func (f InterruptUpdate[State]) Apply(s State) State {
+	if f == nil {
+		return s
+	}
+	return f(s)
+}
+
+// Interrupt implements [Interruptable], marking this command as an interrupt.
+func (f InterruptUpdate[State]) Interrupt() {}

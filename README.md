@@ -26,7 +26,11 @@ Detailed guides on how to use Loom's features:
 - [🖥️ Loom Studio](./docs/guides/observability.md): The built-in visualization and debugging dashboard.
 - [💬 Conversations](./docs/guides/conversations.md): Message roles, multimodal content, and history.
 - [🧠 LLM Package](./docs/guides/llm-package.md): Learn about the Model API and Registry.
-- [🔌 Providers: OpenAI](./docs/guides/providers/openai.md), [Anthropic](./docs/guides/providers/anthropic.md), [Gemini](./docs/guides/providers/google.md), [Antigravity](./docs/guides/providers/antigravity.md), [Ollama](./docs/guides/providers/ollama.md).
+- [⚖️ Decision Models](./docs/guides/decision.md): Fast, calibrated System One probabilistic evaluations and routing.
+- [🧭 Embedding Models](./docs/guides/embedding.md): Dense text and multimodal vector embeddings.
+- [💾 Persistent Store](./docs/guides/persistent-store.md): Namespaced key-value store with semantic vector indexing (`memorydb`, `sqlite`, `pg`).
+- [📚 RAG (Documents, VectorStore & Retrievers)](./docs/guides/rag.md): Lazy document loaders, text splitters, vector stores, RRF fusion, and System One reranking.
+- [🔌 Providers: OpenAI](./docs/guides/providers/openai.md), [Anthropic](./docs/guides/providers/anthropic.md), [Gemini](./docs/guides/providers/google.md), [Antigravity](./docs/guides/providers/antigravity.md), [Ollama](./docs/guides/providers/ollama.md), [TypeSafe AI](./docs/guides/providers/typesafe.md).
 - [🔌 MCP Support](./docs/guides/mcp.md): Connect to MCP servers for tools, resources, and prompts.
 - [💾 Persistence & State](./docs/guides/persistence.md): Learn about checkpointing and thread resumption.
 - [🤝 Human-in-the-Loop](./docs/guides/hitl.md): Patterns for human approval and input.

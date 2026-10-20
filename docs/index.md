@@ -10,7 +10,9 @@ Unlike linear chains, `loom` provides a robust, state-first architecture inspire
 - **💾 State Persistence**: Built-in checkpointing with support for PostgreSQL and SQLite.
 - **📺 Real-time Streaming**: First-class support for token-level streaming and event-based updates.
 - **🧠 Advanced Memory Management**: Intelligently condense long conversations and trim message history.
-- **🔌 Provider Agnostic**: One interface for OpenAI, Anthropic, Ollama, and Google Gemini.
+- **⚖️ Decision & Embedding Models**: First-class System One probabilistic decision models (`decision`) and multimodal vector embeddings (`embedding`).
+- **📚 RAG & Semantic Memory**: Built-in document loaders and splitters (`document`), vector stores (`vectorstore`), composable retrievers (`retriever`), and semantic KV stores (`store`).
+- **🔌 Provider Agnostic**: One interface for OpenAI, Anthropic, Ollama, Google Gemini, and TypeSafe AI.
 - **🔌 MCP Support**: Native integration with the Model Context Protocol for tools, resources, and prompts.
 - **🛠️ Tool Integration**: Native support for tool calling and tool-use loops.
 - **🛡️ Type Safe**: Built from the ground up with Go generics for maximum developer productivity.

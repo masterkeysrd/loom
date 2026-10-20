@@ -199,7 +199,27 @@ threadID := snapshot.Location.ThreadID
 nextSnapshot, _ := g.Execute(ctx, nil, &snapshot.Location)
 ```
 
-## 8. Provider Implementation (Core Extension)
+## 8. RAG: Documents, Vector Stores & Retrievers (`document`, `vectorstore`, `retriever`)
+Loom provides lazy document ingestion (`iter.Seq2`), chunking, vector indexing, and composable retrieval.
+
+```go
+// 1. Load & split documents lazily
+loader := document.NewFSLoader(os.DirFS("./docs"), "*.md")
+splitter := document.NewMarkdownSplitter(document.WithChunkSize(800))
+chunks, _ := document.LoadAll(ctx, document.LoaderFunc(func(ctx context.Context) iter.Seq2[document.Document, error] {
+    return document.SplitIter(loader.Load(ctx), splitter)
+}))
+
+// 2. Index in a VectorStore (memory, sqlite, or pg)
+vs := memory.New(embedModel)
+_, _ = vs.Add(ctx, chunks)
+
+// 3. Retrieve (or expose as a Tool via retriever.NewTool)
+ret := retriever.FromVectorStore(vs, retriever.WithTopK(4))
+docs, _ := ret.Retrieve(ctx, "How do checkpoints work?")
+```
+
+## 9. Provider Implementation (Core Extension)
 To update a provider (e.g., `providers/openai/mappings.go`):
 1.  **Request Mapping**: Translate `llm.Request` to the provider's `Params` struct.
 2.  **Multimodal**: Map media blocks (Image, Audio, Document).

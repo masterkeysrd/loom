@@ -49,6 +49,8 @@ nav:
       - LLM Package: guides/llm-package.md
       - Decision Models: guides/decision.md
       - Embedding Models: guides/embedding.md
+      - Persistent Store: guides/persistent-store.md
+      - RAG (Documents, VectorStore & Retrievers): guides/rag.md
       - Persistence & State: guides/persistence.md
       - Tools & Streaming: guides/tools.md
       - Model Context Protocol (MCP): guides/mcp.md

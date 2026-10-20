@@ -23,6 +23,9 @@ const START = "__START__"
 // When the next-node list resolves to END, the graph is considered done.
 const END = "__END__"
 
+// ErrMaxStepsExceeded is returned when graph execution exceeds the configured step limit.
+var ErrMaxStepsExceeded = errors.New("maximum graph execution steps exceeded")
+
 // Graph is the runtime engine for a compiled workflow.
 // It owns the node registry, the edge table, and an optional checkpointer,
 // and it drives execution step-by-step through those structures.
@@ -34,6 +37,8 @@ type Graph[S State[S]] struct {
 	edges        map[string][]Edge[S]
 	checkpointer Checkpointer
 	store        store.Store
+	maxSteps     int
+	middleware   []Middleware[S]
 }
 
 // Name returns the name of the graph.
@@ -59,6 +64,16 @@ func (g *Graph[S]) Store() store.Store {
 // SetStore sets the store of the graph.
 func (g *Graph[S]) SetStore(s store.Store) {
 	g.store = s
+}
+
+// MaxSteps returns the maximum number of steps allowed per execution run.
+func (g *Graph[S]) MaxSteps() int {
+	return g.maxSteps
+}
+
+// SetMaxSteps sets the maximum number of steps allowed per execution run.
+func (g *Graph[S]) SetMaxSteps(max int) {
+	g.maxSteps = max
 }
 
 // Execute runs the graph to completion (or until an interrupt) and returns
@@ -115,8 +130,13 @@ func (g *Graph[State]) Execute(ctx context.Context, input Command[State], loc *L
 	defer func() { rec.endGraph(ctx, nil) }() // Normal end if no error returned early
 
 	isFirstLoop := true
+	stepsInRun := 0
 
 	for !snapshot.IsDone() {
+		if err := ctx.Err(); err != nil {
+			return snapshot, err
+		}
+
 		nodes, err := g.getNodes(snapshot.Next)
 		if err != nil {
 			return snapshot, err
@@ -129,6 +149,13 @@ func (g *Graph[State]) Execute(ctx context.Context, input Command[State], loc *L
 
 		nodeName := snapshot.Next[0]
 		node := nodes[0]
+
+		if nodeName != START {
+			if g.maxSteps > 0 && stepsInRun >= g.maxSteps {
+				return snapshot, fmt.Errorf("%w: limit of %d steps reached at node %q", ErrMaxStepsExceeded, g.maxSteps, nodeName)
+			}
+			stepsInRun++
+		}
 
 		// Start node execution span using the pre-transition location
 		nodeCtx, span := rec.startNode(ctx, nodeName, snapshot.Location)
@@ -159,6 +186,10 @@ func (g *Graph[State]) Execute(ctx context.Context, input Command[State], loc *L
 			Stream:   sw,
 		}
 		execCtx = WithRuntime(execCtx, rt)
+
+		if nodeName != START && nodeName != END && len(g.middleware) > 0 {
+			node = ChainMiddleware(node, g.middleware...)
+		}
 
 		cmd, err := node.Execute(execCtx, snapshot.State.Copy())
 		if err != nil {

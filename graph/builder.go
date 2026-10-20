@@ -1,6 +1,10 @@
 package graph
 
-import "github.com/masterkeysrd/loom/store"
+import (
+	"slices"
+
+	"github.com/masterkeysrd/loom/store"
+)
 
 // Builder constructs a [Graph] using a fluent API.
 // Call [New] to obtain a zero-value builder, configure it with the With*/Add*
@@ -11,6 +15,8 @@ type Builder[S State[S]] struct {
 	edges        map[string][]Edge[S]
 	checkpointer Checkpointer
 	store        store.Store
+	maxSteps     int
+	middleware   []Middleware[S]
 }
 
 // New returns a new [Builder] for a graph whose State type is State.
@@ -96,6 +102,18 @@ func AddRouteEdge[S State[S], Key comparable](b *Builder[S], from string, router
 	return b
 }
 
+// WithMaxSteps sets the maximum number of steps allowed per execution run.
+func (b *Builder[State]) WithMaxSteps(maxSteps int) *Builder[State] {
+	b.maxSteps = maxSteps
+	return b
+}
+
+// WithMiddleware adds one or more node middlewares to the graph.
+func (b *Builder[State]) WithMiddleware(mws ...Middleware[State]) *Builder[State] {
+	b.middleware = append(b.middleware, mws...)
+	return b
+}
+
 // Build compiles the builder configuration into a runnable [Graph].
 // It implicitly injects the virtual [START] and [END] nodes before returning.
 func (b *Builder[State]) Build() (*Graph[State], error) {
@@ -109,5 +127,7 @@ func (b *Builder[State]) Build() (*Graph[State], error) {
 		edges:        b.edges,
 		checkpointer: b.checkpointer,
 		store:        b.store,
+		maxSteps:     b.maxSteps,
+		middleware:   slices.Clone(b.middleware),
 	}, nil
 }

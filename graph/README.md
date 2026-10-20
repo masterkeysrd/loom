@@ -82,3 +82,63 @@ for event, err := range events {
     }
 }
 ```
+
+## Execution Safety
+
+Loom provides built-in safety controls to prevent runaway workflows and respect context deadlines:
+
+- **Max Steps Limit**: Configure `WithMaxSteps(limit)` on the builder or dynamically with `g.SetMaxSteps(limit)`. If execution exceeds this limit (virtual `START` node is not counted), `Graph.Execute` aborts and returns an error wrapping `ErrMaxStepsExceeded`.
+- **Context Cancellation**: `Graph.Execute` checks `ctx.Err()` at the start of every execution step and aborts immediately if canceled or timed out.
+
+```go
+g, err := graph.New[MyState]().
+    WithMaxSteps(25). // Abort if execution exceeds 25 node steps
+    // ...
+    Build()
+
+snapshot, err := g.Execute(ctx, input, nil)
+if errors.Is(err, graph.ErrMaxStepsExceeded) {
+    log.Printf("workflow exceeded step limit: %v", err)
+}
+```
+
+## Node Middleware & Retries
+
+Middlewares allow intercepting and wrapping node executions. Middlewares are executed in order (the first middleware is outermost) and apply only to real user nodes (virtual `START` and `END` nodes are not wrapped).
+
+```go
+loggingMiddleware := func(next graph.Node[MyState]) graph.Node[MyState] {
+    return graph.NodeFunc(func(ctx context.Context, state MyState) (graph.Command[MyState], error) {
+        log.Println("entering node")
+        cmd, err := next.Execute(ctx, state)
+        log.Println("exiting node")
+        return cmd, err
+    })
+}
+
+builder.WithMiddleware(loggingMiddleware)
+```
+
+### Retry Middleware
+
+`RetryMiddleware` provides exponential backoff retries for transient node failures. Before each retry attempt, it passes an isolated `state.Copy()` to ensure failed attempts do not corrupt state.
+
+```go
+retryPolicy := graph.RetryMiddleware[MyState](
+    graph.WithMaxAttempts(3),                  // Total attempts including initial call (default: 3)
+    graph.WithInitialWait(100*time.Millisecond), // Initial backoff (default: 100ms)
+    graph.WithMaxWait(5*time.Second),          // Max backoff duration (default: 5s)
+    graph.WithMultiplier(2.0),                 // Exponential backoff multiplier (default: 2.0)
+    graph.WithShouldRetry(func(err error) bool {
+        // Optional filter: return true for retryable errors
+        return !errors.Is(err, ErrInvalidInput)
+    }),
+)
+
+g, _ := graph.New[MyState]().
+    WithMiddleware(retryPolicy).
+    // ...
+    Build()
+```
+
+If context cancellation or deadline expiration occurs, `RetryMiddleware` aborts immediately without waiting or retrying.

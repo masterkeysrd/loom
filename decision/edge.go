@@ -2,7 +2,9 @@ package decision
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/masterkeysrd/loom/graph"
 )
@@ -77,21 +79,35 @@ func (e *PredicateEdge[State]) NextNode(state State) (string, error) {
 	return e.ElseNode, nil
 }
 
-// TargetRoutes returns an identity mapping of all destination nodes that this edge may route to.
-func (e *PredicateEdge[State]) TargetRoutes() map[string]string {
-	targets := make(map[string]string, 2)
-	if e.Next != "" {
-		targets[e.Next] = e.Next
+// Validate checks that the predicate edge configuration is valid.
+func (e *PredicateEdge[State]) Validate() error {
+	if e == nil {
+		return errors.New("decision: predicate edge cannot be nil")
 	}
+	if e.Model == nil {
+		return errors.New("decision: model cannot be nil")
+	}
+	if e.StateFn == nil {
+		return errors.New("decision: stateFn cannot be nil")
+	}
+	if e.Next == "" {
+		return errors.New("decision: next node cannot be empty")
+	}
+	return nil
+}
+
+// Transitions returns the possible static transitions from this predicate edge.
+func (e *PredicateEdge[State]) Transitions() []graph.Transition {
+	trs := []graph.Transition{{Target: e.Next, Label: "pass", Conditional: true}}
 	if e.ElseNode != "" {
-		targets[e.ElseNode] = e.ElseNode
+		trs = append(trs, graph.Transition{Target: e.ElseNode, Label: "else", Conditional: true})
 	}
-	return targets
+	return trs
 }
 
 // AddConditionalEdge registers a [PredicateEdge] with a [graph.Builder] from node from.
 func AddConditionalEdge[S graph.State[S]](b *graph.Builder[S], from string, edge *PredicateEdge[S]) *graph.Builder[S] {
-	return b.AddRouteEdge(from, edge.NextNode, edge.TargetRoutes())
+	return b.AddCustomEdge(from, edge)
 }
 
 // ChoiceRouteEdge evaluates a categorical choice question against the workflow state
@@ -186,19 +202,55 @@ func (e *ChoiceRouteEdge[State]) NextNode(state State) (string, error) {
 	return target, nil
 }
 
-// TargetRoutes returns an identity mapping of all destination nodes that this edge may route to.
-func (e *ChoiceRouteEdge[State]) TargetRoutes() map[string]string {
-	targets := make(map[string]string, len(e.Routes)+1)
-	for _, target := range e.Routes {
-		targets[target] = target
+// Validate checks that the choice route edge configuration is valid.
+func (e *ChoiceRouteEdge[State]) Validate() error {
+	if e == nil {
+		return errors.New("decision: choice route edge cannot be nil")
+	}
+	if e.Model == nil {
+		return errors.New("decision: model cannot be nil")
+	}
+	if e.StateFn == nil {
+		return errors.New("decision: stateFn cannot be nil")
+	}
+	if len(e.Routes) == 0 {
+		return errors.New("decision: routes map cannot be empty")
+	}
+	for k, target := range e.Routes {
+		if target == "" {
+			return fmt.Errorf("decision: route target for choice %q cannot be empty", k)
+		}
+	}
+	return nil
+}
+
+// Transitions returns the possible static transitions from this choice route edge.
+func (e *ChoiceRouteEdge[State]) Transitions() []graph.Transition {
+	keys := make([]string, 0, len(e.Routes))
+	for k := range e.Routes {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+
+	trs := make([]graph.Transition, 0, len(keys)+1)
+	for _, k := range keys {
+		trs = append(trs, graph.Transition{
+			Target:      e.Routes[k],
+			Label:       k,
+			Conditional: false,
+		})
 	}
 	if e.FallbackNode != "" {
-		targets[e.FallbackNode] = e.FallbackNode
+		trs = append(trs, graph.Transition{
+			Target:      e.FallbackNode,
+			Label:       "fallback",
+			Conditional: true,
+		})
 	}
-	return targets
+	return trs
 }
 
 // AddRouteEdge registers a [ChoiceRouteEdge] with a [graph.Builder] from node from.
 func AddRouteEdge[S graph.State[S]](b *graph.Builder[S], from string, edge *ChoiceRouteEdge[S]) *graph.Builder[S] {
-	return b.AddRouteEdge(from, edge.NextNode, edge.TargetRoutes())
+	return b.AddCustomEdge(from, edge)
 }

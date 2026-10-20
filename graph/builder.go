@@ -110,6 +110,12 @@ func AddRouteEdge[S State[S], Key comparable](b *Builder[S], from string, router
 	return b
 }
 
+// AddCustomEdge adds a custom [Edge] implementation originating from node from.
+func (b *Builder[State]) AddCustomEdge(from string, edge Edge[State]) *Builder[State] {
+	b.edges[from] = append(b.edges[from], edge)
+	return b
+}
+
 // WithMaxSteps sets the maximum number of steps allowed per execution run.
 func (b *Builder[State]) WithMaxSteps(maxSteps int) *Builder[State] {
 	b.maxSteps = maxSteps
@@ -190,19 +196,18 @@ func (b *Builder[State]) Build() (*Graph[State], error) {
 			if edge == nil {
 				return nil, fmt.Errorf("edge from node %q cannot be nil", from)
 			}
-			if ev, ok := edge.(edgeValidator); ok {
-				if err := ev.validate(); err != nil {
-					return nil, fmt.Errorf("invalid edge from node %q: %w", from, err)
+			if err := edge.Validate(); err != nil {
+				return nil, fmt.Errorf("invalid edge from node %q: %w", from, err)
+			}
+			for _, tr := range edge.Transitions() {
+				if tr.Target == "" {
+					return nil, fmt.Errorf("invalid edge from node %q: transition target cannot be empty", from)
 				}
-				targets := ev.targets()
-				slices.Sort(targets)
-				for _, target := range targets {
-					if target == START {
-						return nil, fmt.Errorf("edge from node %q cannot target START", from)
-					}
-					if _, ok := nodes[target]; !ok {
-						return nil, fmt.Errorf("edge from node %q targets unknown node %q", from, target)
-					}
+				if tr.Target == START {
+					return nil, fmt.Errorf("edge from node %q cannot target START", from)
+				}
+				if _, ok := nodes[tr.Target]; !ok {
+					return nil, fmt.Errorf("edge from node %q targets unknown node %q", from, tr.Target)
 				}
 			}
 		}

@@ -3,7 +3,6 @@ package graph
 import (
 	"encoding/base64"
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 )
@@ -44,38 +43,20 @@ func (g *Graph[S]) ToMermaid() string {
 	for _, from := range fromNodes {
 		edges := g.edges[from]
 		for _, edge := range edges {
-			// Use reflection to inspect the underlying edge type
-			v := reflect.ValueOf(edge)
-			for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
-				v = v.Elem()
+			if edge == nil {
+				continue
 			}
-
-			// Use the type string to match generic types (e.g., SimpleEdge[...])
-			typeStr := v.Type().String()
-
-			if strings.Contains(typeStr, "SimpleEdge") {
-				next := v.FieldByName("Next").String()
-				fmt.Fprintf(&sb, "  %s --> %s\n", from, next)
-			} else if strings.Contains(typeStr, "ConditionalEdge") {
-				next := v.FieldByName("Next").String()
-				fmt.Fprintf(&sb, "  %s -. [conditional] .-> %s\n", from, next)
-			} else if strings.Contains(typeStr, "RouteEdge") {
-				routes := v.FieldByName("Routes")
-				if routes.Kind() == reflect.Map {
-					// Extract and sort keys for deterministic output
-					keys := routes.MapKeys()
-					sort.Slice(keys, func(i, j int) bool {
-						return fmt.Sprint(keys[i].Interface()) < fmt.Sprint(keys[j].Interface())
-					})
-
-					for _, key := range keys {
-						to := routes.MapIndex(key).String()
-						fmt.Fprintf(&sb, "  %s -- %v --> %s\n", from, key.Interface(), to)
-					}
+			for _, tr := range edge.Transitions() {
+				switch {
+				case tr.Conditional && tr.Label != "":
+					fmt.Fprintf(&sb, "  %s -. [%s] .-> %s\n", from, tr.Label, tr.Target)
+				case tr.Conditional:
+					fmt.Fprintf(&sb, "  %s -.-> %s\n", from, tr.Target)
+				case tr.Label != "":
+					fmt.Fprintf(&sb, "  %s -- %s --> %s\n", from, tr.Label, tr.Target)
+				default:
+					fmt.Fprintf(&sb, "  %s --> %s\n", from, tr.Target)
 				}
-			} else {
-				// Fallback for custom edge types
-				fmt.Fprintf(&sb, "  %s -- unknown edge --> ???\n", from)
 			}
 		}
 	}

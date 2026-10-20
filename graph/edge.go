@@ -3,17 +3,23 @@ package graph
 import (
 	"errors"
 	"fmt"
+	"slices"
 )
 
-// Edge represents a directed connection from one node to another, optionally
-// guarded by a condition that determines whether the edge is active for a given state.
-type Edge[State any] interface {
-	NextNode(state State) (string, error)
+// Transition describes a possible static transition from an [Edge] for
+// compile-time graph validation and visualization (such as Mermaid diagrams).
+type Transition struct {
+	Target      string // Destination node name (or END)
+	Label       string // Optional edge label (e.g. route key or condition name)
+	Conditional bool   // True for conditional/dashed transitions
 }
 
-type edgeValidator interface {
-	validate() error
-	targets() []string
+// Edge represents a directed connection from one node to another, optionally
+// guarded by a condition or router that determines whether the edge is active for a given state.
+type Edge[State any] interface {
+	NextNode(state State) (string, error)
+	Validate() error
+	Transitions() []Transition
 }
 
 // SimpleEdge is a basic [Edge] implementation that unconditionally points to a single next node.
@@ -25,15 +31,15 @@ func (e SimpleEdge[State]) NextNode(state State) (string, error) {
 	return e.Next, nil
 }
 
-func (e SimpleEdge[State]) validate() error {
+func (e SimpleEdge[State]) Validate() error {
 	if e.Next == "" {
 		return errors.New("edge target cannot be empty")
 	}
 	return nil
 }
 
-func (e SimpleEdge[State]) targets() []string {
-	return []string{e.Next}
+func (e SimpleEdge[State]) Transitions() []Transition {
+	return []Transition{{Target: e.Next}}
 }
 
 // ConditionalEdge is a simple [Edge] implementation that points to a single next node
@@ -50,7 +56,7 @@ func (e ConditionalEdge[State]) NextNode(state State) (string, error) {
 	return "", nil // Condition not met, no next node
 }
 
-func (e ConditionalEdge[State]) validate() error {
+func (e ConditionalEdge[State]) Validate() error {
 	if e.Next == "" {
 		return errors.New("conditional edge target cannot be empty")
 	}
@@ -60,8 +66,8 @@ func (e ConditionalEdge[State]) validate() error {
 	return nil
 }
 
-func (e ConditionalEdge[State]) targets() []string {
-	return []string{e.Next}
+func (e ConditionalEdge[State]) Transitions() []Transition {
+	return []Transition{{Target: e.Next, Label: "conditional", Conditional: true}}
 }
 
 // RouteEdge is an [Edge] implementation that supports dynamic routing to multiple possible next nodes.
@@ -94,7 +100,7 @@ func (e RouteEdge[State, Key]) NextNode(state State) (string, error) {
 	return next, nil
 }
 
-func (e RouteEdge[State, Key]) validate() error {
+func (e RouteEdge[State, Key]) Validate() error {
 	if len(e.Routes) == 0 {
 		return errors.New("route edge routes map cannot be empty")
 	}
@@ -109,10 +115,28 @@ func (e RouteEdge[State, Key]) validate() error {
 	return nil
 }
 
-func (e RouteEdge[State, Key]) targets() []string {
-	targets := make([]string, 0, len(e.Routes))
-	for _, target := range e.Routes {
-		targets = append(targets, target)
+func (e RouteEdge[State, Key]) Transitions() []Transition {
+	keys := make([]Key, 0, len(e.Routes))
+	for k := range e.Routes {
+		keys = append(keys, k)
 	}
-	return targets
+	slices.SortFunc(keys, func(a, b Key) int {
+		sa, sb := fmt.Sprint(a), fmt.Sprint(b)
+		if sa < sb {
+			return -1
+		}
+		if sa > sb {
+			return 1
+		}
+		return 0
+	})
+	trs := make([]Transition, 0, len(keys))
+	for _, k := range keys {
+		trs = append(trs, Transition{
+			Target:      e.Routes[k],
+			Label:       fmt.Sprint(k),
+			Conditional: false,
+		})
+	}
+	return trs
 }

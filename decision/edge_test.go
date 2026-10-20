@@ -3,6 +3,7 @@ package decision_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/masterkeysrd/loom/decision"
@@ -855,3 +856,200 @@ func TestPredicateEdge_GraphIntegration(t *testing.T) {
 		}
 	})
 }
+
+func TestDecisionEdges_ValidationAndMermaid(t *testing.T) {
+	provider := &mockEdgeProvider{}
+	model, err := decision.NewModel(provider, "test-model", nil)
+	if err != nil {
+		t.Fatalf("failed to create model: %v", err)
+	}
+
+	stateFn := func(s testWorkflowState) decision.Input {
+		return decision.Text(s.Text)
+	}
+
+	t.Run("PredicateEdge validation", func(t *testing.T) {
+		var nilEdge *decision.PredicateEdge[testWorkflowState]
+		if err := nilEdge.Validate(); err == nil {
+			t.Error("expected error for nil edge, got nil")
+		}
+
+		edgeNilModel := &decision.PredicateEdge[testWorkflowState]{
+			Next:    "target",
+			StateFn: stateFn,
+		}
+		if err := edgeNilModel.Validate(); err == nil || !strings.Contains(err.Error(), "model cannot be nil") {
+			t.Errorf("expected model cannot be nil error, got: %v", err)
+		}
+
+		edgeNilStateFn := &decision.PredicateEdge[testWorkflowState]{
+			Model: model,
+			Next:  "target",
+		}
+		if err := edgeNilStateFn.Validate(); err == nil || !strings.Contains(err.Error(), "stateFn cannot be nil") {
+			t.Errorf("expected stateFn cannot be nil error, got: %v", err)
+		}
+
+		edgeEmptyNext := &decision.PredicateEdge[testWorkflowState]{
+			Model:   model,
+			StateFn: stateFn,
+		}
+		if err := edgeEmptyNext.Validate(); err == nil || !strings.Contains(err.Error(), "next node cannot be empty") {
+			t.Errorf("expected next node cannot be empty error, got: %v", err)
+		}
+
+		validEdge := decision.NewConditionalEdge(model, "pass_node", "check", 0.5, stateFn)
+		if err := validEdge.Validate(); err != nil {
+			t.Fatalf("unexpected validation error: %v", err)
+		}
+		trs := validEdge.Transitions()
+		if len(trs) != 1 || trs[0].Target != "pass_node" || trs[0].Label != "pass" || !trs[0].Conditional {
+			t.Errorf("unexpected transitions for single predicate: %+v", trs)
+		}
+
+		validEdgeWithElse := validEdge.WithElse("else_node")
+		trsWithElse := validEdgeWithElse.Transitions()
+		if len(trsWithElse) != 2 {
+			t.Fatalf("expected 2 transitions, got %d", len(trsWithElse))
+		}
+		if trsWithElse[0].Target != "pass_node" || trsWithElse[0].Label != "pass" || !trsWithElse[0].Conditional {
+			t.Errorf("unexpected transition[0]: %+v", trsWithElse[0])
+		}
+		if trsWithElse[1].Target != "else_node" || trsWithElse[1].Label != "else" || !trsWithElse[1].Conditional {
+			t.Errorf("unexpected transition[1]: %+v", trsWithElse[1])
+		}
+	})
+
+	t.Run("ChoiceRouteEdge validation", func(t *testing.T) {
+		var nilEdge *decision.ChoiceRouteEdge[testWorkflowState]
+		if err := nilEdge.Validate(); err == nil {
+			t.Error("expected error for nil edge, got nil")
+		}
+
+		edgeNilModel := &decision.ChoiceRouteEdge[testWorkflowState]{
+			Routes:  map[string]string{"opt": "node1"},
+			StateFn: stateFn,
+		}
+		if err := edgeNilModel.Validate(); err == nil || !strings.Contains(err.Error(), "model cannot be nil") {
+			t.Errorf("expected model cannot be nil error, got: %v", err)
+		}
+
+		edgeNilStateFn := &decision.ChoiceRouteEdge[testWorkflowState]{
+			Model:  model,
+			Routes: map[string]string{"opt": "node1"},
+		}
+		if err := edgeNilStateFn.Validate(); err == nil || !strings.Contains(err.Error(), "stateFn cannot be nil") {
+			t.Errorf("expected stateFn cannot be nil error, got: %v", err)
+		}
+
+		edgeEmptyRoutes := &decision.ChoiceRouteEdge[testWorkflowState]{
+			Model:   model,
+			StateFn: stateFn,
+			Routes:  nil,
+		}
+		if err := edgeEmptyRoutes.Validate(); err == nil || !strings.Contains(err.Error(), "routes map cannot be empty") {
+			t.Errorf("expected routes map cannot be empty error, got: %v", err)
+		}
+
+		edgeEmptyTarget := &decision.ChoiceRouteEdge[testWorkflowState]{
+			Model:   model,
+			StateFn: stateFn,
+			Routes:  map[string]string{"opt": ""},
+		}
+		if err := edgeEmptyTarget.Validate(); err == nil || !strings.Contains(err.Error(), "cannot be empty") {
+			t.Errorf("expected route target cannot be empty error, got: %v", err)
+		}
+
+		routes := map[string]string{
+			"tech":    "tech_node",
+			"billing": "billing_node",
+		}
+		validEdge := decision.NewRouteEdge(model, "select category", nil, routes, stateFn).WithFallback("fallback_node")
+		if err := validEdge.Validate(); err != nil {
+			t.Fatalf("unexpected validation error: %v", err)
+		}
+
+		trs := validEdge.Transitions()
+		if len(trs) != 3 {
+			t.Fatalf("expected 3 transitions, got %d: %+v", len(trs), trs)
+		}
+		// Deterministically sorted: "billing", "tech", then fallback
+		if trs[0].Target != "billing_node" || trs[0].Label != "billing" || trs[0].Conditional {
+			t.Errorf("unexpected transition 0: %+v", trs[0])
+		}
+		if trs[1].Target != "tech_node" || trs[1].Label != "tech" || trs[1].Conditional {
+			t.Errorf("unexpected transition 1: %+v", trs[1])
+		}
+		if trs[2].Target != "fallback_node" || trs[2].Label != "fallback" || !trs[2].Conditional {
+			t.Errorf("unexpected transition 2: %+v", trs[2])
+		}
+	})
+
+	t.Run("Builder validation with invalid target nodes", func(t *testing.T) {
+		b := graph.New[testWorkflowState]()
+		b.AddNode("start_node", graph.NodeFunc(func(ctx context.Context, s testWorkflowState) (graph.Command[testWorkflowState], error) {
+			return nil, nil
+		}))
+		b.AddEdge(graph.START, "start_node")
+
+		predEdge := decision.NewConditionalEdge(model, "non_existent_node", "check", 0.5, stateFn)
+		decision.AddConditionalEdge(b, "start_node", predEdge)
+
+		_, err := b.Build()
+		if err == nil || !strings.Contains(err.Error(), "non_existent_node") {
+			t.Fatalf("expected build error for missing target node, got: %v", err)
+		}
+	})
+
+	t.Run("Mermaid visualization with decision edges", func(t *testing.T) {
+		b := graph.New[testWorkflowState]()
+		dummyNode := graph.NodeFunc(func(ctx context.Context, s testWorkflowState) (graph.Command[testWorkflowState], error) {
+			return nil, nil
+		})
+		b.AddNode("n_pred", dummyNode)
+		b.AddNode("n_pass", dummyNode)
+		b.AddNode("n_else", dummyNode)
+		b.AddNode("n_route", dummyNode)
+		b.AddNode("n_billing", dummyNode)
+		b.AddNode("n_tech", dummyNode)
+		b.AddNode("n_fallback", dummyNode)
+
+		b.AddEdge(graph.START, "n_pred")
+		predEdge := decision.NewConditionalEdge(model, "n_pass", "check", 0.5, stateFn).WithElse("n_else")
+		decision.AddConditionalEdge(b, "n_pred", predEdge)
+
+		b.AddEdge("n_pass", "n_route")
+		b.AddEdge("n_else", graph.END)
+
+		routeEdge := decision.NewRouteEdge(model, "route", nil, map[string]string{
+			"billing": "n_billing",
+			"tech":    "n_tech",
+		}, stateFn).WithFallback("n_fallback")
+		decision.AddRouteEdge(b, "n_route", routeEdge)
+
+		b.AddEdge("n_billing", graph.END)
+		b.AddEdge("n_tech", graph.END)
+		b.AddEdge("n_fallback", graph.END)
+
+		g, err := b.Build()
+		if err != nil {
+			t.Fatalf("failed to build graph: %v", err)
+		}
+
+		mermaid := g.ToMermaid()
+		expectedSnippets := []string{
+			"n_pred -. [pass] .-> n_pass",
+			"n_pred -. [else] .-> n_else",
+			"n_route -- billing --> n_billing",
+			"n_route -- tech --> n_tech",
+			"n_route -. [fallback] .-> n_fallback",
+		}
+
+		for _, snippet := range expectedSnippets {
+			if !strings.Contains(mermaid, snippet) {
+				t.Errorf("expected mermaid to contain %q, but got:\n%s", snippet, mermaid)
+			}
+		}
+	})
+}
+

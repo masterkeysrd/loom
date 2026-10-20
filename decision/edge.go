@@ -57,7 +57,7 @@ func (e *PredicateEdge[State]) WithOptions(opts ...CallOption) *PredicateEdge[St
 }
 
 // NextNode evaluates the binary predicate against state and determines the next node.
-func (e *PredicateEdge[State]) NextNode(state State) (string, error) {
+func (e *PredicateEdge[State]) NextNode(ctx context.Context, state State) (string, error) {
 	if e.Model == nil {
 		return "", fmt.Errorf("decision: model cannot be nil")
 	}
@@ -65,7 +65,7 @@ func (e *PredicateEdge[State]) NextNode(state State) (string, error) {
 		return "", fmt.Errorf("decision: stateFn cannot be nil")
 	}
 
-	ans, err := e.Model.Check(context.Background(), e.StateFn(state), e.Instructions, e.Opts...)
+	ans, err := e.Model.Check(ctx, e.StateFn(state), e.Instructions, e.Opts...)
 	if err != nil {
 		return "", fmt.Errorf("decision: predicate check failed: %w", err)
 	}
@@ -161,7 +161,7 @@ func (e *ChoiceRouteEdge[State]) WithOptions(opts ...CallOption) *ChoiceRouteEdg
 }
 
 // NextNode evaluates the choice question against state and returns the mapped destination node.
-func (e *ChoiceRouteEdge[State]) NextNode(state State) (string, error) {
+func (e *ChoiceRouteEdge[State]) NextNode(ctx context.Context, state State) (string, error) {
 	if e.Model == nil {
 		return "", fmt.Errorf("decision: model cannot be nil")
 	}
@@ -169,7 +169,7 @@ func (e *ChoiceRouteEdge[State]) NextNode(state State) (string, error) {
 		return "", fmt.Errorf("decision: stateFn cannot be nil")
 	}
 
-	ans, err := e.Model.Choose(context.Background(), e.StateFn(state), e.Instructions, e.Choices, e.Opts...)
+	ans, err := e.Model.Choose(ctx, e.StateFn(state), e.Instructions, e.Choices, e.Opts...)
 	if err != nil {
 		return "", fmt.Errorf("decision: choice evaluation failed: %w", err)
 	}

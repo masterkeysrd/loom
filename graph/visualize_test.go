@@ -60,7 +60,7 @@ type testCustomEdge struct {
 	transitions []Transition
 }
 
-func (c *testCustomEdge) NextNode(s MockState) (string, error) {
+func (c *testCustomEdge) NextNode(ctx context.Context, s MockState) (string, error) {
 	if len(c.transitions) > 0 {
 		return c.transitions[0].Target, nil
 	}

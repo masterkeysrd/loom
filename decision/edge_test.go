@@ -8,6 +8,7 @@ import (
 
 	"github.com/masterkeysrd/loom/decision"
 	"github.com/masterkeysrd/loom/graph"
+	"github.com/masterkeysrd/loom/stream"
 )
 
 type mockEdgeProvider struct {
@@ -66,7 +67,7 @@ func TestPredicateEdge(t *testing.T) {
 			},
 		)
 
-		next, err := edge.NextNode(testWorkflowState{Text: "valid request"})
+		next, err := edge.NextNode(context.Background(), testWorkflowState{Text: "valid request"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -105,7 +106,7 @@ func TestPredicateEdge(t *testing.T) {
 			},
 		)
 
-		next, err := edge.NextNode(testWorkflowState{Text: "invalid request"})
+		next, err := edge.NextNode(context.Background(), testWorkflowState{Text: "invalid request"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -144,7 +145,7 @@ func TestPredicateEdge(t *testing.T) {
 			},
 		).WithElse("else_node")
 
-		next, err := edge.NextNode(testWorkflowState{Text: "ambiguous"})
+		next, err := edge.NextNode(context.Background(), testWorkflowState{Text: "ambiguous"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -184,7 +185,7 @@ func TestPredicateEdge(t *testing.T) {
 			},
 		)
 
-		next, err := edge.NextNode(testWorkflowState{Text: "refused input"})
+		next, err := edge.NextNode(context.Background(), testWorkflowState{Text: "refused input"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -223,7 +224,7 @@ func TestPredicateEdge(t *testing.T) {
 			},
 		).WithElse("blocked_node")
 
-		next, err := edge.NextNode(testWorkflowState{Text: "refused input"})
+		next, err := edge.NextNode(context.Background(), testWorkflowState{Text: "refused input"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -241,7 +242,7 @@ func TestPredicateEdge(t *testing.T) {
 				0.5,
 				func(s testWorkflowState) decision.Input { return decision.Text(s.Text) },
 			)
-			_, err := edge.NextNode(testWorkflowState{})
+			_, err := edge.NextNode(context.Background(), testWorkflowState{})
 			if err == nil {
 				t.Fatal("expected error with nil model, got nil")
 			}
@@ -257,7 +258,7 @@ func TestPredicateEdge(t *testing.T) {
 				0.5,
 				nil,
 			)
-			_, err := edge.NextNode(testWorkflowState{})
+			_, err := edge.NextNode(context.Background(), testWorkflowState{})
 			if err == nil {
 				t.Fatal("expected error with nil stateFn, got nil")
 			}
@@ -277,7 +278,7 @@ func TestPredicateEdge(t *testing.T) {
 				0.5,
 				func(s testWorkflowState) decision.Input { return decision.Text(s.Text) },
 			)
-			_, err := edge.NextNode(testWorkflowState{})
+			_, err := edge.NextNode(context.Background(), testWorkflowState{})
 			if err == nil {
 				t.Fatal("expected error when provider fails, got nil")
 			}
@@ -326,7 +327,7 @@ func TestChoiceRouteEdge(t *testing.T) {
 			},
 		).WithMinConfidence(0.8)
 
-		next, err := edge.NextNode(testWorkflowState{Text: "I want a refund"})
+		next, err := edge.NextNode(context.Background(), testWorkflowState{Text: "I want a refund"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -367,7 +368,7 @@ func TestChoiceRouteEdge(t *testing.T) {
 				},
 			).WithMinConfidence(0.7).WithFallback("handle_fallback")
 
-			next, err := edge.NextNode(testWorkflowState{Text: "Not sure what I need"})
+			next, err := edge.NextNode(context.Background(), testWorkflowState{Text: "Not sure what I need"})
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -387,7 +388,7 @@ func TestChoiceRouteEdge(t *testing.T) {
 				},
 			).WithMinConfidence(0.7)
 
-			_, err := edge.NextNode(testWorkflowState{Text: "Not sure what I need"})
+			_, err := edge.NextNode(context.Background(), testWorkflowState{Text: "Not sure what I need"})
 			if err == nil {
 				t.Fatal("expected error when confidence is low and fallback is unset, got nil")
 			}
@@ -425,7 +426,7 @@ func TestChoiceRouteEdge(t *testing.T) {
 				},
 			).WithFallback("human_escalation")
 
-			next, err := edge.NextNode(testWorkflowState{Text: "dangerous content"})
+			next, err := edge.NextNode(context.Background(), testWorkflowState{Text: "dangerous content"})
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -445,7 +446,7 @@ func TestChoiceRouteEdge(t *testing.T) {
 				},
 			)
 
-			_, err := edge.NextNode(testWorkflowState{Text: "dangerous content"})
+			_, err := edge.NextNode(context.Background(), testWorkflowState{Text: "dangerous content"})
 			if err == nil {
 				t.Fatal("expected error on refusal when fallback is unset, got nil")
 			}
@@ -479,7 +480,7 @@ func TestChoiceRouteEdge(t *testing.T) {
 				func(s testWorkflowState) decision.Input { return decision.Text(s.Text) },
 			).WithFallback("handle_fallback")
 
-			next, err := edge.NextNode(testWorkflowState{})
+			next, err := edge.NextNode(context.Background(), testWorkflowState{})
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -497,7 +498,7 @@ func TestChoiceRouteEdge(t *testing.T) {
 				func(s testWorkflowState) decision.Input { return decision.Text(s.Text) },
 			)
 
-			_, err := edge.NextNode(testWorkflowState{})
+			_, err := edge.NextNode(context.Background(), testWorkflowState{})
 			if err == nil {
 				t.Fatal("expected error on unmapped choice without fallback, got nil")
 			}
@@ -513,7 +514,7 @@ func TestChoiceRouteEdge(t *testing.T) {
 				routes,
 				func(s testWorkflowState) decision.Input { return decision.Text(s.Text) },
 			)
-			_, err := edge.NextNode(testWorkflowState{})
+			_, err := edge.NextNode(context.Background(), testWorkflowState{})
 			if err == nil {
 				t.Fatal("expected error with nil model, got nil")
 			}
@@ -529,7 +530,7 @@ func TestChoiceRouteEdge(t *testing.T) {
 				routes,
 				nil,
 			)
-			_, err := edge.NextNode(testWorkflowState{})
+			_, err := edge.NextNode(context.Background(), testWorkflowState{})
 			if err == nil {
 				t.Fatal("expected error with nil stateFn, got nil")
 			}
@@ -549,7 +550,7 @@ func TestChoiceRouteEdge(t *testing.T) {
 				routes,
 				func(s testWorkflowState) decision.Input { return decision.Text(s.Text) },
 			)
-			_, err := edge.NextNode(testWorkflowState{})
+			_, err := edge.NextNode(context.Background(), testWorkflowState{})
 			if err == nil {
 				t.Fatal("expected error when provider fails, got nil")
 			}
@@ -1052,4 +1053,209 @@ func TestDecisionEdges_ValidationAndMermaid(t *testing.T) {
 		}
 	})
 }
+
+type testCtxKey struct{}
+
+type mockTestStreamWriter struct {
+	events []any
+}
+
+func (m *mockTestStreamWriter) Write(ctx context.Context, data any) error {
+	m.events = append(m.events, data)
+	return nil
+}
+
+func TestDecisionEdges_ContextPropagationInGraph(t *testing.T) {
+	t.Run("PredicateEdge receives custom context value and stream.Writer", func(t *testing.T) {
+		var receivedCtx context.Context
+		provider := &mockEdgeProvider{
+			evaluateFunc: func(ctx context.Context, req *decision.Request) (*decision.Response, error) {
+				receivedCtx = ctx
+				return &decision.Response{
+					Model: req.Model,
+					Answers: map[string]decision.Answer{
+						"check": {
+							Name:        "check",
+							Type:        decision.QuestionPredicate,
+							Probability: 0.95,
+						},
+					},
+				}, nil
+			},
+		}
+		model, err := decision.NewModel(provider, "test-model", nil)
+		if err != nil {
+			t.Fatalf("failed to create model: %v", err)
+		}
+
+		b := graph.New[testWorkflowState]()
+		b.AddNode("start_node", graph.NodeFunc(func(ctx context.Context, s testWorkflowState) (graph.Command[testWorkflowState], error) {
+			return nil, nil
+		}))
+		b.AddNode("allowed_node", graph.NodeFunc(func(ctx context.Context, s testWorkflowState) (graph.Command[testWorkflowState], error) {
+			return graph.Update[testWorkflowState](func(state testWorkflowState) testWorkflowState {
+				state.RouteTaken = "allowed"
+				return state
+			}), nil
+		}))
+		b.AddEdge(graph.START, "start_node")
+		predEdge := decision.NewConditionalEdge(model, "allowed_node", "is allowed?", 0.5, func(s testWorkflowState) decision.Input {
+			return decision.Text(s.Text)
+		})
+		decision.AddConditionalEdge(b, "start_node", predEdge)
+		b.AddEdge("allowed_node", graph.END)
+
+		g, err := b.Build()
+		if err != nil {
+			t.Fatalf("build error: %v", err)
+		}
+
+		writer := &mockTestStreamWriter{}
+		ctx := context.WithValue(context.Background(), testCtxKey{}, "custom-value-pred")
+		ctx = stream.WithWriter(ctx, writer)
+
+		snap, err := g.Execute(ctx, nil, nil)
+		if err != nil {
+			t.Fatalf("execute error: %v", err)
+		}
+		if snap.State.RouteTaken != "allowed" {
+			t.Fatalf("expected allowed, got %q", snap.State.RouteTaken)
+		}
+
+		if receivedCtx == nil {
+			t.Fatal("expected provider to receive context, but receivedCtx is nil")
+		}
+		if val, ok := receivedCtx.Value(testCtxKey{}).(string); !ok || val != "custom-value-pred" {
+			t.Errorf("expected context value 'custom-value-pred', got %v", receivedCtx.Value(testCtxKey{}))
+		}
+		if sw, ok := stream.WriterFromContext(receivedCtx); !ok || sw != writer {
+			t.Errorf("expected stream.Writer in context, got %v", sw)
+		}
+	})
+
+	t.Run("ChoiceRouteEdge receives custom context value and stream.Writer", func(t *testing.T) {
+		var receivedCtx context.Context
+		provider := &mockEdgeProvider{
+			evaluateFunc: func(ctx context.Context, req *decision.Request) (*decision.Response, error) {
+				receivedCtx = ctx
+				return &decision.Response{
+					Model: req.Model,
+					Answers: map[string]decision.Answer{
+						"choice": {
+							Name:       "choice",
+							Type:       decision.QuestionChoice,
+							Choice:     "billing",
+							Confidence: 0.95,
+						},
+					},
+				}, nil
+			},
+		}
+		model, err := decision.NewModel(provider, "test-model", nil)
+		if err != nil {
+			t.Fatalf("failed to create model: %v", err)
+		}
+
+		b := graph.New[testWorkflowState]()
+		b.AddNode("classify_node", graph.NodeFunc(func(ctx context.Context, s testWorkflowState) (graph.Command[testWorkflowState], error) {
+			return nil, nil
+		}))
+		b.AddNode("billing_node", graph.NodeFunc(func(ctx context.Context, s testWorkflowState) (graph.Command[testWorkflowState], error) {
+			return graph.Update[testWorkflowState](func(state testWorkflowState) testWorkflowState {
+				state.RouteTaken = "billing"
+				return state
+			}), nil
+		}))
+		b.AddEdge(graph.START, "classify_node")
+		routeEdge := decision.NewRouteEdge(model, "classify", []decision.Option{
+			decision.Opt("billing", "Billing"),
+		}, map[string]string{
+			"billing": "billing_node",
+		}, func(s testWorkflowState) decision.Input {
+			return decision.Text(s.Text)
+		})
+		decision.AddRouteEdge(b, "classify_node", routeEdge)
+		b.AddEdge("billing_node", graph.END)
+
+		g, err := b.Build()
+		if err != nil {
+			t.Fatalf("build error: %v", err)
+		}
+
+		writer := &mockTestStreamWriter{}
+		ctx := context.WithValue(context.Background(), testCtxKey{}, "custom-value-choice")
+		ctx = stream.WithWriter(ctx, writer)
+
+		snap, err := g.Execute(ctx, nil, nil)
+		if err != nil {
+			t.Fatalf("execute error: %v", err)
+		}
+		if snap.State.RouteTaken != "billing" {
+			t.Fatalf("expected billing, got %q", snap.State.RouteTaken)
+		}
+
+		if receivedCtx == nil {
+			t.Fatal("expected provider to receive context, but receivedCtx is nil")
+		}
+		if val, ok := receivedCtx.Value(testCtxKey{}).(string); !ok || val != "custom-value-choice" {
+			t.Errorf("expected context value 'custom-value-choice', got %v", receivedCtx.Value(testCtxKey{}))
+		}
+		if sw, ok := stream.WriterFromContext(receivedCtx); !ok || sw != writer {
+			t.Errorf("expected stream.Writer in context, got %v", sw)
+		}
+	})
+
+	t.Run("PredicateEdge receives canceled context during edge evaluation", func(t *testing.T) {
+		var receivedErr error
+		ctx, cancel := context.WithCancel(context.Background())
+
+		provider := &mockEdgeProvider{
+			evaluateFunc: func(c context.Context, req *decision.Request) (*decision.Response, error) {
+				receivedErr = c.Err()
+				if receivedErr != nil {
+					return nil, receivedErr
+				}
+				return &decision.Response{
+					Model: req.Model,
+					Answers: map[string]decision.Answer{
+						"check": {Name: "check", Type: decision.QuestionPredicate, Probability: 0.9},
+					},
+				}, nil
+			},
+		}
+		model, err := decision.NewModel(provider, "test-model", nil)
+		if err != nil {
+			t.Fatalf("failed to create model: %v", err)
+		}
+
+		b := graph.New[testWorkflowState]()
+		b.AddNode("canceling_node", graph.NodeFunc(func(c context.Context, s testWorkflowState) (graph.Command[testWorkflowState], error) {
+			cancel() // cancel before transition / edge evaluation
+			return nil, nil
+		}))
+		b.AddNode("allowed_node", graph.NodeFunc(func(c context.Context, s testWorkflowState) (graph.Command[testWorkflowState], error) {
+			return nil, nil
+		}))
+		b.AddEdge(graph.START, "canceling_node")
+		predEdge := decision.NewConditionalEdge(model, "allowed_node", "is allowed?", 0.5, func(s testWorkflowState) decision.Input {
+			return decision.Text(s.Text)
+		})
+		decision.AddConditionalEdge(b, "canceling_node", predEdge)
+		b.AddEdge("allowed_node", graph.END)
+
+		g, err := b.Build()
+		if err != nil {
+			t.Fatalf("build error: %v", err)
+		}
+
+		_, err = g.Execute(ctx, nil, nil)
+		if err == nil || !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected context.Canceled error, got: %v", err)
+		}
+		if !errors.Is(receivedErr, context.Canceled) {
+			t.Fatalf("expected provider to observe context.Canceled, got: %v", receivedErr)
+		}
+	})
+}
+
 

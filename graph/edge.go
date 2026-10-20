@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -17,7 +18,7 @@ type Transition struct {
 // Edge represents a directed connection from one node to another, optionally
 // guarded by a condition or router that determines whether the edge is active for a given state.
 type Edge[State any] interface {
-	NextNode(state State) (string, error)
+	NextNode(ctx context.Context, state State) (string, error)
 	Validate() error
 	Transitions() []Transition
 }
@@ -27,7 +28,7 @@ type SimpleEdge[State any] struct {
 	Next string
 }
 
-func (e SimpleEdge[State]) NextNode(state State) (string, error) {
+func (e SimpleEdge[State]) NextNode(ctx context.Context, state State) (string, error) {
 	return e.Next, nil
 }
 
@@ -49,7 +50,10 @@ type ConditionalEdge[State any] struct {
 	Condition func(State) bool
 }
 
-func (e ConditionalEdge[State]) NextNode(state State) (string, error) {
+func (e ConditionalEdge[State]) NextNode(ctx context.Context, state State) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if e.Condition(state) {
 		return e.Next, nil
 	}
@@ -78,7 +82,10 @@ type RouteEdge[State any, Key comparable] struct {
 	RouteFn func(State) (Key, error)
 }
 
-func (e RouteEdge[State, Key]) NextNode(state State) (string, error) {
+func (e RouteEdge[State, Key]) NextNode(ctx context.Context, state State) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if len(e.Routes) == 0 {
 		return "", fmt.Errorf("edge routes map is empty")
 	}

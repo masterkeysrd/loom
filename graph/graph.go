@@ -288,7 +288,7 @@ func (g *Graph[State]) Execute(ctx context.Context, input Command[State], loc *L
 		isFirstLoop = false
 
 		var interrupt bool
-		snapshot, interrupt, err = g.transition(snapshot, combinedCmd, checkpointID)
+		snapshot, interrupt, err = g.transition(ctx, snapshot, combinedCmd, checkpointID)
 		if err != nil {
 			for i := 0; i < numNodes; i++ {
 				rec.endNode(ctx, executedNames[i], spans[i], startTimes[i], err)
@@ -413,7 +413,7 @@ func (g *Graph[State]) getNodes(names []string) ([]Node[State], error) {
 // checkpoint location, and resolves the next set of nodes via the edge table.
 // It returns the updated snapshot, a boolean indicating whether execution
 // should pause (true when cmd is [Interruptable]), and any error encountered.
-func (g *Graph[State]) transition(current Snapshot[State], cmd Command[State], checkpointID string) (Snapshot[State], bool, error) {
+func (g *Graph[State]) transition(ctx context.Context, current Snapshot[State], cmd Command[State], checkpointID string) (Snapshot[State], bool, error) {
 	current = current.Copy() // Avoid mutating the input snapshot
 
 	if cmd != nil {
@@ -436,7 +436,7 @@ func (g *Graph[State]) transition(current Snapshot[State], cmd Command[State], c
 	}
 
 	var err error
-	current.Next, err = g.getNextNodes(current.Next, current.State)
+	current.Next, err = g.getNextNodes(ctx, current.Next, current.State)
 	if err != nil {
 		return current, false, fmt.Errorf("failed to get next nodes: %w", err)
 	}
@@ -447,7 +447,7 @@ func (g *Graph[State]) transition(current Snapshot[State], cmd Command[State], c
 // getNextNodes evaluates the outgoing edges for each node in current and
 // returns the names of all nodes whose conditions are satisfied by state.
 // Edges pointing to [END] are excluded from the result.
-func (g *Graph[State]) getNextNodes(current []string, state State) ([]string, error) {
+func (g *Graph[State]) getNextNodes(ctx context.Context, current []string, state State) ([]string, error) {
 	var next []string
 	for _, name := range current {
 		edges, ok := g.edges[name]
@@ -456,7 +456,7 @@ func (g *Graph[State]) getNextNodes(current []string, state State) ([]string, er
 		}
 
 		for _, edge := range edges {
-			nextNode, err := edge.NextNode(state)
+			nextNode, err := edge.NextNode(ctx, state)
 			if err != nil {
 				return nil, fmt.Errorf("failed to evaluate edge from node %q: %w", name, err)
 			}

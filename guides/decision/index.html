@@ -1,0 +1,2212 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="High-performance, graph-based AI workflow engine for Go.">
+      
+      
+        <meta name="author" content="Masterkeys">
+      
+      
+        <link rel="canonical" href="https://masterkeysrd.github.io/loom/guides/decision/">
+      
+      
+        <link rel="prev" href="../llm-package/">
+      
+      
+        <link rel="next" href="../embedding/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Decision Models - Loom 🧵</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#decision-models" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Loom 🧵" class="md-header__button md-logo" aria-label="Loom 🧵" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Loom 🧵
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Decision Models
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../quickstart/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Quick Start
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../graphs/" class="md-tabs__link">
+          
+  
+  
+  Core Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../providers/openai/" class="md-tabs__link">
+          
+  
+  
+  LLM Providers
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../hitl/" class="md-tabs__link">
+          
+  
+  
+  Advanced
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Loom 🧵" class="md-nav__button md-logo" aria-label="Loom 🧵" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Loom 🧵
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Core Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../graphs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Graph Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../conversations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Conversations & Messages
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../llm-package/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Package
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decision Models
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decision Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#system-one-vs-system-two" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        System One vs. System Two
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-core-abstractions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Core Abstractions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-supported-providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Supported Providers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Supported Providers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#openai-native-decisions-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenAI Native Decisions API
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ollama-native-systemone-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ollama Native SystemOne API
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#typesafe-ai-native-systemone-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TypeSafe AI Native SystemOne API
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llm-fallback-adapter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LLM Fallback Adapter
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-single-question-shortcuts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Single-Question Shortcuts
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Single-Question Shortcuts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#binary-predicate-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Binary Predicate (Check)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#categorical-choice-choose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Categorical Choice (Choose)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ordinal-rating-rate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ordinal Rating (Rate)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-batch-evaluation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Batch Evaluation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-multimodal-image-evaluation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Multimodal Image Evaluation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-interpreting-calibrated-answers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Interpreting Calibrated Answers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Interpreting Calibrated Answers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#probability-passing-thresholds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Probability &amp; Passing Thresholds
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#choice-probabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choice Probabilities
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ordinal-scores" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ordinal Scores
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#confidence-refusals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confidence &amp; Refusals
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-workflow-graph-routing-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Workflow Graph Routing Integration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Workflow Graph Routing Integration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#conditional-binary-branching-predicateedge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conditional Binary Branching (PredicateEdge)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#categorical-route-edge-choicerouteedge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Categorical Route Edge (ChoiceRouteEdge)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-observability-telemetry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Observability &amp; Telemetry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next Steps
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../embedding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Embedding Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../persistent-store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Persistent Store
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rag/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RAG (Documents, VectorStore & Retrievers)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../persistence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Persistence & State
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tools & Streaming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model Context Protocol (MCP)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Providers
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    LLM Providers
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../providers/openai/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenAI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../providers/anthropic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Anthropic
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../providers/google/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Google Gemini
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../providers/ollama/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ollama
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../providers/typesafe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TypeSafe AI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Advanced
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hitl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Human-in-the-Loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../custom-providers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom Providers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#system-one-vs-system-two" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        System One vs. System Two
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-core-abstractions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Core Abstractions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-supported-providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Supported Providers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Supported Providers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#openai-native-decisions-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenAI Native Decisions API
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ollama-native-systemone-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ollama Native SystemOne API
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#typesafe-ai-native-systemone-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TypeSafe AI Native SystemOne API
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llm-fallback-adapter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LLM Fallback Adapter
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-single-question-shortcuts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Single-Question Shortcuts
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Single-Question Shortcuts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#binary-predicate-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Binary Predicate (Check)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#categorical-choice-choose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Categorical Choice (Choose)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ordinal-rating-rate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ordinal Rating (Rate)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-batch-evaluation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Batch Evaluation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-multimodal-image-evaluation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Multimodal Image Evaluation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-interpreting-calibrated-answers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Interpreting Calibrated Answers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Interpreting Calibrated Answers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#probability-passing-thresholds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Probability &amp; Passing Thresholds
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#choice-probabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choice Probabilities
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ordinal-scores" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ordinal Scores
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#confidence-refusals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confidence &amp; Refusals
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-workflow-graph-routing-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Workflow Graph Routing Integration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Workflow Graph Routing Integration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#conditional-binary-branching-predicateedge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conditional Binary Branching (PredicateEdge)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#categorical-route-edge-choicerouteedge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Categorical Route Edge (ChoiceRouteEdge)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-observability-telemetry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Observability &amp; Telemetry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next Steps
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="decision-models">Decision Models ⚖️</h1>
+<p>The <code>decision</code> package introduces a first-class <strong>System One / Decision Model</strong> abstraction for Loom. </p>
+<p>While Large Language Models excels at open-ended generative tasks, multi-turn reasoning, and conversational chat ("System Two"), modern AI workflows frequently require fast, deterministic, probabilistic decisions ("System One")—such as intent routing, guardrails, policy enforcement, classification, and triage.</p>
+<p>Decision models evaluate structured questions against an input context (arbitrary Go state structs, plain text strings, or multimodal images) and return calibrated probabilities, confidence scores, and categorical selections without the latency, token overhead, and parsing fragility of open-ended generation.</p>
+<hr />
+<h2 id="system-one-vs-system-two">System One vs. System Two</h2>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>System One (<code>decision</code>)</th>
+<th>System Two (<code>llm</code>)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Primary Task</strong></td>
+<td>Fast classification, predicates, scoring, routing</td>
+<td>Generative responses, reasoning traces, tool loops</td>
+</tr>
+<tr>
+<td><strong>Output Type</strong></td>
+<td>Calibrated probabilities, choices, ordinal scores</td>
+<td>Open-ended text, streaming tokens, tool calls</td>
+</tr>
+<tr>
+<td><strong>Latency</strong></td>
+<td>Extremely low (&lt; 100ms on native backends)</td>
+<td>Higher (seconds, token streaming)</td>
+</tr>
+<tr>
+<td><strong>Deterministic Structure</strong></td>
+<td>Strongly typed <code>Answer</code> structs</td>
+<td>Freeform text or schema validation</td>
+</tr>
+<tr>
+<td><strong>Uncertainty Calibration</strong></td>
+<td>Explicit probabilities &amp; Shannon entropy confidence</td>
+<td>Logprobs or heuristic estimation</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="1-core-abstractions">1. Core Abstractions</h2>
+<ul>
+<li><strong><code>Provider</code></strong>: The backend implementation that executes decision evaluations. Native backends include OpenAI Decisions, Ollama SystemOne, and TypeSafe AI; any LLM can also be adapted.</li>
+<li><strong><code>Model</code></strong>: The high-level wrapper configured with a provider and model name. Supports single-question shortcuts, batch evaluations, and middleware chains.</li>
+<li><strong><code>Question</code></strong>: The question definition:</li>
+<li><strong><code>Predicate</code></strong>: Binary true/false question with probability and criteria descriptions.</li>
+<li><strong><code>Choice</code></strong>: Categorical classification selecting among discrete options with probability distributions.</li>
+<li><strong><code>Score</code></strong>: Ordinal rating evaluated across an ordered list of descriptive levels.</li>
+<li><strong><code>Answer</code></strong>: The calibrated result containing probabilities, selected choices, expected score, entropy-based confidence, and refusal status.</li>
+<li><strong><code>PredicateEdge</code> / <code>ChoiceRouteEdge</code></strong>: Graph edges that integrate decision evaluations directly into Loom workflow graphs.</li>
+</ul>
+<hr />
+<h2 id="2-supported-providers">2. Supported Providers</h2>
+<h3 id="openai-native-decisions-api">OpenAI Native Decisions API</h3>
+<p>OpenAI exposes dedicated decision endpoints (<code>/v1/decisions</code>) optimized for low-latency probabilistic evaluations using models such as <code>gpt-6-luna</code>.</p>
+<p>Loom's <code>loomopenai.Provider</code> implements <code>decision.Provider</code> out of the box:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="s">"github.com/masterkeysrd/loom/decision"</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="s">"github.com/masterkeysrd/loom/providers/openai"</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="p">)</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="c1">// Uses OPENAI_API_KEY from environment</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="nx">provider</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">loomopenai</span><span class="p">.</span><span class="nx">NewDefaultProvider</span><span class="p">()</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="p">}</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="c1">// Pass provider directly to decision.NewModel</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="nx">model</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">decision</span><span class="p">.</span><span class="nx">NewModel</span><span class="p">(</span><span class="nx">provider</span><span class="p">,</span><span class="w"> </span><span class="s">"gpt-6-luna"</span><span class="p">,</span><span class="w"> </span><span class="kc">nil</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="ollama-native-systemone-api">Ollama Native SystemOne API</h3>
+<p>Ollama provides local, private inference via the native <code>/v1/systemone</code> API using lightweight models such as <code>nimble</code>, <code>clef</code>, and <code>clef-flash</code>.</p>
+<p>Loom's <code>loomollama.Provider</code> implements <code>decision.Provider</code> out of the box:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="s">"github.com/masterkeysrd/loom/decision"</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="s">"github.com/masterkeysrd/loom/providers/ollama"</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="p">)</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="c1">// Connects to http://localhost:11434 by default</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="nx">provider</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">loomollama</span><span class="p">.</span><span class="nx">NewDefaultProvider</span><span class="p">()</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">    </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="p">}</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="c1">// Pass provider directly to decision.NewModel</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="nx">model</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">decision</span><span class="p">.</span><span class="nx">NewModel</span><span class="p">(</span><span class="nx">provider</span><span class="p">,</span><span class="w"> </span><span class="s">"nimble"</span><span class="p">,</span><span class="w"> </span><span class="kc">nil</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="typesafe-ai-native-systemone-api">TypeSafe AI Native SystemOne API</h3>
+<p>TypeSafe AI provides dedicated, high-speed System One endpoints (<code>POST https://api.typesafe.ai/v1/systemone</code> and <code>GET https://api.typesafe.ai/v1/models</code>) specifically architected for deterministic probabilistic decision-making.</p>
+<p>Loom's <code>loomtypesafe.Provider</code> implements <code>decision.Provider</code> and <code>profile.Provider</code> out of the box:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">import</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="s">"github.com/masterkeysrd/loom/decision"</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="nx">loomtypesafe</span><span class="w"> </span><span class="s">"github.com/masterkeysrd/loom/providers/typesafe"</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="p">)</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="c1">// Uses TYPESAFE_API_KEY from environment</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="nx">provider</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">loomtypesafe</span><span class="p">.</span><span class="nx">NewDefaultProvider</span><span class="p">()</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">    </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="p">}</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="c1">// Pass provider directly to decision.NewModel with jev-latest</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="nx">model</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">decision</span><span class="p">.</span><span class="nx">NewModel</span><span class="p">(</span><span class="nx">provider</span><span class="p">,</span><span class="w"> </span><span class="nx">loomtypesafe</span><span class="p">.</span><span class="nx">ModelJevLatest</span><span class="p">,</span><span class="w"> </span><span class="kc">nil</span><span class="p">)</span>
+</code></pre></div>
+<p>Features:
+- <strong>Ultra-low cost</strong>: $0.042 per 1M input tokens ($0 output tokens).
+- <strong>Purpose-built models</strong>: <code>loomtypesafe.ModelJevLatest</code> (<code>"jev-latest"</code>), <code>loomtypesafe.ModelJevPreview</code> (<code>"jev-preview"</code>), <code>loomtypesafe.ModelJev1_14_0</code> (<code>"jev-1.14.0"</code>), and <code>loomtypesafe.ModelJev1_13_0</code> (<code>"jev-1.13.0"</code>).
+- <strong>Extended context extension</strong>: Use <code>loomtypesafe.LongContext{Enabled: true}</code> to raise context limits from 64k to 262k tokens.
+- <strong>Payload optimization &amp; retries</strong>: Automatic gzip compression for requests $\ge$ 1 KiB, exponential retries on <code>429</code> and <code>529</code>.
+- <strong>Modality</strong>: Text and structured JSON state (multimodal images not supported).</p>
+<h3 id="llm-fallback-adapter">LLM Fallback Adapter</h3>
+<p>If your preferred provider does not offer a native decision endpoint (e.g., Anthropic Claude or Google Gemini), you can adapt any standard <code>llm.Model</code> into a decision model using <code>decision.NewFromLLM</code>.</p>
+<p>The adapter leverages constrained structured outputs (<code>WithStructuredOutput</code>) and automatically computes calibrated confidence scores using normalized Shannon entropy:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">import</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="s">"github.com/masterkeysrd/loom/decision"</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="s">"github.com/masterkeysrd/loom/llm"</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="s">"github.com/masterkeysrd/loom/providers/anthropic"</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="p">)</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="nx">anthropicProvider</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">loomanthropic</span><span class="p">.</span><span class="nx">NewDefaultProvider</span><span class="p">()</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="nx">llmModel</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">llm</span><span class="p">.</span><span class="nx">NewModel</span><span class="p">(</span><span class="nx">anthropicProvider</span><span class="p">,</span><span class="w"> </span><span class="s">"claude-3-5-sonnet-20241022"</span><span class="p">)</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="c1">// Wrap LLM model with the adapter</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="nx">model</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">decision</span><span class="p">.</span><span class="nx">NewFromLLM</span><span class="p">(</span><span class="nx">llmModel</span><span class="p">,</span><span class="w"> </span><span class="kc">nil</span><span class="p">)</span>
+</code></pre></div>
+<hr />
+<h2 id="3-single-question-shortcuts">3. Single-Question Shortcuts</h2>
+<p>For common decision patterns, <code>Model</code> exposes dedicated single-question helper methods:</p>
+<h3 id="binary-predicate-check">Binary Predicate (<code>Check</code>)</h3>
+<p>Evaluates whether a statement or condition is true:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nx">ctx</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Background</span><span class="p">()</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nx">input</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Text</span><span class="p">(</span><span class="s">"Customer: 'I would like to cancel my subscription and get a refund.'"</span><span class="p">)</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="nx">ans</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">model</span><span class="p">.</span><span class="nx">Check</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">input</span><span class="p">,</span><span class="w"> </span><span class="s">"Is the customer requesting subscription cancellation?"</span><span class="p">)</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="p">}</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="k">if</span><span class="w"> </span><span class="nx">ans</span><span class="p">.</span><span class="nx">Passed</span><span class="p">(</span><span class="mf">0.80</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Printf</span><span class="p">(</span><span class="s">"Cancellation confirmed (probability: %.2f, confidence: %.2f)\n"</span><span class="p">,</span><span class="w"> </span><span class="nx">ans</span><span class="p">.</span><span class="nx">Probability</span><span class="p">,</span><span class="w"> </span><span class="nx">ans</span><span class="p">.</span><span class="nx">Confidence</span><span class="p">)</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="p">}</span>
+</code></pre></div>
+<h3 id="categorical-choice-choose">Categorical Choice (<code>Choose</code>)</h3>
+<p>Selects the best matching category from a list of options:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nx">choices</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="p">[]</span><span class="nx">decision</span><span class="p">.</span><span class="nx">Option</span><span class="p">{</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Opt</span><span class="p">(</span><span class="s">"billing"</span><span class="p">,</span><span class="w"> </span><span class="s">"Billing queries, invoices, payment methods, or refunds"</span><span class="p">),</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Opt</span><span class="p">(</span><span class="s">"technical"</span><span class="p">,</span><span class="w"> </span><span class="s">"Software errors, bug reports, system outages"</span><span class="p">),</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Opt</span><span class="p">(</span><span class="s">"general"</span><span class="p">,</span><span class="w"> </span><span class="s">"General product inquiries and feature questions"</span><span class="p">),</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="p">}</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="nx">ans</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">model</span><span class="p">.</span><span class="nx">Choose</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">input</span><span class="p">,</span><span class="w"> </span><span class="s">"Classify customer support ticket"</span><span class="p">,</span><span class="w"> </span><span class="nx">choices</span><span class="p">)</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">    </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="p">}</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="nx">fmt</span><span class="p">.</span><span class="nx">Printf</span><span class="p">(</span><span class="s">"Selected category: %s (confidence: %.2f)\n"</span><span class="p">,</span><span class="w"> </span><span class="nx">ans</span><span class="p">.</span><span class="nx">Choice</span><span class="p">,</span><span class="w"> </span><span class="nx">ans</span><span class="p">.</span><span class="nx">Confidence</span><span class="p">)</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="nx">fmt</span><span class="p">.</span><span class="nx">Printf</span><span class="p">(</span><span class="s">"Probability for 'billing': %.2f\n"</span><span class="p">,</span><span class="w"> </span><span class="nx">ans</span><span class="p">.</span><span class="nx">Prob</span><span class="p">(</span><span class="s">"billing"</span><span class="p">))</span>
+</code></pre></div>
+<h3 id="ordinal-rating-rate">Ordinal Rating (<code>Rate</code>)</h3>
+<p>Evaluates an item across an ordered scale of descriptive levels, returning both level probabilities and a probability-weighted expected score:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nx">levels</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="p">[]</span><span class="nx">decision</span><span class="p">.</span><span class="nx">Level</span><span class="p">{</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Lvl</span><span class="p">(</span><span class="s">"low"</span><span class="p">,</span><span class="w"> </span><span class="s">"Low urgency; standard inquiry or casual question"</span><span class="p">),</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Lvl</span><span class="p">(</span><span class="s">"medium"</span><span class="p">,</span><span class="w"> </span><span class="s">"Moderate urgency; account issue or unexpected behavior"</span><span class="p">),</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Lvl</span><span class="p">(</span><span class="s">"high"</span><span class="p">,</span><span class="w"> </span><span class="s">"High urgency; critical service failure or active security issue"</span><span class="p">),</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="p">}</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="nx">ans</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">model</span><span class="p">.</span><span class="nx">Rate</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">input</span><span class="p">,</span><span class="w"> </span><span class="s">"Assess ticket urgency level"</span><span class="p">,</span><span class="w"> </span><span class="nx">levels</span><span class="p">)</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">    </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="p">}</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="nx">top</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">ans</span><span class="p">.</span><span class="nx">TopLevel</span><span class="p">()</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="nx">fmt</span><span class="p">.</span><span class="nx">Printf</span><span class="p">(</span><span class="s">"Expected Score: %.2f / %d\n"</span><span class="p">,</span><span class="w"> </span><span class="nx">ans</span><span class="p">.</span><span class="nx">Score</span><span class="p">,</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="nx">levels</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="nx">fmt</span><span class="p">.</span><span class="nx">Printf</span><span class="p">(</span><span class="s">"Normalized Score [0..1]: %.2f\n"</span><span class="p">,</span><span class="w"> </span><span class="nx">ans</span><span class="p">.</span><span class="nx">NormalizedScore</span><span class="p">())</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="nx">fmt</span><span class="p">.</span><span class="nx">Printf</span><span class="p">(</span><span class="s">"Top Level: %s (p=%.2f)\n"</span><span class="p">,</span><span class="w"> </span><span class="nx">top</span><span class="p">.</span><span class="nx">Label</span><span class="p">,</span><span class="w"> </span><span class="nx">top</span><span class="p">.</span><span class="nx">Probability</span><span class="p">)</span>
+</code></pre></div>
+<hr />
+<h2 id="4-batch-evaluation">4. Batch Evaluation</h2>
+<p>When you need multiple answers evaluated against the same input context, <code>Evaluate</code> runs them in a single network roundtrip:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kd">type</span><span class="w"> </span><span class="nx">OrderDetails</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span><span class="nx">OrderID</span><span class="w">      </span><span class="kt">string</span><span class="w">  </span><span class="s">`json:"order_id"`</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="nx">Amount</span><span class="w">       </span><span class="kt">float64</span><span class="w"> </span><span class="s">`json:"amount"`</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span><span class="nx">ShippingCity</span><span class="w"> </span><span class="kt">string</span><span class="w">  </span><span class="s">`json:"shipping_city"`</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">    </span><span class="nx">IsNewAccount</span><span class="w"> </span><span class="kt">bool</span><span class="w">    </span><span class="s">`json:"is_new_account"`</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="p">}</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="nx">input</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">decision</span><span class="p">.</span><span class="nx">State</span><span class="p">(</span><span class="nx">OrderDetails</span><span class="p">{</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">    </span><span class="nx">OrderID</span><span class="p">:</span><span class="w">      </span><span class="s">"ORD-7749"</span><span class="p">,</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="w">    </span><span class="nx">Amount</span><span class="p">:</span><span class="w">       </span><span class="mf">4850.00</span><span class="p">,</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="w">    </span><span class="nx">ShippingCity</span><span class="p">:</span><span class="w"> </span><span class="s">"International Freight Forwarder"</span><span class="p">,</span>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="w">    </span><span class="nx">IsNewAccount</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="p">})</span>
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="nx">resp</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">model</span><span class="p">.</span><span class="nx">Evaluate</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">input</span><span class="p">,</span>
+<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="w">    </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Predicate</span><span class="p">(</span><span class="s">"high_fraud_risk"</span><span class="p">,</span><span class="w"> </span><span class="s">"Evaluate whether this order exhibits high risk of credit fraud"</span><span class="p">).</span>
+<a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a><span class="w">        </span><span class="nx">WithCriteria</span><span class="p">(</span><span class="s">"New account with large order to freight forwarder"</span><span class="p">,</span><span class="w"> </span><span class="s">"Verified user with consistent history"</span><span class="p">),</span>
+<a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="w">    </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Choice</span><span class="p">(</span><span class="s">"review_action"</span><span class="p">,</span><span class="w"> </span><span class="s">"Determine required risk mitigation action"</span><span class="p">,</span>
+<a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a><span class="w">        </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Opt</span><span class="p">(</span><span class="s">"auto_approve"</span><span class="p">,</span><span class="w"> </span><span class="s">"Safe to process immediately"</span><span class="p">),</span>
+<a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a><span class="w">        </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Opt</span><span class="p">(</span><span class="s">"manual_review"</span><span class="p">,</span><span class="w"> </span><span class="s">"Hold for fraud analyst inspection"</span><span class="p">),</span>
+<a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a><span class="w">        </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Opt</span><span class="p">(</span><span class="s">"decline"</span><span class="p">,</span><span class="w"> </span><span class="s">"High certainty fraud; reject transaction"</span><span class="p">),</span>
+<a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a><span class="w">    </span><span class="p">),</span>
+<a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a><span class="w">    </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Score</span><span class="p">(</span><span class="s">"risk_score"</span><span class="p">,</span><span class="w"> </span><span class="s">"Rate fraud risk on a 4-point scale"</span><span class="p">,</span>
+<a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a><span class="w">        </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Lvl</span><span class="p">(</span><span class="s">"safe"</span><span class="p">,</span><span class="w"> </span><span class="s">"Normal legitimate pattern"</span><span class="p">),</span>
+<a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a><span class="w">        </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Lvl</span><span class="p">(</span><span class="s">"guarded"</span><span class="p">,</span><span class="w"> </span><span class="s">"Minor irregularities present"</span><span class="p">),</span>
+<a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a><span class="w">        </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Lvl</span><span class="p">(</span><span class="s">"elevated"</span><span class="p">,</span><span class="w"> </span><span class="s">"Multiple suspicious indicators"</span><span class="p">),</span>
+<a id="__codelineno-7-27" name="__codelineno-7-27" href="#__codelineno-7-27"></a><span class="w">        </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Lvl</span><span class="p">(</span><span class="s">"critical"</span><span class="p">,</span><span class="w"> </span><span class="s">"Severe fraud indicators"</span><span class="p">),</span>
+<a id="__codelineno-7-28" name="__codelineno-7-28" href="#__codelineno-7-28"></a><span class="w">    </span><span class="p">),</span>
+<a id="__codelineno-7-29" name="__codelineno-7-29" href="#__codelineno-7-29"></a><span class="p">)</span>
+<a id="__codelineno-7-30" name="__codelineno-7-30" href="#__codelineno-7-30"></a><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-31" name="__codelineno-7-31" href="#__codelineno-7-31"></a><span class="w">    </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<a id="__codelineno-7-32" name="__codelineno-7-32" href="#__codelineno-7-32"></a><span class="p">}</span>
+<a id="__codelineno-7-33" name="__codelineno-7-33" href="#__codelineno-7-33"></a>
+<a id="__codelineno-7-34" name="__codelineno-7-34" href="#__codelineno-7-34"></a><span class="k">if</span><span class="w"> </span><span class="nx">fraudAns</span><span class="p">,</span><span class="w"> </span><span class="nx">ok</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">resp</span><span class="p">.</span><span class="nx">Answer</span><span class="p">(</span><span class="s">"high_fraud_risk"</span><span class="p">);</span><span class="w"> </span><span class="nx">ok</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-35" name="__codelineno-7-35" href="#__codelineno-7-35"></a><span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Printf</span><span class="p">(</span><span class="s">"Fraud Flag: %v (p=%.2f)\n"</span><span class="p">,</span><span class="w"> </span><span class="nx">fraudAns</span><span class="p">.</span><span class="nx">Passed</span><span class="p">(</span><span class="mf">0.70</span><span class="p">),</span><span class="w"> </span><span class="nx">fraudAns</span><span class="p">.</span><span class="nx">Probability</span><span class="p">)</span>
+<a id="__codelineno-7-36" name="__codelineno-7-36" href="#__codelineno-7-36"></a><span class="p">}</span>
+<a id="__codelineno-7-37" name="__codelineno-7-37" href="#__codelineno-7-37"></a><span class="k">if</span><span class="w"> </span><span class="nx">actionAns</span><span class="p">,</span><span class="w"> </span><span class="nx">ok</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">resp</span><span class="p">.</span><span class="nx">Answer</span><span class="p">(</span><span class="s">"review_action"</span><span class="p">);</span><span class="w"> </span><span class="nx">ok</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-38" name="__codelineno-7-38" href="#__codelineno-7-38"></a><span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Printf</span><span class="p">(</span><span class="s">"Recommended Action: %s (confidence: %.2f)\n"</span><span class="p">,</span><span class="w"> </span><span class="nx">actionAns</span><span class="p">.</span><span class="nx">Choice</span><span class="p">,</span><span class="w"> </span><span class="nx">actionAns</span><span class="p">.</span><span class="nx">Confidence</span><span class="p">)</span>
+<a id="__codelineno-7-39" name="__codelineno-7-39" href="#__codelineno-7-39"></a><span class="p">}</span>
+<a id="__codelineno-7-40" name="__codelineno-7-40" href="#__codelineno-7-40"></a><span class="k">if</span><span class="w"> </span><span class="nx">scoreAns</span><span class="p">,</span><span class="w"> </span><span class="nx">ok</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">resp</span><span class="p">.</span><span class="nx">Answer</span><span class="p">(</span><span class="s">"risk_score"</span><span class="p">);</span><span class="w"> </span><span class="nx">ok</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-41" name="__codelineno-7-41" href="#__codelineno-7-41"></a><span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Printf</span><span class="p">(</span><span class="s">"Risk Score: %.2f (normalized: %.2f)\n"</span><span class="p">,</span><span class="w"> </span><span class="nx">scoreAns</span><span class="p">.</span><span class="nx">Score</span><span class="p">,</span><span class="w"> </span><span class="nx">scoreAns</span><span class="p">.</span><span class="nx">NormalizedScore</span><span class="p">())</span>
+<a id="__codelineno-7-42" name="__codelineno-7-42" href="#__codelineno-7-42"></a><span class="p">}</span>
+</code></pre></div>
+<hr />
+<h2 id="5-multimodal-image-evaluation">5. Multimodal Image Evaluation</h2>
+<p>Decision inputs support images via <code>WithImages</code>, allowing decision models to inspect visual evidence alongside text prompts or structured state:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nx">licenseImage</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">os</span><span class="p">.</span><span class="nx">ReadFile</span><span class="p">(</span><span class="s">"driver_license.jpg"</span><span class="p">)</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="nx">input</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Text</span><span class="p">(</span><span class="s">"Verify driver's license upload for KYC identity verification"</span><span class="p">).</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span><span class="nx">WithImages</span><span class="p">(</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">        </span><span class="nx">message</span><span class="p">.</span><span class="nx">ImageData</span><span class="p">(</span><span class="s">"image/jpeg"</span><span class="p">,</span><span class="w"> </span><span class="nx">licenseImage</span><span class="p">),</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">    </span><span class="p">)</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="nx">ans</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">model</span><span class="p">.</span><span class="nx">Check</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">input</span><span class="p">,</span><span class="w"> </span><span class="s">"Is the ID document clearly legible and unexpired?"</span><span class="p">)</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="w">    </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="p">}</span>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="k">if</span><span class="w"> </span><span class="nx">ans</span><span class="p">.</span><span class="nx">Passed</span><span class="p">(</span><span class="mf">0.90</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="s">"KYC document verified."</span><span class="p">)</span>
+<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a><span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="s">"Document rejected or requires manual inspection."</span><span class="p">)</span>
+<a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a><span class="p">}</span>
+</code></pre></div>
+<hr />
+<h2 id="6-interpreting-calibrated-answers">6. Interpreting Calibrated Answers</h2>
+<p>The <code>Answer</code> struct provides helper methods to interpret probabilistic results:</p>
+<h3 id="probability-passing-thresholds">Probability &amp; Passing Thresholds</h3>
+<p>For binary predicates, <code>Passed(threshold)</code> verifies that the question was not refused and its probability satisfies your threshold:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">if</span><span class="w"> </span><span class="nx">ans</span><span class="p">.</span><span class="nx">Passed</span><span class="p">(</span><span class="mf">0.85</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">    </span><span class="c1">// Proceed with high confidence</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="p">}</span>
+</code></pre></div>
+<h3 id="choice-probabilities">Choice Probabilities</h3>
+<p>Retrieve specific choice probabilities via <code>Prob(value)</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nx">pAdmin</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">ans</span><span class="p">.</span><span class="nx">Prob</span><span class="p">(</span><span class="s">"admin"</span><span class="p">)</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nx">pUser</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">ans</span><span class="p">.</span><span class="nx">Prob</span><span class="p">(</span><span class="s">"user"</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="ordinal-scores">Ordinal Scores</h3>
+<ul>
+<li><code>ans.Score</code>: Probability-weighted expected score ($\sum i \cdot P(i)$).</li>
+<li><code>ans.NormalizedScore()</code>: Expected score scaled to $[0.0, 1.0]$.</li>
+<li><code>ans.TopLevel()</code>: Returns the <code>LevelProbability</code> with the highest probability.</li>
+</ul>
+<h3 id="confidence-refusals">Confidence &amp; Refusals</h3>
+<ul>
+<li><code>ans.Confidence</code>: Normalized Shannon entropy concentration ($1 - H(p)/\ln(N)$) clamped between <code>0.0</code> (maximum uncertainty) and <code>1.0</code> (complete certainty).</li>
+<li><code>ans.Refused</code>: Indicates the model refused to evaluate the question (due to safety filters, unanswerable queries, or missing context).</li>
+</ul>
+<hr />
+<h2 id="7-workflow-graph-routing-integration">7. Workflow Graph Routing Integration</h2>
+<p>Decision models integrate directly with Loom workflow graphs (<code>graph.Builder</code>) via <code>PredicateEdge</code> and <code>ChoiceRouteEdge</code>.</p>
+<h3 id="conditional-binary-branching-predicateedge">Conditional Binary Branching (<code>PredicateEdge</code>)</h3>
+<p>Use <code>decision.AddConditionalEdge</code> to route workflow execution based on a binary decision:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kd">type</span><span class="w"> </span><span class="nx">OrderState</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">    </span><span class="nx">Amount</span><span class="w">    </span><span class="kt">float64</span><span class="w"> </span><span class="s">`json:"amount"`</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">    </span><span class="nx">UserEmail</span><span class="w"> </span><span class="kt">string</span><span class="w">  </span><span class="s">`json:"user_email"`</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">    </span><span class="nx">Action</span><span class="w">    </span><span class="kt">string</span><span class="w">  </span><span class="s">`json:"action"`</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="p">}</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">s</span><span class="w"> </span><span class="nx">OrderState</span><span class="p">)</span><span class="w"> </span><span class="nx">Copy</span><span class="p">()</span><span class="w"> </span><span class="nx">OrderState</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nx">s</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="nx">builder</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">graph</span><span class="p">.</span><span class="nx">New</span><span class="p">[</span><span class="nx">OrderState</span><span class="p">]()</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="nx">builder</span><span class="p">.</span><span class="nx">AddNode</span><span class="p">(</span><span class="s">"validate"</span><span class="p">,</span><span class="w"> </span><span class="nx">validateOrderNode</span><span class="p">)</span>
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="nx">builder</span><span class="p">.</span><span class="nx">AddNode</span><span class="p">(</span><span class="s">"require_2fa"</span><span class="p">,</span><span class="w"> </span><span class="nx">prompt2FANode</span><span class="p">)</span>
+<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="nx">builder</span><span class="p">.</span><span class="nx">AddNode</span><span class="p">(</span><span class="s">"process_payment"</span><span class="p">,</span><span class="w"> </span><span class="nx">chargeCardNode</span><span class="p">)</span>
+<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>
+<a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a><span class="c1">// Route from "validate": if high risk, go to "require_2fa", otherwise "process_payment"</span>
+<a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a><span class="nx">edge</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">decision</span><span class="p">.</span><span class="nx">NewConditionalEdge</span><span class="p">(</span>
+<a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a><span class="w">    </span><span class="nx">decisionModel</span><span class="p">,</span>
+<a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a><span class="w">    </span><span class="s">"require_2fa"</span><span class="p">,</span><span class="w"> </span><span class="c1">// Next node when predicate passes threshold</span>
+<a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a><span class="w">    </span><span class="s">"Is this transaction unusually high-value or suspect?"</span><span class="p">,</span>
+<a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a><span class="w">    </span><span class="mf">0.75</span><span class="p">,</span><span class="w">          </span><span class="c1">// Confidence threshold</span>
+<a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a><span class="w">    </span><span class="kd">func</span><span class="p">(</span><span class="nx">s</span><span class="w"> </span><span class="nx">OrderState</span><span class="p">)</span><span class="w"> </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Input</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">decision</span><span class="p">.</span><span class="nx">State</span><span class="p">(</span><span class="nx">s</span><span class="p">)</span>
+<a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-11-24" name="__codelineno-11-24" href="#__codelineno-11-24"></a><span class="p">).</span><span class="nx">WithElse</span><span class="p">(</span><span class="s">"process_payment"</span><span class="p">)</span><span class="w"> </span><span class="c1">// Fallback node when below threshold or refused</span>
+<a id="__codelineno-11-25" name="__codelineno-11-25" href="#__codelineno-11-25"></a>
+<a id="__codelineno-11-26" name="__codelineno-11-26" href="#__codelineno-11-26"></a><span class="nx">decision</span><span class="p">.</span><span class="nx">AddConditionalEdge</span><span class="p">(</span><span class="nx">builder</span><span class="p">,</span><span class="w"> </span><span class="s">"validate"</span><span class="p">,</span><span class="w"> </span><span class="nx">edge</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="categorical-route-edge-choicerouteedge">Categorical Route Edge (<code>ChoiceRouteEdge</code>)</h3>
+<p>Use <code>decision.AddRouteEdge</code> to branch execution across multiple nodes with confidence safeguards and a designated fallback route:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nx">routeEdge</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">decision</span><span class="p">.</span><span class="nx">NewRouteEdge</span><span class="p">(</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">    </span><span class="nx">decisionModel</span><span class="p">,</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span><span class="s">"Determine the department responsible for handling this inquiry"</span><span class="p">,</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">    </span><span class="p">[]</span><span class="nx">decision</span><span class="p">.</span><span class="nx">Option</span><span class="p">{</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">        </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Opt</span><span class="p">(</span><span class="s">"billing"</span><span class="p">,</span><span class="w"> </span><span class="s">"Payment, billing questions, invoices"</span><span class="p">),</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="w">        </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Opt</span><span class="p">(</span><span class="s">"tech"</span><span class="p">,</span><span class="w"> </span><span class="s">"Software defects, outages, API errors"</span><span class="p">),</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="w">        </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Opt</span><span class="p">(</span><span class="s">"sales"</span><span class="p">,</span><span class="w"> </span><span class="s">"Pricing, sales inquiries, new features"</span><span class="p">),</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="w">    </span><span class="kt">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="kt">string</span><span class="p">{</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="w">        </span><span class="s">"billing"</span><span class="p">:</span><span class="w"> </span><span class="s">"billing_agent"</span><span class="p">,</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="w">        </span><span class="s">"tech"</span><span class="p">:</span><span class="w">    </span><span class="s">"technical_support_agent"</span><span class="p">,</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="w">        </span><span class="s">"sales"</span><span class="p">:</span><span class="w">   </span><span class="s">"sales_agent"</span><span class="p">,</span>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="w">    </span><span class="kd">func</span><span class="p">(</span><span class="nx">s</span><span class="w"> </span><span class="nx">OrderState</span><span class="p">)</span><span class="w"> </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Input</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">decision</span><span class="p">.</span><span class="nx">Text</span><span class="p">(</span><span class="nx">s</span><span class="p">.</span><span class="nx">UserEmail</span><span class="p">)</span>
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a><span class="p">).</span>
+<a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a><span class="w">    </span><span class="nx">WithMinConfidence</span><span class="p">(</span><span class="mf">0.70</span><span class="p">).</span><span class="w">          </span><span class="c1">// Require at least 70% confidence</span>
+<a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a><span class="w">    </span><span class="nx">WithFallback</span><span class="p">(</span><span class="s">"human_triage_queue"</span><span class="p">)</span><span class="w"> </span><span class="c1">// Route here on low confidence, refusal, or unmapped choice</span>
+<a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a>
+<a id="__codelineno-12-21" name="__codelineno-12-21" href="#__codelineno-12-21"></a><span class="nx">decision</span><span class="p">.</span><span class="nx">AddRouteEdge</span><span class="p">(</span><span class="nx">builder</span><span class="p">,</span><span class="w"> </span><span class="s">"classify_inquiry"</span><span class="p">,</span><span class="w"> </span><span class="nx">routeEdge</span><span class="p">)</span>
+</code></pre></div>
+<hr />
+<h2 id="8-observability-telemetry">8. Observability &amp; Telemetry</h2>
+<p>Decision models include built-in OpenTelemetry instrumentation via <code>TelemetryMiddleware</code>:</p>
+<ul>
+<li><strong>Client Spans</strong>: Every decision request records a span named <code>decision {model}</code> with semantic conventions:</li>
+<li><code>gen_ai.operation.name = "decision"</code></li>
+<li><code>gen_ai.provider.name = "&lt;provider&gt;"</code></li>
+<li><code>gen_ai.request.model = "&lt;model&gt;"</code></li>
+<li><code>decision.question_count = &lt;int&gt;</code></li>
+<li><strong>Token Metrics</strong>: Input and output token usage, cache reads, and estimated costs are automatically reported to OpenTelemetry metrics.</li>
+<li><strong>Streaming Events</strong>: When a <code>stream.Writer</code> is attached to the context, <code>on_decision</code> events are published with the evaluation response and metadata source <code>decision:&lt;model&gt;</code>.</li>
+</ul>
+<hr />
+<h2 id="next-steps">Next Steps</h2>
+<ul>
+<li>Explore <a href="../providers/openai/">OpenAI Provider</a> for configuring <code>gpt-6-luna</code> with native decisions.</li>
+<li>Explore <a href="../providers/ollama/">Ollama Provider</a> for running local <code>nimble</code> and <code>clef</code> System One models.</li>
+<li>Explore <a href="../providers/typesafe/">TypeSafe AI Provider</a> for purpose-built, high-throughput System One decision models.</li>
+<li>Review <a href="../quickstart/">Graph Workflows</a> to learn how to construct complex graph agents.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

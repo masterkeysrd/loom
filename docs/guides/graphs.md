@@ -432,6 +432,26 @@ graph TD
 
 ---
 
+## 8. Compile-Time Graph Validation
+
+Loom strictly validates graph topology and integrity when `builder.Build()` is called, catching structural configuration mistakes before execution begins:
+
+```go
+g, err := builder.Build()
+if err != nil {
+    log.Fatalf("invalid graph configuration: %v", err)
+}
+```
+
+### Validation Guarantees:
+- **Node Validation**: Node names cannot be empty, reserved (`START`, `END`), or contain namespace delimiters (`|`, `:`). Nodes cannot be `nil`.
+- **Entry & Terminal Integrity**: The graph must declare at least one outgoing edge from `START`. The terminal `END` node cannot have outgoing edges.
+- **Dead-End Detection**: Every user-defined node must define at least one outgoing edge (to another node or to `END`).
+- **Edge & Target Integrity**: All edges must originate from known nodes and point to valid, registered destination nodes (edges cannot point back to `START`).
+- **Edge Predicate Integrity**: Conditions for `ConditionalEdge` and routing functions/target maps for `RouteEdge` cannot be empty or `nil`.
+
+---
+
 ## Next Steps
 
 - [Persistence & State](./persistence.md): Explore SQLite, PostgreSQL, and checkpoint storage.

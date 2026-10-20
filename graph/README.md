@@ -38,6 +38,15 @@ builder := graph.New[MyState]().
 g, err := builder.Build()
 ```
 
+### Compile-Time Validation
+
+Calling `builder.Build()` performs strict compile-time validation of graph topology before returning the executable engine:
+- **Node Validation**: Node names must be non-empty, cannot be reserved names (`START`, `END`), cannot contain namespace delimiters (`|`, `:`), and node implementations cannot be `nil`.
+- **START & END Edges**: At least one outgoing edge from `START` is required. The `END` node cannot have outgoing edges.
+- **Dead-End Detection**: Every user node must have at least one outgoing edge.
+- **Edge & Target Integrity**: All edges must originate from and point to registered nodes. Edges cannot target `START`.
+- **Edge Predicate Integrity**: Edge targets cannot be empty, conditional edge predicates cannot be `nil`, and route edges require non-nil router functions with non-empty route tables.
+
 ## Conditional Edges
 
 Conditional edges allow for branching logic based on the current state.

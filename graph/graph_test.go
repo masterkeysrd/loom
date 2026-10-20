@@ -1440,10 +1440,225 @@ func TestBuilder_InvalidNodeName(t *testing.T) {
 	}
 
 	// Slash '/' character should be allowed (e.g. tools/search)
-	b3 := graph.New[TestState]().AddNode("tools/search", dummyNode)
+	b3 := graph.New[TestState]().
+		AddNode("tools/search", dummyNode).
+		AddEdge(graph.START, "tools/search").
+		AddEdge("tools/search", graph.END)
 	if _, err := b3.Build(); err != nil {
 		t.Errorf("expected slash '/' to be allowed in node name, got error: %v", err)
 	}
+}
+
+func TestBuilder_CompileTimeValidation(t *testing.T) {
+	dummyNode := graph.NodeFunc(func(ctx context.Context, s TestState) (graph.Command[TestState], error) {
+		return nil, nil
+	})
+
+	t.Run("empty node name", func(t *testing.T) {
+		b := graph.New[TestState]().
+			AddNode("", dummyNode).
+			AddEdge(graph.START, "").
+			AddEdge("", graph.END)
+		_, err := b.Build()
+		if err == nil || !strings.Contains(err.Error(), "node name cannot be empty") {
+			t.Fatalf("expected 'node name cannot be empty', got: %v", err)
+		}
+	})
+
+	t.Run("reserved START node name", func(t *testing.T) {
+		b := graph.New[TestState]().
+			AddNode(graph.START, dummyNode).
+			AddEdge(graph.START, graph.END)
+		_, err := b.Build()
+		if err == nil || !strings.Contains(err.Error(), "is reserved") {
+			t.Fatalf("expected 'is reserved', got: %v", err)
+		}
+	})
+
+	t.Run("reserved END node name", func(t *testing.T) {
+		b := graph.New[TestState]().
+			AddNode(graph.END, dummyNode).
+			AddEdge(graph.START, graph.END)
+		_, err := b.Build()
+		if err == nil || !strings.Contains(err.Error(), "is reserved") {
+			t.Fatalf("expected 'is reserved', got: %v", err)
+		}
+	})
+
+	t.Run("nil node", func(t *testing.T) {
+		b := graph.New[TestState]().
+			AddNode("nil_node", nil).
+			AddEdge(graph.START, "nil_node").
+			AddEdge("nil_node", graph.END)
+		_, err := b.Build()
+		if err == nil || !strings.Contains(err.Error(), "cannot be nil") {
+			t.Fatalf("expected 'cannot be nil', got: %v", err)
+		}
+	})
+
+	t.Run("missing outgoing edge from START", func(t *testing.T) {
+		b := graph.New[TestState]().
+			AddNode("n1", dummyNode).
+			AddEdge("n1", graph.END)
+		_, err := b.Build()
+		if err == nil || !strings.Contains(err.Error(), "graph must have at least one outgoing edge from START") {
+			t.Fatalf("expected 'graph must have at least one outgoing edge from START', got: %v", err)
+		}
+	})
+
+	t.Run("outgoing edge from END", func(t *testing.T) {
+		b := graph.New[TestState]().
+			AddNode("n1", dummyNode).
+			AddEdge(graph.START, "n1").
+			AddEdge("n1", graph.END).
+			AddEdge(graph.END, "n1")
+		_, err := b.Build()
+		if err == nil || !strings.Contains(err.Error(), "END node cannot have outgoing edges") {
+			t.Fatalf("expected 'END node cannot have outgoing edges', got: %v", err)
+		}
+	})
+
+	t.Run("user node with no outgoing edges", func(t *testing.T) {
+		b := graph.New[TestState]().
+			AddNode("n1", dummyNode).
+			AddNode("dead_end", dummyNode).
+			AddEdge(graph.START, "n1").
+			AddEdge("n1", graph.END)
+		_, err := b.Build()
+		if err == nil || !strings.Contains(err.Error(), "node \"dead_end\" has no outgoing edges") {
+			t.Fatalf("expected 'node \"dead_end\" has no outgoing edges', got: %v", err)
+		}
+	})
+
+	t.Run("edge originates from unknown node", func(t *testing.T) {
+		b := graph.New[TestState]().
+			AddNode("n1", dummyNode).
+			AddEdge(graph.START, "n1").
+			AddEdge("n1", graph.END).
+			AddEdge("ghost", "n1")
+		_, err := b.Build()
+		if err == nil || !strings.Contains(err.Error(), "edge originates from unknown node \"ghost\"") {
+			t.Fatalf("expected 'edge originates from unknown node \"ghost\"', got: %v", err)
+		}
+	})
+
+	t.Run("SimpleEdge targeting unknown node", func(t *testing.T) {
+		b := graph.New[TestState]().
+			AddNode("n1", dummyNode).
+			AddEdge(graph.START, "n1").
+			AddEdge("n1", "unknown_node")
+		_, err := b.Build()
+		if err == nil || !strings.Contains(err.Error(), "targets unknown node \"unknown_node\"") {
+			t.Fatalf("expected 'targets unknown node \"unknown_node\"', got: %v", err)
+		}
+	})
+
+	t.Run("SimpleEdge targeting START", func(t *testing.T) {
+		b := graph.New[TestState]().
+			AddNode("n1", dummyNode).
+			AddEdge(graph.START, "n1").
+			AddEdge("n1", graph.START)
+		_, err := b.Build()
+		if err == nil || !strings.Contains(err.Error(), "cannot target START") {
+			t.Fatalf("expected 'cannot target START', got: %v", err)
+		}
+	})
+
+	t.Run("ConditionalEdge targeting unknown node", func(t *testing.T) {
+		b := graph.New[TestState]().
+			AddNode("n1", dummyNode).
+			AddEdge(graph.START, "n1").
+			AddConditionalEdge("n1", "unknown_node", func(s TestState) bool { return true })
+		_, err := b.Build()
+		if err == nil || !strings.Contains(err.Error(), "targets unknown node \"unknown_node\"") {
+			t.Fatalf("expected 'targets unknown node \"unknown_node\"', got: %v", err)
+		}
+	})
+
+	t.Run("ConditionalEdge targeting START", func(t *testing.T) {
+		b := graph.New[TestState]().
+			AddNode("n1", dummyNode).
+			AddEdge(graph.START, "n1").
+			AddConditionalEdge("n1", graph.START, func(s TestState) bool { return true })
+		_, err := b.Build()
+		if err == nil || !strings.Contains(err.Error(), "cannot target START") {
+			t.Fatalf("expected 'cannot target START', got: %v", err)
+		}
+	})
+
+	t.Run("ConditionalEdge with nil condition", func(t *testing.T) {
+		b := graph.New[TestState]().
+			AddNode("n1", dummyNode).
+			AddEdge(graph.START, "n1").
+			AddConditionalEdge("n1", graph.END, nil)
+		_, err := b.Build()
+		if err == nil || !strings.Contains(err.Error(), "conditional edge condition cannot be nil") {
+			t.Fatalf("expected 'conditional edge condition cannot be nil', got: %v", err)
+		}
+	})
+
+	t.Run("RouteEdge targeting unknown node", func(t *testing.T) {
+		b := graph.New[TestState]().
+			AddNode("n1", dummyNode).
+			AddEdge(graph.START, "n1").
+			AddRouteEdge("n1", func(s TestState) (string, error) { return "a", nil }, map[string]string{
+				"a": "unknown_node",
+			})
+		_, err := b.Build()
+		if err == nil || !strings.Contains(err.Error(), "targets unknown node \"unknown_node\"") {
+			t.Fatalf("expected 'targets unknown node \"unknown_node\"', got: %v", err)
+		}
+	})
+
+	t.Run("RouteEdge targeting START", func(t *testing.T) {
+		b := graph.New[TestState]().
+			AddNode("n1", dummyNode).
+			AddEdge(graph.START, "n1").
+			AddRouteEdge("n1", func(s TestState) (string, error) { return "a", nil }, map[string]string{
+				"a": graph.START,
+			})
+		_, err := b.Build()
+		if err == nil || !strings.Contains(err.Error(), "cannot target START") {
+			t.Fatalf("expected 'cannot target START', got: %v", err)
+		}
+	})
+
+	t.Run("RouteEdge with nil router function", func(t *testing.T) {
+		b := graph.New[TestState]().
+			AddNode("n1", dummyNode).
+			AddEdge(graph.START, "n1").
+			AddRouteEdge("n1", nil, map[string]string{
+				"a": graph.END,
+			})
+		_, err := b.Build()
+		if err == nil || !strings.Contains(err.Error(), "route edge router function cannot be nil") {
+			t.Fatalf("expected 'route edge router function cannot be nil', got: %v", err)
+		}
+	})
+
+	t.Run("RouteEdge with empty routes map", func(t *testing.T) {
+		b := graph.New[TestState]().
+			AddNode("n1", dummyNode).
+			AddEdge(graph.START, "n1").
+			AddRouteEdge("n1", func(s TestState) (string, error) { return "a", nil }, map[string]string{})
+		_, err := b.Build()
+		if err == nil || !strings.Contains(err.Error(), "route edge routes map cannot be empty") {
+			t.Fatalf("expected 'route edge routes map cannot be empty', got: %v", err)
+		}
+	})
+
+	t.Run("RouteEdge with empty target", func(t *testing.T) {
+		b := graph.New[TestState]().
+			AddNode("n1", dummyNode).
+			AddEdge(graph.START, "n1").
+			AddRouteEdge("n1", func(s TestState) (string, error) { return "a", nil }, map[string]string{
+				"a": "",
+			})
+		_, err := b.Build()
+		if err == nil || !strings.Contains(err.Error(), "cannot be empty") {
+			t.Fatalf("expected target cannot be empty, got: %v", err)
+		}
+	})
 }
 
 func TestSubgraph_MapNode_InterruptPropagation(t *testing.T) {

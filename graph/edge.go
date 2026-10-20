@@ -1,11 +1,19 @@
 package graph
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // Edge represents a directed connection from one node to another, optionally
 // guarded by a condition that determines whether the edge is active for a given state.
 type Edge[State any] interface {
 	NextNode(state State) (string, error)
+}
+
+type edgeValidator interface {
+	validate() error
+	targets() []string
 }
 
 // SimpleEdge is a basic [Edge] implementation that unconditionally points to a single next node.
@@ -15,6 +23,17 @@ type SimpleEdge[State any] struct {
 
 func (e SimpleEdge[State]) NextNode(state State) (string, error) {
 	return e.Next, nil
+}
+
+func (e SimpleEdge[State]) validate() error {
+	if e.Next == "" {
+		return errors.New("edge target cannot be empty")
+	}
+	return nil
+}
+
+func (e SimpleEdge[State]) targets() []string {
+	return []string{e.Next}
 }
 
 // ConditionalEdge is a simple [Edge] implementation that points to a single next node
@@ -29,6 +48,20 @@ func (e ConditionalEdge[State]) NextNode(state State) (string, error) {
 		return e.Next, nil
 	}
 	return "", nil // Condition not met, no next node
+}
+
+func (e ConditionalEdge[State]) validate() error {
+	if e.Next == "" {
+		return errors.New("conditional edge target cannot be empty")
+	}
+	if e.Condition == nil {
+		return errors.New("conditional edge condition cannot be nil")
+	}
+	return nil
+}
+
+func (e ConditionalEdge[State]) targets() []string {
+	return []string{e.Next}
 }
 
 // RouteEdge is an [Edge] implementation that supports dynamic routing to multiple possible next nodes.
@@ -59,4 +92,27 @@ func (e RouteEdge[State, Key]) NextNode(state State) (string, error) {
 	}
 
 	return next, nil
+}
+
+func (e RouteEdge[State, Key]) validate() error {
+	if len(e.Routes) == 0 {
+		return errors.New("route edge routes map cannot be empty")
+	}
+	if e.RouteFn == nil {
+		return errors.New("route edge router function cannot be nil")
+	}
+	for k, target := range e.Routes {
+		if target == "" {
+			return fmt.Errorf("route edge target for key %v cannot be empty", k)
+		}
+	}
+	return nil
+}
+
+func (e RouteEdge[State, Key]) targets() []string {
+	targets := make([]string, 0, len(e.Routes))
+	for _, target := range e.Routes {
+		targets = append(targets, target)
+	}
+	return targets
 }

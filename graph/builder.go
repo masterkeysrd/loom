@@ -1,7 +1,9 @@
 package graph
 
 import (
+	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -121,22 +123,95 @@ func (b *Builder[State]) WithMiddleware(mws ...Middleware[State]) *Builder[State
 }
 
 // Build compiles the builder configuration into a runnable [Graph].
-// It implicitly injects the virtual [START] and [END] nodes before returning.
+// It validates node names, node definitions, outgoing edges, and targets,
+// and implicitly injects the virtual [START] and [END] nodes before returning.
 func (b *Builder[State]) Build() (*Graph[State], error) {
+	// 1. Validate User Nodes
+	nodeNames := make([]string, 0, len(b.nodes))
 	for name := range b.nodes {
-		if name != START && name != END && strings.ContainsAny(name, "|:") {
+		nodeNames = append(nodeNames, name)
+	}
+	slices.Sort(nodeNames)
+
+	for _, name := range nodeNames {
+		node := b.nodes[name]
+		if name == "" {
+			return nil, errors.New("node name cannot be empty")
+		}
+		if name == START || name == END {
+			return nil, fmt.Errorf("node name %q is reserved", name)
+		}
+		if strings.ContainsAny(name, "|:") {
 			return nil, fmt.Errorf("invalid node name %q: node names cannot contain '|' or ':'", name)
+		}
+		if node == nil {
+			return nil, fmt.Errorf("node %q cannot be nil", name)
 		}
 	}
 
-	// Add start and end nodes if they don't exist
-	b.nodes[START] = &startNode[State]{}
-	b.nodes[END] = &endNode[State]{}
+	// 2. Validate START and END Edges
+	if len(b.edges[START]) == 0 {
+		return nil, errors.New("graph must have at least one outgoing edge from START")
+	}
+	if len(b.edges[END]) > 0 {
+		return nil, errors.New("END node cannot have outgoing edges")
+	}
+
+	// 3. Clone b.nodes and b.edges before injecting START and END
+	nodes := maps.Clone(b.nodes)
+	nodes[START] = &startNode[State]{}
+	nodes[END] = &endNode[State]{}
+
+	edges := make(map[string][]Edge[State], len(b.edges))
+	for k, v := range b.edges {
+		edges[k] = slices.Clone(v)
+	}
+
+	// 4. Validate Outgoing Edges for All User Nodes
+	for _, name := range nodeNames {
+		if len(b.edges[name]) == 0 {
+			return nil, fmt.Errorf("node %q has no outgoing edges", name)
+		}
+	}
+
+	// 5. Validate All Edges & Targets
+	fromNodes := make([]string, 0, len(b.edges))
+	for from := range b.edges {
+		fromNodes = append(fromNodes, from)
+	}
+	slices.Sort(fromNodes)
+
+	for _, from := range fromNodes {
+		edgeList := b.edges[from]
+		if _, ok := nodes[from]; !ok {
+			return nil, fmt.Errorf("edge originates from unknown node %q", from)
+		}
+		for _, edge := range edgeList {
+			if edge == nil {
+				return nil, fmt.Errorf("edge from node %q cannot be nil", from)
+			}
+			if ev, ok := edge.(edgeValidator); ok {
+				if err := ev.validate(); err != nil {
+					return nil, fmt.Errorf("invalid edge from node %q: %w", from, err)
+				}
+				targets := ev.targets()
+				slices.Sort(targets)
+				for _, target := range targets {
+					if target == START {
+						return nil, fmt.Errorf("edge from node %q cannot target START", from)
+					}
+					if _, ok := nodes[target]; !ok {
+						return nil, fmt.Errorf("edge from node %q targets unknown node %q", from, target)
+					}
+				}
+			}
+		}
+	}
 
 	return &Graph[State]{
 		name:         b.name,
-		nodes:        b.nodes,
-		edges:        b.edges,
+		nodes:        nodes,
+		edges:        edges,
 		checkpointer: b.checkpointer,
 		store:        b.store,
 		maxSteps:     b.maxSteps,

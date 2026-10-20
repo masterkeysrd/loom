@@ -209,7 +209,7 @@ var staticProfiles = map[string]profile.Profile{
 		ReleaseDate: "2025-08-26",
 		LastUpdated: "2025-08-26",
 		Capabilities: profile.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
 			Embedding:   false,
 			Attachment:  true,
@@ -295,7 +295,7 @@ var staticProfiles = map[string]profile.Profile{
 		ReleaseDate: "2025-05-01",
 		LastUpdated: "2025-05-01",
 		Capabilities: profile.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
 			Embedding:   false,
 			Attachment:  false,
@@ -385,7 +385,7 @@ var staticProfiles = map[string]profile.Profile{
 		ReleaseDate: "2025-05-01",
 		LastUpdated: "2025-05-01",
 		Capabilities: profile.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
 			Embedding:   false,
 			Attachment:  false,
@@ -472,7 +472,7 @@ var staticProfiles = map[string]profile.Profile{
 		ReleaseDate: "2026-05-28",
 		LastUpdated: "2026-05-28",
 		Capabilities: profile.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
 			Embedding:   false,
 			Attachment:  true,
@@ -519,7 +519,7 @@ var staticProfiles = map[string]profile.Profile{
 		ReleaseDate: "2025-11-20",
 		LastUpdated: "2025-11-20",
 		Capabilities: profile.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
 			Embedding:   false,
 			Attachment:  true,
@@ -557,7 +557,7 @@ var staticProfiles = map[string]profile.Profile{
 		ReleaseDate: "2026-05-28",
 		LastUpdated: "2026-05-28",
 		Capabilities: profile.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
 			Embedding:   false,
 			Attachment:  true,
@@ -606,7 +606,7 @@ var staticProfiles = map[string]profile.Profile{
 		ReleaseDate: "2026-02-26",
 		LastUpdated: "2026-02-26",
 		Capabilities: profile.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
 			Embedding:   false,
 			Attachment:  true,
@@ -705,7 +705,7 @@ var staticProfiles = map[string]profile.Profile{
 		ReleaseDate: "2026-06-30",
 		LastUpdated: "2026-06-30",
 		Capabilities: profile.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
 			Embedding:   false,
 			Attachment:  true,
@@ -803,7 +803,7 @@ var staticProfiles = map[string]profile.Profile{
 		ReleaseDate: "2026-03-26",
 		LastUpdated: "2026-03-26",
 		Capabilities: profile.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
 			Embedding:   false,
 			Attachment:  true,
@@ -854,7 +854,7 @@ var staticProfiles = map[string]profile.Profile{
 		ReleaseDate: "2026-04-15",
 		LastUpdated: "2026-04-15",
 		Capabilities: profile.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
 			Embedding:   false,
 			Attachment:  false,
@@ -1110,7 +1110,7 @@ var staticProfiles = map[string]profile.Profile{
 		ReleaseDate: "2026-06-09",
 		LastUpdated: "2026-06-09",
 		Capabilities: profile.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
 			Embedding:   false,
 			Attachment:  false,
@@ -1523,7 +1523,7 @@ var staticProfiles = map[string]profile.Profile{
 		ReleaseDate: "2026-06-30",
 		LastUpdated: "2026-06-30",
 		Capabilities: profile.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
 			Embedding:   false,
 			Attachment:  true,
@@ -1716,7 +1716,7 @@ var staticProfiles = map[string]profile.Profile{
 		ReleaseDate: "2025-10-15",
 		LastUpdated: "2026-01-01",
 		Capabilities: profile.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
 			Embedding:   false,
 			Attachment:  true,
@@ -1753,7 +1753,7 @@ var staticProfiles = map[string]profile.Profile{
 		ReleaseDate: "2025-10-15",
 		LastUpdated: "2026-01",
 		Capabilities: profile.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
 			Embedding:   false,
 			Attachment:  true,
@@ -1789,7 +1789,7 @@ var staticProfiles = map[string]profile.Profile{
 		ReleaseDate: "2026-03-31",
 		LastUpdated: "2026-03-31",
 		Capabilities: profile.Capabilities{
-			Completion:  true,
+			Completion:  false,
 			Decision:    false,
 			Embedding:   false,
 			Attachment:  true,

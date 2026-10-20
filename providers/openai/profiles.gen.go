@@ -739,51 +739,6 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0,
 		},
 	},
-	"gpt-5.2-chat-latest": {
-		ID:          "gpt-5.2-chat-latest",
-		Name:        "GPT-5.2 Chat",
-		Family:      "gpt-codex",
-		Knowledge:   "2025-08-31",
-		ReleaseDate: "2025-12-11",
-		LastUpdated: "2025-12-11",
-		Capabilities: profile.Capabilities{
-			Completion:  true,
-			Decision:    false,
-			Embedding:   false,
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: false,
-			ReasoningOptions: []profile.ReasoningOption{
-				{
-					Type: "effort",
-					Values: []string{
-						"medium",
-					},
-				},
-			},
-		},
-		Limits: profile.Limits{
-			Context: 128000,
-			Output:  16384,
-		},
-		Modalities: profile.Modalities{
-			Inputs: []profile.Modality{
-				profile.ModalityText,
-				profile.ModalityImage,
-			},
-			Outputs: []profile.Modality{
-				profile.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: profile.Pricing{
-			Input:      1.75,
-			Output:     14,
-			CacheRead:  0.175,
-			CacheWrite: 0,
-		},
-	},
 	"gpt-5.2-pro": {
 		ID:          "gpt-5.2-pro",
 		Name:        "GPT-5.2 Pro",
@@ -828,43 +783,6 @@ var staticProfiles = map[string]profile.Profile{
 			Input:      21,
 			Output:     168,
 			CacheRead:  0,
-			CacheWrite: 0,
-		},
-	},
-	"gpt-5.3-chat-latest": {
-		ID:          "gpt-5.3-chat-latest",
-		Name:        "GPT-5.3 Chat (latest)",
-		Family:      "gpt",
-		Knowledge:   "2025-08-31",
-		ReleaseDate: "2026-03-03",
-		LastUpdated: "2026-03-03",
-		Capabilities: profile.Capabilities{
-			Completion:  true,
-			Decision:    false,
-			Embedding:   false,
-			Attachment:  true,
-			Reasoning:   false,
-			ToolCall:    true,
-			Temperature: true,
-		},
-		Limits: profile.Limits{
-			Context: 128000,
-			Output:  16384,
-		},
-		Modalities: profile.Modalities{
-			Inputs: []profile.Modality{
-				profile.ModalityText,
-				profile.ModalityImage,
-			},
-			Outputs: []profile.Modality{
-				profile.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: profile.Pricing{
-			Input:      1.75,
-			Output:     14,
-			CacheRead:  0.175,
 			CacheWrite: 0,
 		},
 	},

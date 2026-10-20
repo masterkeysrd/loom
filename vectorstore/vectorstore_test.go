@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/masterkeysrd/loom/document"
 	"github.com/masterkeysrd/loom/embedding"
 	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/vectorstore"
@@ -44,6 +45,23 @@ func TestOptions(t *testing.T) {
 	}
 	if customSearch.Filter["category"] != "news" {
 		t.Errorf("expected filter category=news, got %v", customSearch.Filter)
+	}
+
+	mmrSearch := vectorstore.ApplySearchOptions(
+		vectorstore.WithMMR(0.7, 20),
+	)
+	if !mmrSearch.UseMMR || mmrSearch.MMRLambda != 0.7 || mmrSearch.MMRFetchK != 20 {
+		t.Errorf("unexpected MMR search config: %+v", mmrSearch)
+	}
+
+	// Clamping lambda
+	clampedLow := vectorstore.ApplySearchOptions(vectorstore.WithMMR(-0.5, 10))
+	if clampedLow.MMRLambda != 0.0 {
+		t.Errorf("expected lambda clamped to 0.0, got %v", clampedLow.MMRLambda)
+	}
+	clampedHigh := vectorstore.ApplySearchOptions(vectorstore.WithMMR(1.5, 10))
+	if clampedHigh.MMRLambda != 1.0 {
+		t.Errorf("expected lambda clamped to 1.0, got %v", clampedHigh.MMRLambda)
 	}
 
 	// Delete options
@@ -209,5 +227,29 @@ func TestResolveDims(t *testing.T) {
 	dims = vectorstore.ResolveDims(m2, 0)
 	if dims != 768 {
 		t.Errorf("expected 768 from profile, got %d", dims)
+	}
+}
+
+func TestVectorstoreMMR(t *testing.T) {
+	q := embedding.Vector{1, 1, 0}
+	candidates := []embedding.Vector{
+		{1, 0, 0},
+		{1, 0, 0}, // duplicate
+		{0, 1, 0}, // diverse
+	}
+
+	docs := []document.Document{
+		document.New("doc0").WithID("0"),
+		document.New("doc1").WithID("1"),
+		document.New("doc2").WithID("2"),
+	}
+
+	selected := vectorstore.SelectMMR(q, docs, candidates, 0.5, 2)
+	if len(selected) != 2 || selected[0].ID != "0" || selected[1].ID != "2" {
+		t.Fatalf("expected docs 0 and 2, got %v", selected)
+	}
+
+	if vectorstore.SelectMMR(q, nil, candidates, 0.5, 2) != nil {
+		t.Errorf("expected nil for empty docs")
 	}
 }

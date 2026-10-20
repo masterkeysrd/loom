@@ -36,6 +36,7 @@ type Loader interface {
 | `FSLoader` | `document.NewFSLoader(fsys, patterns...)` | Lazily walks an `fs.FS` (e.g. `os.DirFS`, `embed.FS`) matching glob patterns and populates `source`, `path`, `name`, `ext` metadata. |
 | `CSVLoader` | `document.NewCSVLoader(r, opts...)` | Streams CSV rows lazily (`WithCSVSource`, `WithCSVContentColumns`, `WithCSVDelimiter`). |
 | `JSONLoader` | `document.NewJSONLoader(r, opts...)` | Streams JSON arrays, objects, or JSONL (`WithJSONLines(true)`, `WithJSONContentKey`). |
+| `HTMLLoader` | `document.NewHTMLLoader(r, opts...)` | Parses HTML DOM via `golang.org/x/net/html`, extracts `<title>` and `<meta name="description">`, and strips `<script>`/`<style>`/boilerplate tags. |
 
 ```go
 import (
@@ -140,11 +141,12 @@ for chunk, err := range document.SplitIter(loader.Load(ctx), mdSplitter) {
 // 1. Batch-embed and index chunks
 ids, err := vs.Add(ctx, chunks, vectorstore.WithAddNamespace("docs"))
 
-// 2. Similarity search with metadata filter and minimum score
+// 2. Similarity search with metadata filter, minimum score, and optional MMR diversification
 matches, err := vs.Search(ctx, "How do I resume an interrupted graph?", 5,
     vectorstore.WithNamespace("docs"),
     vectorstore.WithFilter(map[string]any{"ext": ".md"}),
     vectorstore.WithMinScore(0.55),
+    vectorstore.WithMMR(0.5, 20), // Balance relevance (0.5) and diversity across top 20 candidates
 )
 
 // 3. Delete by ID
@@ -164,15 +166,18 @@ import "github.com/masterkeysrd/loom/retriever"
 baseRetriever := retriever.FromVectorStore(vs,
     retriever.WithNamespace("docs"),
     retriever.WithTopK(10),
+    retriever.WithMMR(0.6, 30),
 )
 ```
 
-### Reciprocal Rank Fusion (`NewMerger`)
-Combine results from multiple retrievers (such as multiple namespaces, stores, or lexical + dense retrievers) using RRF:
+### BM25 Lexical Retriever & Reciprocal Rank Fusion (`NewBM25` + `NewMerger`)
+Pair `BM25Retriever` (Okapi BM25 keyword search) with `VectorStoreRetriever` inside `NewMerger` for hybrid lexical + semantic search:
 
 ```go
+bm25Retriever := retriever.NewBM25(chunks)
+
 mergedRetriever := retriever.NewMerger(
-    []retriever.Retriever{docsRetriever, faqRetriever},
+    []retriever.Retriever{baseRetriever, bm25Retriever},
     retriever.WithRRFConstant(60),
 )
 ```

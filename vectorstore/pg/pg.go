@@ -150,9 +150,21 @@ func (s *Store) Search(ctx context.Context, query string, k int, opts ...vectors
 		return nil, err
 	}
 
+	fetchK := k
+	if cfg.UseMMR {
+		fetchK = cfg.MMRFetchK
+		if fetchK < k {
+			fetchK = k * 4
+		}
+	}
+
 	queryVecStr := FormatVector(queryVec)
 
-	querySQL := `SELECT id, content, metadata, 1 - (embedding <=> $2::vector) AS score FROM vectorstore_documents WHERE namespace = $1`
+	selectCols := `id, content, metadata, 1 - (embedding <=> $2::vector) AS score`
+	if cfg.UseMMR {
+		selectCols += `, embedding::text`
+	}
+	querySQL := fmt.Sprintf(`SELECT %s FROM vectorstore_documents WHERE namespace = $1`, selectCols)
 	args := []any{cfg.Namespace, queryVecStr}
 	argIdx := 3
 
@@ -173,7 +185,7 @@ func (s *Store) Search(ctx context.Context, query string, k int, opts ...vectors
 	}
 
 	querySQL += fmt.Sprintf(` ORDER BY embedding <=> $2::vector ASC, id ASC LIMIT $%d`, argIdx)
-	args = append(args, k)
+	args = append(args, fetchK)
 
 	rows, err := s.db.QueryContext(ctx, querySQL, args...)
 	if err != nil {
@@ -181,14 +193,24 @@ func (s *Store) Search(ctx context.Context, query string, k int, opts ...vectors
 	}
 	defer rows.Close()
 
-	var results []document.Document
+	var (
+		candidateDocs []document.Document
+		candidateVecs []embedding.Vector
+	)
 	for rows.Next() {
 		var id, content string
 		var metaBlob []byte
 		var score float64
+		var embText string
 
-		if err := rows.Scan(&id, &content, &metaBlob, &score); err != nil {
-			return nil, err
+		var scanErr error
+		if cfg.UseMMR {
+			scanErr = rows.Scan(&id, &content, &metaBlob, &score, &embText)
+		} else {
+			scanErr = rows.Scan(&id, &content, &metaBlob, &score)
+		}
+		if scanErr != nil {
+			return nil, scanErr
 		}
 
 		var meta map[string]any
@@ -204,13 +226,20 @@ func (s *Store) Search(ctx context.Context, query string, k int, opts ...vectors
 			Metadata: meta,
 			Score:    float32(score),
 		}
-		results = append(results, doc)
+		candidateDocs = append(candidateDocs, doc)
+		if cfg.UseMMR {
+			candidateVecs = append(candidateVecs, ParseVector(embText))
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
-	return results, nil
+	if cfg.UseMMR {
+		return vectorstore.SelectMMR(queryVec, candidateDocs, candidateVecs, cfg.MMRLambda, k), nil
+	}
+
+	return candidateDocs, nil
 }
 
 // Delete removes documents matching the provided IDs from the specified namespace.
@@ -244,4 +273,25 @@ func FormatVector(vec embedding.Vector) string {
 	}
 	b.WriteByte(']')
 	return b.String()
+}
+
+// ParseVector parses a pgvector text representation (e.g., "[0.1,0.2,0.3]") into an [embedding.Vector].
+func ParseVector(s string) embedding.Vector {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "[")
+	s = strings.TrimSuffix(s, "]")
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	vec := make(embedding.Vector, len(parts))
+	for i, part := range parts {
+		f, err := strconv.ParseFloat(strings.TrimSpace(part), 32)
+		if err != nil {
+			return nil
+		}
+		vec[i] = float32(f)
+	}
+	return vec
 }

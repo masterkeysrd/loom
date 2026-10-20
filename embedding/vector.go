@@ -182,3 +182,84 @@ func (v Vector) Normalize() Vector {
 	}
 	return out
 }
+
+// MMR selects up to k diverse and relevant candidate vector indices using Maximal Marginal Relevance.
+// lambda balances relevance to the query (1.0) and diversity among selected results (0.0).
+// lambda is clamped to [0, 1].
+//
+// At each step, MMR selects an unselected candidate index i that maximizes:
+//
+//	lambda * CosineSimilarity(v_i, query) - (1 - lambda) * max_{j in selected} CosineSimilarity(v_i, v_j)
+//
+// For the first item (when selected is empty), the candidate with the highest cosine similarity
+// to the query vector is chosen.
+//
+// If k <= 0 or candidates is empty, MMR returns nil.
+// If k > len(candidates), k is clamped to len(candidates).
+func MMR(query Vector, candidates []Vector, lambda float32, k int) []int {
+	if k <= 0 || len(candidates) == 0 {
+		return nil
+	}
+	if k > len(candidates) {
+		k = len(candidates)
+	}
+
+	if lambda < 0 {
+		lambda = 0
+	} else if lambda > 1 {
+		lambda = 1
+	}
+
+	n := len(candidates)
+	querySims := make([]float32, n)
+	for i := range candidates {
+		querySims[i] = query.CosineSimilarity(candidates[i])
+	}
+
+	selected := make([]int, 0, k)
+	selectedSet := make([]bool, n)
+	maxSimToSelected := make([]float32, n)
+
+	for step := 0; step < k; step++ {
+		bestIdx := -1
+		var bestScore float32
+
+		for i := 0; i < n; i++ {
+			if selectedSet[i] {
+				continue
+			}
+
+			var score float32
+			if len(selected) == 0 {
+				score = querySims[i]
+			} else {
+				score = lambda*querySims[i] - (1-lambda)*maxSimToSelected[i]
+			}
+
+			if bestIdx == -1 || score > bestScore {
+				bestScore = score
+				bestIdx = i
+			}
+		}
+
+		if bestIdx == -1 {
+			break
+		}
+
+		selected = append(selected, bestIdx)
+		selectedSet[bestIdx] = true
+
+		newVec := candidates[bestIdx]
+		for i := 0; i < n; i++ {
+			if selectedSet[i] {
+				continue
+			}
+			sim := candidates[i].CosineSimilarity(newVec)
+			if len(selected) == 1 || sim > maxSimToSelected[i] {
+				maxSimToSelected[i] = sim
+			}
+		}
+	}
+
+	return selected
+}

@@ -4,7 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
+	"strings"
+	"sync"
+	"unicode"
 
 	"github.com/masterkeysrd/loom/decision"
 	"github.com/masterkeysrd/loom/document"
@@ -14,6 +18,7 @@ import (
 
 var (
 	_ Retriever = (*VectorStoreRetriever)(nil)
+	_ Retriever = (*BM25Retriever)(nil)
 	_ Retriever = (*MergerRetriever)(nil)
 	_ Retriever = (*DecisionReranker)(nil)
 )
@@ -89,6 +94,9 @@ func (r *VectorStoreRetriever) Retrieve(ctx context.Context, query string, opts 
 		if len(cfg.Filter) > 0 {
 			searchOpts = append(searchOpts, vectorstore.WithFilter(cfg.Filter))
 		}
+		if cfg.UseMMR {
+			searchOpts = append(searchOpts, vectorstore.WithMMR(cfg.MMRLambda, cfg.MMRFetchK))
+		}
 
 		return r.vs.Search(ctx, q, cfg.TopK, searchOpts...)
 	})
@@ -98,7 +106,249 @@ func (r *VectorStoreRetriever) Retrieve(ctx context.Context, query string, opts 
 }
 
 // -------------------------------------------------------------------------
-// 2. MergerRetriever (Reciprocal Rank Fusion - RRF)
+// 2. BM25Retriever (Okapi BM25)
+// -------------------------------------------------------------------------
+
+// TokenizerFunc tokenizes a text string into a sequence of terms.
+type TokenizerFunc func(string) []string
+
+// BM25Option configures a [BM25Retriever].
+type BM25Option func(*BM25Retriever)
+
+// WithBM25K1 sets the term frequency saturation parameter k1 (default: 1.5).
+func WithBM25K1(k1 float64) BM25Option {
+	return func(b *BM25Retriever) {
+		if k1 >= 0 {
+			b.k1 = k1
+		}
+	}
+}
+
+// WithBM25B sets the document length normalization parameter b (default: 0.75).
+func WithBM25B(b float64) BM25Option {
+	return func(ret *BM25Retriever) {
+		if b >= 0 && b <= 1 {
+			ret.b = b
+		}
+	}
+}
+
+// WithBM25Tokenizer sets a custom tokenizer function.
+func WithBM25Tokenizer(fn TokenizerFunc) BM25Option {
+	return func(b *BM25Retriever) {
+		if fn != nil {
+			b.tokenizer = fn
+		}
+	}
+}
+
+// defaultBM25Tokenizer provides a Unicode-aware lowercase letter/digit word tokenizer.
+func defaultBM25Tokenizer(text string) []string {
+	var tokens []string
+	var b strings.Builder
+	for _, r := range strings.ToLower(text) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		} else {
+			if b.Len() > 0 {
+				tokens = append(tokens, b.String())
+				b.Reset()
+			}
+		}
+	}
+	if b.Len() > 0 {
+		tokens = append(tokens, b.String())
+	}
+	return tokens
+}
+
+// BM25Retriever implements the Okapi BM25 ranking algorithm for lexical document retrieval.
+type BM25Retriever struct {
+	mu         sync.RWMutex
+	k1         float64
+	b          float64
+	tokenizer  TokenizerFunc
+	middleware []Middleware
+
+	docs       []document.Document
+	docLengths []int
+	docTF      []map[string]int
+	df         map[string]int
+	totalLen   int
+}
+
+// NewBM25 creates a new [BM25Retriever] indexed with docs and wrapped with [TelemetryMiddleware]("bm25").
+func NewBM25(docs []document.Document, opts ...BM25Option) *BM25Retriever {
+	ret := &BM25Retriever{
+		k1:         1.5,
+		b:          0.75,
+		tokenizer:  defaultBM25Tokenizer,
+		middleware: []Middleware{TelemetryMiddleware("bm25")},
+		df:         make(map[string]int),
+	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(ret)
+		}
+	}
+	if len(docs) > 0 {
+		ret.Add(docs...)
+	}
+	return ret
+}
+
+// WithMiddleware returns a clone of the retriever with additional middleware appended.
+func (b *BM25Retriever) WithMiddleware(mws ...Middleware) *BM25Retriever {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	clone := &BM25Retriever{
+		k1:         b.k1,
+		b:          b.b,
+		tokenizer:  b.tokenizer,
+		middleware: append(slices.Clone(b.middleware), mws...),
+		docs:       slices.Clone(b.docs),
+		docLengths: slices.Clone(b.docLengths),
+		docTF:      slices.Clone(b.docTF),
+		df:         make(map[string]int, len(b.df)),
+		totalLen:   b.totalLen,
+	}
+	for k, v := range b.df {
+		clone.df[k] = v
+	}
+	return clone
+}
+
+// Add indexes documents into the retriever in a thread-safe manner.
+func (b *BM25Retriever) Add(docs ...document.Document) {
+	if len(docs) == 0 {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	for _, doc := range docs {
+		storedDoc := doc
+		storedDoc.Metadata = document.CloneMetadata(doc.Metadata)
+
+		tokens := b.tokenizer(doc.Content)
+		docLen := len(tokens)
+		b.totalLen += docLen
+		b.docLengths = append(b.docLengths, docLen)
+
+		tf := make(map[string]int, len(tokens))
+		for _, tok := range tokens {
+			tf[tok]++
+		}
+		for term := range tf {
+			b.df[term]++
+		}
+		b.docTF = append(b.docTF, tf)
+		b.docs = append(b.docs, storedDoc)
+	}
+}
+
+// Retrieve scores and returns indexed documents relevant to query using Okapi BM25.
+func (b *BM25Retriever) Retrieve(ctx context.Context, query string, opts ...Option) ([]document.Document, error) {
+	if b == nil {
+		return nil, errors.New("retriever: bm25 retriever is nil")
+	}
+
+	allOpts := opts
+	base := RetrieverFunc(func(ctx context.Context, q string, callOpts ...Option) ([]document.Document, error) {
+		return b.retrieve(ctx, q, callOpts...)
+	})
+
+	b.mu.RLock()
+	mws := slices.Clone(b.middleware)
+	b.mu.RUnlock()
+
+	chained := Chain(base, mws...)
+	return chained.Retrieve(ctx, query, allOpts...)
+}
+
+func (b *BM25Retriever) retrieve(ctx context.Context, query string, opts ...Option) ([]document.Document, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	cfg := ApplyOptions(opts...)
+
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	N := len(b.docs)
+	if N == 0 {
+		return nil, nil
+	}
+
+	queryTokens := b.tokenizer(query)
+	if len(queryTokens) == 0 {
+		return nil, nil
+	}
+
+	uniqueTerms := make(map[string]struct{}, len(queryTokens))
+	for _, tok := range queryTokens {
+		uniqueTerms[tok] = struct{}{}
+	}
+
+	avgdl := float64(b.totalLen) / float64(N)
+	if avgdl == 0 {
+		avgdl = 1.0
+	}
+
+	// Compute IDF for query terms
+	idfs := make(map[string]float64, len(uniqueTerms))
+	for term := range uniqueTerms {
+		dfVal := float64(b.df[term])
+		if dfVal > 0 {
+			idf := math.Log(1.0 + (float64(N)-dfVal+0.5)/(dfVal+0.5))
+			idfs[term] = idf
+		}
+	}
+
+	var matched []document.Document
+	for i, doc := range b.docs {
+		if !vectorstore.MatchesFilter(doc.Metadata, cfg.Filter) {
+			continue
+		}
+
+		tfMap := b.docTF[i]
+		docLen := float64(b.docLengths[i])
+		lenNorm := 1.0 - b.b + b.b*(docLen/avgdl)
+
+		var score float64
+		for term, idf := range idfs {
+			tf := float64(tfMap[term])
+			if tf <= 0 {
+				continue
+			}
+			score += idf * (tf * (b.k1 + 1.0)) / (tf + b.k1*lenNorm)
+		}
+
+		score32 := float32(score)
+		if score32 <= 0 {
+			continue
+		}
+		if cfg.HasMinScore && score32 < cfg.MinScore {
+			continue
+		}
+
+		docCopy := doc.WithScore(score32)
+		docCopy.Metadata = document.CloneMetadata(doc.Metadata)
+		matched = append(matched, docCopy)
+	}
+
+	sortDocumentsByScore(matched)
+
+	if len(matched) > cfg.TopK {
+		matched = matched[:cfg.TopK]
+	}
+
+	return matched, nil
+}
+
+// -------------------------------------------------------------------------
+// 3. MergerRetriever (Reciprocal Rank Fusion - RRF)
 // -------------------------------------------------------------------------
 
 // MergerOption configures a [MergerRetriever].
@@ -198,7 +448,7 @@ func (m *MergerRetriever) Retrieve(ctx context.Context, query string, opts ...Op
 }
 
 // -------------------------------------------------------------------------
-// 3. DecisionReranker
+// 4. DecisionReranker
 // -------------------------------------------------------------------------
 
 // RerankerOption configures a [DecisionReranker].
@@ -298,7 +548,7 @@ func (r *DecisionReranker) Retrieve(ctx context.Context, query string, opts ...O
 }
 
 // -------------------------------------------------------------------------
-// 4. NewTool
+// 5. NewTool
 // -------------------------------------------------------------------------
 
 // ToolInput defines the schema for invoking a retriever tool.

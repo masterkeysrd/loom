@@ -45,6 +45,9 @@ type Config struct {
 	MinScore    float32
 	HasMinScore bool
 	Filter      map[string]any
+	UseMMR      bool
+	MMRLambda   float32
+	MMRFetchK   int
 }
 
 // Option configures retrieval behavior.
@@ -78,6 +81,22 @@ func WithMinScore(score float32) Option {
 func WithFilter(filter map[string]any) Option {
 	return func(c *Config) {
 		c.Filter = filter
+	}
+}
+
+// WithMMR enables Maximal Marginal Relevance (MMR) retrieval for diversified results.
+// lambda balances relevance (1.0) and diversity (0.0), clamped to [0, 1].
+// fetchK specifies the number of initial candidates to fetch before MMR selection.
+func WithMMR(lambda float32, fetchK int) Option {
+	return func(c *Config) {
+		c.UseMMR = true
+		if lambda < 0 {
+			lambda = 0
+		} else if lambda > 1 {
+			lambda = 1
+		}
+		c.MMRLambda = lambda
+		c.MMRFetchK = fetchK
 	}
 }
 

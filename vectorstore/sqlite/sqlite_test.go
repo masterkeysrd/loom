@@ -270,3 +270,83 @@ func TestSQLiteStore_EdgeCases(t *testing.T) {
 		t.Errorf("subsequent Migrate failed: %v", err)
 	}
 }
+
+type mmrTestProvider struct{}
+
+func (m mmrTestProvider) Name() string { return "mmr-test" }
+
+func (m mmrTestProvider) Embed(ctx context.Context, req *embedding.Request) (*embedding.Response, error) {
+	embeddings := make([]embedding.Vector, len(req.Inputs))
+	for i, inp := range req.Inputs {
+		switch inp.Text {
+		case "query":
+			embeddings[i] = embedding.Vector{0.707, 0.707, 0.0, 0.0}
+		case "doc1":
+			embeddings[i] = embedding.Vector{1.0, 0.0, 0.0, 0.0}
+		case "doc2":
+			embeddings[i] = embedding.Vector{0.99, 0.01, 0.0, 0.0}
+		case "doc3":
+			embeddings[i] = embedding.Vector{0.0, 1.0, 0.0, 0.0}
+		default:
+			embeddings[i] = embedding.Vector{0.1, 0.1, 0.1, 0.1}
+		}
+	}
+	return &embedding.Response{
+		Model:      req.Model,
+		Embeddings: embeddings,
+	}, nil
+}
+
+func TestSQLiteStore_MMR(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open sqlite in-memory db: %v", err)
+	}
+	defer db.Close()
+
+	model, err := embedding.NewModel(mmrTestProvider{}, "test-mmr", nil)
+	if err != nil {
+		t.Fatalf("failed to create model: %v", err)
+	}
+	store, err := sqlite.New(db, model)
+	if err != nil {
+		t.Fatalf("failed to create sqlite store: %v", err)
+	}
+
+	docs := []document.Document{
+		document.New("doc1").WithID("doc-1"),
+		document.New("doc2").WithID("doc-2"),
+		document.New("doc3").WithID("doc-3"),
+	}
+	if _, err := store.Add(ctx, docs); err != nil {
+		t.Fatalf("Add failed: %v", err)
+	}
+
+	// 1. Pure cosine similarity
+	resStandard, err := store.Search(ctx, "query", 2)
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+	if len(resStandard) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(resStandard))
+	}
+	hasDoc1 := resStandard[0].ID == "doc-1" || resStandard[1].ID == "doc-1"
+	hasDoc2 := resStandard[0].ID == "doc-2" || resStandard[1].ID == "doc-2"
+	if !hasDoc1 || !hasDoc2 {
+		t.Fatalf("expected doc-1 and doc-2 in pure cosine search, got %v", resStandard)
+	}
+
+	// 2. MMR diversification
+	resMMR, err := store.Search(ctx, "query", 2, vectorstore.WithMMR(0.5, 4))
+	if err != nil {
+		t.Fatalf("Search with MMR failed: %v", err)
+	}
+	if len(resMMR) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(resMMR))
+	}
+	hasDoc3 := resMMR[0].ID == "doc-3" || resMMR[1].ID == "doc-3"
+	if !hasDoc3 {
+		t.Fatalf("expected doc-3 in MMR diversified results, got %v", resMMR)
+	}
+}

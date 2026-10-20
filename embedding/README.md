@@ -154,6 +154,7 @@ dist := v1.EuclideanDistance(v2)    // L2 distance
 norm := v1.Normalize()              // L2-normalized unit vector copy
 f64 := v1.Float64()                 // Convert []float32 to []float64
 dims := v1.Dimension()              // len(v1)
+mmrIdx := embedding.MMR(queryVec, candidateVecs, 0.5, 5) // Maximal Marginal Relevance indices
 ```
 
 ---

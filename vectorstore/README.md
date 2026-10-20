@@ -29,6 +29,7 @@ type VectorStore interface {
 | `WithNamespace(ns)` | `Search` | Namespace to search within (default: `"default"`). |
 | `WithMinScore(score)` | `Search` | Minimum cosine similarity score threshold in $[-1, 1]$. |
 | `WithFilter(map[string]any)` | `Search` | Exact key-value metadata filter (with numeric type normalization). |
+| `WithMMR(lambda, fetchK)` | `Search` | Diversifies results using Maximal Marginal Relevance (`embedding.MMR`). |
 | `WithDeleteNamespace(ns)` | `Delete` | Namespace to delete document IDs from (default: `"default"`). |
 
 ---

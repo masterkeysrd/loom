@@ -111,7 +111,12 @@ func (s *Store) Search(ctx context.Context, query string, k int, opts ...vectors
 		return nil, nil
 	}
 
-	var matched []document.Document
+	type matchItem struct {
+		doc document.Document
+		vec embedding.Vector
+	}
+
+	var matched []matchItem
 	for _, item := range nsMap {
 		if !vectorstore.MatchesFilter(item.doc.Metadata, cfg.Filter) {
 			continue
@@ -124,31 +129,53 @@ func (s *Store) Search(ctx context.Context, query string, k int, opts ...vectors
 
 		docCopy := item.doc.WithScore(score)
 		docCopy.Metadata = document.CloneMetadata(item.doc.Metadata)
-		matched = append(matched, docCopy)
+		matched = append(matched, matchItem{doc: docCopy, vec: item.vec})
 	}
 	s.mu.RUnlock()
 
-	slices.SortFunc(matched, func(a, b document.Document) int {
-		if a.Score > b.Score {
+	slices.SortFunc(matched, func(a, b matchItem) int {
+		if a.doc.Score > b.doc.Score {
 			return -1
 		}
-		if a.Score < b.Score {
+		if a.doc.Score < b.doc.Score {
 			return 1
 		}
-		if a.ID < b.ID {
+		if a.doc.ID < b.doc.ID {
 			return -1
 		}
-		if a.ID > b.ID {
+		if a.doc.ID > b.doc.ID {
 			return 1
 		}
 		return 0
 	})
 
+	if cfg.UseMMR {
+		fetchK := cfg.MMRFetchK
+		if fetchK < k {
+			fetchK = k * 4
+		}
+		if len(matched) > fetchK {
+			matched = matched[:fetchK]
+		}
+		candidateDocs := make([]document.Document, len(matched))
+		candidateVecs := make([]embedding.Vector, len(matched))
+		for i, m := range matched {
+			candidateDocs[i] = m.doc
+			candidateVecs[i] = m.vec
+		}
+		return vectorstore.SelectMMR(queryVec, candidateDocs, candidateVecs, cfg.MMRLambda, k), nil
+	}
+
 	if len(matched) > k {
 		matched = matched[:k]
 	}
 
-	return matched, nil
+	results := make([]document.Document, len(matched))
+	for i, m := range matched {
+		results[i] = m.doc
+	}
+
+	return results, nil
 }
 
 // Delete removes documents matching ids from the specified namespace.

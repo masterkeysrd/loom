@@ -54,6 +54,9 @@ type SearchConfig struct {
 	MinScore    float32
 	HasMinScore bool
 	Filter      map[string]any
+	UseMMR      bool
+	MMRLambda   float32
+	MMRFetchK   int
 }
 
 // SearchOption configures a [SearchConfig].
@@ -78,6 +81,22 @@ func WithMinScore(score float32) SearchOption {
 func WithFilter(filter map[string]any) SearchOption {
 	return func(c *SearchConfig) {
 		c.Filter = filter
+	}
+}
+
+// WithMMR enables Maximal Marginal Relevance (MMR) search to diversify results.
+// lambda balances relevance to the query (1.0) and diversity among results (0.0), clamped to [0, 1].
+// fetchK determines how many initial candidate documents to fetch before MMR re-ranking.
+func WithMMR(lambda float32, fetchK int) SearchOption {
+	return func(c *SearchConfig) {
+		c.UseMMR = true
+		if lambda < 0 {
+			lambda = 0
+		} else if lambda > 1 {
+			lambda = 1
+		}
+		c.MMRLambda = lambda
+		c.MMRFetchK = fetchK
 	}
 }
 
@@ -202,4 +221,18 @@ func ResolveDims(embed *embedding.Model, explicitDims int) int {
 		return prof.Limits.Dimensions
 	}
 	return 0
+}
+
+// SelectMMR selects up to k documents using Maximal Marginal Relevance ([embedding.MMR])
+// over candidate documents and their vectors.
+func SelectMMR(query embedding.Vector, docs []document.Document, vecs []embedding.Vector, lambda float32, k int) []document.Document {
+	if k <= 0 || len(docs) == 0 || len(vecs) == 0 {
+		return nil
+	}
+	indices := embedding.MMR(query, vecs, lambda, k)
+	selected := make([]document.Document, len(indices))
+	for i, idx := range indices {
+		selected[i] = docs[idx]
+	}
+	return selected
 }

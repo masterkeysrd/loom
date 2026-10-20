@@ -153,8 +153,16 @@ func (s *Store) Search(ctx context.Context, query string, k int, opts ...vectors
 		return nil, err
 	}
 
+	fetchK := k
+	if cfg.UseMMR {
+		fetchK = cfg.MMRFetchK
+		if fetchK < k {
+			fetchK = k * 4
+		}
+	}
+
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, content, metadata, loom_vec_cosine(embedding, ?) AS score
+		SELECT id, content, metadata, embedding, loom_vec_cosine(embedding, ?) AS score
 		FROM vectorstore_documents
 		WHERE namespace = ?
 		ORDER BY score DESC, id ASC
@@ -164,13 +172,16 @@ func (s *Store) Search(ctx context.Context, query string, k int, opts ...vectors
 	}
 	defer rows.Close()
 
-	var results []document.Document
+	var (
+		candidateDocs []document.Document
+		candidateVecs []embedding.Vector
+	)
 	for rows.Next() {
 		var id, content string
-		var metaBlob []byte
+		var metaBlob, embBlob []byte
 		var score float64
 
-		if err := rows.Scan(&id, &content, &metaBlob, &score); err != nil {
+		if err := rows.Scan(&id, &content, &metaBlob, &embBlob, &score); err != nil {
 			return nil, err
 		}
 
@@ -195,8 +206,11 @@ func (s *Store) Search(ctx context.Context, query string, k int, opts ...vectors
 			Metadata: meta,
 			Score:    float32(score),
 		}
-		results = append(results, doc)
-		if len(results) == k {
+		candidateDocs = append(candidateDocs, doc)
+		if cfg.UseMMR {
+			candidateVecs = append(candidateVecs, embedding.DecodeVector(embBlob))
+		}
+		if len(candidateDocs) == fetchK {
 			break
 		}
 	}
@@ -204,7 +218,11 @@ func (s *Store) Search(ctx context.Context, query string, k int, opts ...vectors
 		return nil, err
 	}
 
-	return results, nil
+	if cfg.UseMMR {
+		return vectorstore.SelectMMR(queryVec, candidateDocs, candidateVecs, cfg.MMRLambda, k), nil
+	}
+
+	return candidateDocs, nil
 }
 
 // Delete removes documents matching the provided IDs in the specified namespace.

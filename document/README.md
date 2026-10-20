@@ -89,6 +89,17 @@ jsonLoader := document.NewJSONLoader(jsonlFile,
 )
 ```
 
+### 5. `HTMLLoader`
+Parses HTML using `golang.org/x/net/html`, extracts `<title>` and `<meta name="description">` into `Metadata`, removes `<script>`, `<style>`, `<noscript>`, `<svg>`, `<template>`, and `<head>` blocks, and preserves clean block spacing:
+
+```go
+htmlLoader := document.NewHTMLLoader(htmlReader,
+    document.WithHTMLSource("https://example.com/guide"),
+)
+docs, err := document.LoadAll(ctx, htmlLoader)
+// docs[0].Metadata["title"], docs[0].Metadata["description"], docs[0].Metadata["source"]
+```
+
 ---
 
 ## Text Splitters

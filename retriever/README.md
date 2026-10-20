@@ -12,7 +12,8 @@ The `retriever` package provides a composable **Retriever** abstraction for fetc
 | `RetrieverFunc` | Function adapter implementing `Retriever`. |
 | `Middleware` / `Chain` | Composable middleware wrapper around any `Retriever`. |
 | `TelemetryMiddleware` | Records OpenTelemetry client spans (`retrieve {name}`) and emits `"on_retrieve"` events to `stream.Writer`. |
-| `FromVectorStore` | Adapts any [`vectorstore.VectorStore`](../vectorstore/README.md) into a `Retriever`. |
+| `FromVectorStore` | Adapts any [`vectorstore.VectorStore`](../vectorstore/README.md) into a `Retriever` (supporting `WithMMR`, `WithFilter`, `WithMinScore`, `WithNamespace`). |
+| `NewBM25` | In-memory **Okapi BM25** lexical keyword retriever (`WithBM25K1`, `WithBM25B`, `WithBM25Tokenizer`, dynamic `Add`). |
 | `NewMerger` | Combines multiple retrievers using **Reciprocal Rank Fusion (RRF)**. |
 | `NewDecisionReranker` | Uses a [`decision.Model`](../decision/README.md) (System One) to score, filter, and rerank candidate documents. |
 | `NewTool` | Wraps any `Retriever` as a read-only, idempotent [`*tool.Tool`](../tool/README.md) for LLM agents. |
@@ -32,17 +33,25 @@ import (
 ret := retriever.FromVectorStore(vs,
     retriever.WithTopK(5),
     retriever.WithMinScore(0.6),
+    retriever.WithMMR(0.5, 20), // Optional: balance relevance (0.5) and diversity over top 20 candidates
 )
 
 docs, err := ret.Retrieve(ctx, "How does checkpointing work?")
 ```
 
-### 2. Hybrid / Ensemble Merger (`NewMerger` — Reciprocal Rank Fusion)
-Combines rankings from multiple retrievers (e.g., dense vector search + keyword search, or multiple namespaces/stores) using Reciprocal Rank Fusion ($\sum \frac{1}{k + \text{rank}_i + 1}$):
+### 2. BM25 Lexical Retriever (`NewBM25`) & Hybrid Search (`NewMerger` — RRF)
+`BM25Retriever` implements the Okapi BM25 keyword ranking algorithm in pure Go and pairs naturally with `VectorStoreRetriever` inside `NewMerger` for hybrid (lexical + semantic) search:
 
 ```go
+// 1. Keyword BM25 retriever
+bm25 := retriever.NewBM25(chunks,
+    retriever.WithBM25K1(1.5),
+    retriever.WithBM25B(0.75),
+)
+
+// 2. Fuse BM25 + VectorStore using Reciprocal Rank Fusion
 hybrid := retriever.NewMerger(
-    []retriever.Retriever{vectorRetriever, keywordRetriever},
+    []retriever.Retriever{ret, bm25},
     retriever.WithRRFConstant(60),
 )
 

@@ -14,6 +14,8 @@ import (
 	"path"
 	"strings"
 	"unicode"
+
+	"golang.org/x/net/html"
 )
 
 // -------------------------------------------------------------------------
@@ -552,4 +554,252 @@ func peekFirstNonWhitespace(br *bufio.Reader) (byte, error) {
 			return b, nil
 		}
 	}
+}
+
+// -------------------------------------------------------------------------
+// HTMLLoader
+// -------------------------------------------------------------------------
+
+// HTMLLoader parses HTML from an io.Reader and extracts visible text content and metadata.
+type HTMLLoader struct {
+	r        io.Reader
+	source   string
+	metadata map[string]any
+}
+
+// HTMLOption configures an HTMLLoader.
+type HTMLOption func(*HTMLLoader)
+
+// WithHTMLSource sets the source metadata for the document produced by HTMLLoader.
+func WithHTMLSource(source string) HTMLOption {
+	return func(l *HTMLLoader) {
+		l.source = source
+	}
+}
+
+// WithHTMLMetadata merges additional metadata into the document produced by HTMLLoader.
+func WithHTMLMetadata(meta map[string]any) HTMLOption {
+	return func(l *HTMLLoader) {
+		l.metadata = mergeMetadata(l.metadata, meta)
+	}
+}
+
+// NewHTMLLoader creates an HTMLLoader reading HTML content from r with the specified options.
+func NewHTMLLoader(r io.Reader, opts ...HTMLOption) *HTMLLoader {
+	l := &HTMLLoader{
+		r: r,
+	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(l)
+		}
+	}
+	return l
+}
+
+var htmlIgnoredTags = map[string]bool{
+	"script":   true,
+	"style":    true,
+	"noscript": true,
+	"svg":      true,
+	"template": true,
+	"head":     true,
+}
+
+var htmlBlockTags = map[string]bool{
+	"p":          true,
+	"div":        true,
+	"section":    true,
+	"article":    true,
+	"header":     true,
+	"footer":     true,
+	"main":       true,
+	"aside":      true,
+	"nav":        true,
+	"h1":         true,
+	"h2":         true,
+	"h3":         true,
+	"h4":         true,
+	"h5":         true,
+	"h6":         true,
+	"li":         true,
+	"tr":         true,
+	"blockquote": true,
+	"pre":        true,
+	"br":         true,
+	"hr":         true,
+}
+
+// Load parses HTML from the underlying reader and yields a single Document.
+func (l *HTMLLoader) Load(ctx context.Context) iter.Seq2[Document, error] {
+	return func(yield func(Document, error) bool) {
+		if err := ctx.Err(); err != nil {
+			yield(Document{}, err)
+			return
+		}
+		if l.r == nil {
+			yield(Document{}, errors.New("document: nil reader"))
+			return
+		}
+
+		docNode, err := html.Parse(l.r)
+		if err != nil {
+			yield(Document{}, err)
+			return
+		}
+
+		meta := CloneMetadata(l.metadata)
+		if l.source != "" {
+			if meta == nil {
+				meta = make(map[string]any)
+			}
+			if _, exists := meta["source"]; !exists {
+				meta["source"] = l.source
+			}
+		}
+
+		extractHTMLMetadata(docNode, &meta)
+
+		var sb strings.Builder
+		extractHTMLVisibleText(docNode, &sb)
+
+		content := cleanHTMLWhitespace(sb.String())
+
+		if len(meta) == 0 {
+			meta = nil
+		}
+
+		if err := ctx.Err(); err != nil {
+			yield(Document{}, err)
+			return
+		}
+
+		doc := Document{
+			Content:  content,
+			Metadata: meta,
+		}
+		yield(doc, nil)
+	}
+}
+
+func extractHTMLMetadata(n *html.Node, meta *map[string]any) {
+	if n == nil {
+		return
+	}
+	if n.Type == html.ElementNode {
+		tag := strings.ToLower(n.Data)
+		if tag == "title" {
+			if *meta == nil || (*meta)["title"] == nil || (*meta)["title"] == "" {
+				titleText := strings.TrimSpace(extractNodeRawText(n))
+				if titleText != "" {
+					if *meta == nil {
+						*meta = make(map[string]any)
+					}
+					(*meta)["title"] = titleText
+				}
+			}
+		} else if tag == "meta" {
+			if *meta == nil || (*meta)["description"] == nil || (*meta)["description"] == "" {
+				var isDesc bool
+				var contentVal string
+				for _, attr := range n.Attr {
+					if strings.EqualFold(attr.Key, "name") && strings.EqualFold(attr.Val, "description") {
+						isDesc = true
+					}
+					if strings.EqualFold(attr.Key, "content") {
+						contentVal = attr.Val
+					}
+				}
+				if isDesc {
+					contentVal = strings.TrimSpace(contentVal)
+					if contentVal != "" {
+						if *meta == nil {
+							*meta = make(map[string]any)
+						}
+						(*meta)["description"] = contentVal
+					}
+				}
+			}
+		}
+	}
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		extractHTMLMetadata(c, meta)
+	}
+}
+
+func extractNodeRawText(n *html.Node) string {
+	var sb strings.Builder
+	var walk func(*html.Node)
+	walk = func(curr *html.Node) {
+		if curr == nil {
+			return
+		}
+		if curr.Type == html.TextNode {
+			sb.WriteString(curr.Data)
+		}
+		for c := curr.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(n)
+	return sb.String()
+}
+
+func extractHTMLVisibleText(n *html.Node, sb *strings.Builder) {
+	if n == nil {
+		return
+	}
+	if n.Type == html.ElementNode {
+		tag := strings.ToLower(n.Data)
+		if htmlIgnoredTags[tag] {
+			return
+		}
+		if tag == "br" || tag == "hr" {
+			sb.WriteString("\n")
+			return
+		}
+		isBlock := htmlBlockTags[tag]
+		if isBlock {
+			sb.WriteString("\n")
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			extractHTMLVisibleText(c, sb)
+		}
+		if isBlock {
+			sb.WriteString("\n")
+		}
+		return
+	}
+	if n.Type == html.TextNode {
+		sb.WriteString(n.Data)
+		return
+	}
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		extractHTMLVisibleText(c, sb)
+	}
+}
+
+func cleanHTMLWhitespace(s string) string {
+	lines := strings.Split(s, "\n")
+	var cleaned []string
+	consecutiveEmpty := 0
+
+	for _, line := range lines {
+		trimmed := strings.Join(strings.Fields(line), " ")
+		if trimmed == "" {
+			if consecutiveEmpty < 1 && len(cleaned) > 0 {
+				cleaned = append(cleaned, "")
+				consecutiveEmpty++
+			}
+		} else {
+			cleaned = append(cleaned, trimmed)
+			consecutiveEmpty = 0
+		}
+	}
+
+	for len(cleaned) > 0 && cleaned[len(cleaned)-1] == "" {
+		cleaned = cleaned[:len(cleaned)-1]
+	}
+
+	return strings.Join(cleaned, "\n")
 }

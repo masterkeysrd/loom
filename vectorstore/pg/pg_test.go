@@ -114,6 +114,24 @@ func TestFormatVector(t *testing.T) {
 	}
 }
 
+func TestParseVector(t *testing.T) {
+	s := "[0.1, 0.25, 0.5]"
+	parsed := pg.ParseVector(s)
+	if len(parsed) != 3 || parsed[0] != 0.1 || parsed[1] != 0.25 || parsed[2] != 0.5 {
+		t.Errorf("ParseVector(%q) = %v; want [0.1, 0.25, 0.5]", s, parsed)
+	}
+
+	if pg.ParseVector("") != nil {
+		t.Errorf("expected nil for empty string")
+	}
+	if pg.ParseVector("[]") != nil {
+		t.Errorf("expected nil for '[]'")
+	}
+	if pg.ParseVector("invalid") != nil {
+		t.Errorf("expected nil for invalid vector string")
+	}
+}
+
 type deterministicProvider struct{}
 
 func (d deterministicProvider) Name() string { return "deterministic" }

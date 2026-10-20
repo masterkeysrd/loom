@@ -602,3 +602,49 @@ func TestVectorBytesAndCosineBytes(t *testing.T) {
 		t.Fatalf("expected orthogonal byte similarity ~0.0, got %v", simOrthogonal)
 	}
 }
+
+func TestMMR(t *testing.T) {
+	// Edge cases
+	if embedding.MMR(embedding.Vector{1, 0}, nil, 0.5, 2) != nil {
+		t.Errorf("expected nil for empty candidates")
+	}
+	if embedding.MMR(embedding.Vector{1, 0}, []embedding.Vector{{1, 0}}, 0.5, 0) != nil {
+		t.Errorf("expected nil for k <= 0")
+	}
+
+	// Query: [1, 1, 0] (diagonal in XY)
+	query := embedding.Vector{1, 1, 0}
+
+	// Candidate 0: [1, 0, 0] (aligned with X)
+	// Candidate 1: [1, 0, 0] (exact duplicate of candidate 0)
+	// Candidate 2: [0, 1, 0] (aligned with Y, same similarity to query as C0, but orthogonal to C0)
+	// Candidate 3: [0, 0, 1] (orthogonal to query)
+	candidates := []embedding.Vector{
+		{1, 0, 0}, // idx 0
+		{1, 0, 0}, // idx 1 (duplicate of 0)
+		{0, 1, 0}, // idx 2 (diverse from 0)
+		{0, 0, 1}, // idx 3
+	}
+
+	// With pure relevance (lambda = 1.0) and k=2:
+	// Candidate 0 and Candidate 1 both have highest similarity to query.
+	relIndices := embedding.MMR(query, candidates, 1.0, 2)
+	if len(relIndices) != 2 || relIndices[0] != 0 || relIndices[1] != 1 {
+		t.Errorf("expected [0, 1] for lambda=1.0, got %v", relIndices)
+	}
+
+	// With MMR (lambda = 0.5) and k=2:
+	// Candidate 0 selected first.
+	// Candidate 1 (duplicate of 0) has high similarity to C0, so penalized.
+	// Candidate 2 has equal query similarity to C0 but 0 similarity to C0, so picked second!
+	mmrIndices := embedding.MMR(query, candidates, 0.5, 2)
+	if len(mmrIndices) != 2 || mmrIndices[0] != 0 || mmrIndices[1] != 2 {
+		t.Errorf("expected [0, 2] for lambda=0.5 (diversification), got %v", mmrIndices)
+	}
+
+	// Clamping k > len(candidates)
+	allIndices := embedding.MMR(query, candidates, 0.5, 10)
+	if len(allIndices) != 4 {
+		t.Errorf("expected 4 indices when k > len(candidates), got %d", len(allIndices))
+	}
+}

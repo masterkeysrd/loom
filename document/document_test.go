@@ -841,3 +841,154 @@ func TestJSONLoader_Malformed(t *testing.T) {
 		t.Fatalf("expected error for malformed JSONL, got nil")
 	}
 }
+
+// -------------------------------------------------------------------------
+// HTMLLoader Tests
+// -------------------------------------------------------------------------
+
+func TestHTMLLoader(t *testing.T) {
+	ctx := context.Background()
+
+	// 1. Nil reader handling
+	nilLoader := document.NewHTMLLoader(nil)
+	_, err := document.LoadAll(ctx, nilLoader)
+	if err == nil || err.Error() != "document: nil reader" {
+		t.Fatalf("expected 'document: nil reader' error, got %v", err)
+	}
+
+	// 2. Comprehensive HTML test: title, meta description, script/style/svg/template removal, entity decoding, blocks
+	htmlContent := `<!DOCTYPE html>
+<html>
+<head>
+    <title>Awesome &amp; Cool Website</title>
+    <meta name="description" content="This is a description &amp; summary of the page." />
+    <meta name="author" content="Alice" />
+    <style>
+        body { background: #000; color: #fff; }
+        .hidden { display: none; }
+    </style>
+    <script>
+        console.log("analytics script");
+    </script>
+</head>
+<body>
+    <header>
+        <h1>Welcome &gt; Readers! &copy; 2026</h1>
+    </header>
+    <nav>
+        <a href="/home">Home</a> | <a href="/about">About</a>
+    </nav>
+    <main>
+        <article>
+            <h2>Article Title</h2>
+            <p>This is the <b>first</b> paragraph with &quot;quotes&quot; and   multiple    spaces.</p>
+            <script>
+                document.write("inline script");
+            </script>
+            <noscript>You need JavaScript enabled!</noscript>
+            <svg><text>Vector Graphic</text></svg>
+            <template><p>Template content</p></template>
+            <p>Second paragraph with a line<br>break inside.</p>
+            <ul>
+                <li>Item 1</li>
+                <li>Item 2</li>
+            </ul>
+        </article>
+    </main>
+    <footer>
+        <p>Copyright info</p>
+    </footer>
+</body>
+</html>`
+
+	loader := document.NewHTMLLoader(
+		strings.NewReader(htmlContent),
+		document.WithHTMLSource("https://example.com/index.html"),
+		document.WithHTMLMetadata(map[string]any{"custom": "value"}),
+	)
+
+	docs, err := document.LoadAll(ctx, loader)
+	if err != nil {
+		t.Fatalf("unexpected error loading HTML: %v", err)
+	}
+	if len(docs) != 1 {
+		t.Fatalf("expected 1 document, got %d", len(docs))
+	}
+
+	doc := docs[0]
+
+	// Verify metadata
+	if doc.Metadata["source"] != "https://example.com/index.html" {
+		t.Errorf("expected source, got %v", doc.Metadata["source"])
+	}
+	if doc.Metadata["custom"] != "value" {
+		t.Errorf("expected custom metadata, got %v", doc.Metadata["custom"])
+	}
+	if doc.Metadata["title"] != "Awesome & Cool Website" {
+		t.Errorf("expected decoded title 'Awesome & Cool Website', got %v", doc.Metadata["title"])
+	}
+	if doc.Metadata["description"] != "This is a description & summary of the page." {
+		t.Errorf("expected decoded description, got %v", doc.Metadata["description"])
+	}
+
+	// Verify script, style, noscript, svg, template are removed
+	for _, unwanted := range []string{
+		"analytics script",
+		"inline script",
+		"background: #000",
+		"You need JavaScript enabled!",
+		"Vector Graphic",
+		"Template content",
+	} {
+		if strings.Contains(doc.Content, unwanted) {
+			t.Errorf("expected content to NOT contain %q, but got:\n%s", unwanted, doc.Content)
+		}
+	}
+
+	// Verify entity decoding in text
+	if !strings.Contains(doc.Content, "Welcome > Readers! © 2026") {
+		t.Errorf("expected decoded entities in content, got:\n%s", doc.Content)
+	}
+	if !strings.Contains(doc.Content, `with "quotes" and multiple spaces.`) {
+		t.Errorf("expected quotes and collapsed spaces in content, got:\n%s", doc.Content)
+	}
+
+	// Verify block separation
+	if !strings.Contains(doc.Content, "Welcome > Readers! © 2026") ||
+		!strings.Contains(doc.Content, "Article Title") {
+		t.Errorf("missing headers in content: %s", doc.Content)
+	}
+	if !strings.Contains(doc.Content, "Item 1") || !strings.Contains(doc.Content, "Item 2") {
+		t.Errorf("missing list items in content: %s", doc.Content)
+	}
+	if !strings.Contains(doc.Content, "line\nbreak") {
+		t.Errorf("expected <br> to produce line break, got:\n%s", doc.Content)
+	}
+
+	// Verify existing metadata is not overwritten if already provided
+	existingLoader := document.NewHTMLLoader(
+		strings.NewReader(htmlContent),
+		document.WithHTMLMetadata(map[string]any{
+			"title":       "Existing Title",
+			"description": "Existing Description",
+		}),
+	)
+	existingDocs, err := document.LoadAll(ctx, existingLoader)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if existingDocs[0].Metadata["title"] != "Existing Title" {
+		t.Errorf("expected existing title preserved, got %v", existingDocs[0].Metadata["title"])
+	}
+	if existingDocs[0].Metadata["description"] != "Existing Description" {
+		t.Errorf("expected existing description preserved, got %v", existingDocs[0].Metadata["description"])
+	}
+
+	// Verify context cancellation
+	cancCtx, cancel := context.WithCancel(ctx)
+	cancel()
+	_, err = document.LoadAll(cancCtx, loader)
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected context.Canceled error, got %v", err)
+	}
+}

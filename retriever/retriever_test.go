@@ -384,3 +384,208 @@ func TestNewTool(t *testing.T) {
 		t.Errorf("expected doc-1 as first result, got %s", docs[0].ID)
 	}
 }
+
+type mmrRetrieverProvider struct{}
+
+func (m mmrRetrieverProvider) Name() string { return "mmr-retriever-test" }
+
+func (m mmrRetrieverProvider) Embed(ctx context.Context, req *embedding.Request) (*embedding.Response, error) {
+	embeddings := make([]embedding.Vector, len(req.Inputs))
+	for i, inp := range req.Inputs {
+		switch inp.Text {
+		case "query":
+			embeddings[i] = embedding.Vector{0.707, 0.707, 0.0}
+		case "doc1":
+			embeddings[i] = embedding.Vector{1.0, 0.0, 0.0}
+		case "doc2":
+			embeddings[i] = embedding.Vector{0.99, 0.01, 0.0}
+		case "doc3":
+			embeddings[i] = embedding.Vector{0.0, 1.0, 0.0}
+		default:
+			embeddings[i] = embedding.Vector{0.1, 0.1, 0.1}
+		}
+	}
+	return &embedding.Response{
+		Model:      req.Model,
+		Embeddings: embeddings,
+	}, nil
+}
+
+func TestVectorStoreRetriever_WithMMR(t *testing.T) {
+	ctx := context.Background()
+	model, err := embedding.NewModel(mmrRetrieverProvider{}, "test-mmr", nil)
+	if err != nil {
+		t.Fatalf("failed to create model: %v", err)
+	}
+	store := memory.New(model)
+
+	docs := []document.Document{
+		document.New("doc1").WithID("doc-1"),
+		document.New("doc2").WithID("doc-2"),
+		document.New("doc3").WithID("doc-3"),
+	}
+	if _, err := store.Add(ctx, docs); err != nil {
+		t.Fatalf("Add failed: %v", err)
+	}
+
+	r := retriever.FromVectorStore(store)
+
+	// Standard retrieval (pure cosine) returns doc1 and doc2
+	resStd, err := r.Retrieve(ctx, "query", retriever.WithTopK(2))
+	if err != nil {
+		t.Fatalf("Retrieve failed: %v", err)
+	}
+	if len(resStd) != 2 || (resStd[0].ID != "doc-1" && resStd[0].ID != "doc-2") {
+		t.Fatalf("expected doc-1 or doc-2, got %v", resStd)
+	}
+
+	// MMR retrieval diversifies results and picks doc-3
+	resMMR, err := r.Retrieve(ctx, "query", retriever.WithTopK(2), retriever.WithMMR(0.5, 4))
+	if err != nil {
+		t.Fatalf("Retrieve with MMR failed: %v", err)
+	}
+	if len(resMMR) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(resMMR))
+	}
+	hasDoc3 := resMMR[0].ID == "doc-3" || resMMR[1].ID == "doc-3"
+	if !hasDoc3 {
+		t.Fatalf("expected doc-3 in MMR results, got %v", resMMR)
+	}
+}
+
+func TestBM25Retriever(t *testing.T) {
+	ctx := context.Background()
+
+	docs := []document.Document{
+		document.New("the quick brown fox jumps over the lazy dog", map[string]any{"category": "animals"}).WithID("doc-1"),
+		document.New("quick brown rabbits are very energetic and jump high", map[string]any{"category": "animals"}).WithID("doc-2"),
+		document.New("golang standard library documentation and concurrency patterns", map[string]any{"category": "programming"}).WithID("doc-3"),
+	}
+
+	b := retriever.NewBM25(docs, retriever.WithBM25K1(1.2), retriever.WithBM25B(0.75))
+
+	// 1. Basic search
+	results, err := b.Retrieve(ctx, "quick brown fox", retriever.WithTopK(2))
+	if err != nil {
+		t.Fatalf("Retrieve failed: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatalf("expected results, got 0")
+	}
+	if results[0].ID != "doc-1" {
+		t.Errorf("expected doc-1 as top result for 'quick brown fox', got %s", results[0].ID)
+	}
+	if results[0].Score <= 0 {
+		t.Errorf("expected positive score, got %f", results[0].Score)
+	}
+
+	// 2. Filter matching
+	resFiltered, err := b.Retrieve(ctx, "concurrency patterns",
+		retriever.WithFilter(map[string]any{"category": "programming"}),
+	)
+	if err != nil {
+		t.Fatalf("filtered retrieve failed: %v", err)
+	}
+	if len(resFiltered) != 1 || resFiltered[0].ID != "doc-3" {
+		t.Fatalf("expected doc-3 matching filter, got %v", resFiltered)
+	}
+
+	// Filter non-matching
+	resEmpty, err := b.Retrieve(ctx, "concurrency patterns",
+		retriever.WithFilter(map[string]any{"category": "nonexistent"}),
+	)
+	if err != nil {
+		t.Fatalf("filtered retrieve failed: %v", err)
+	}
+	if len(resEmpty) != 0 {
+		t.Fatalf("expected 0 results for non-matching filter, got %d", len(resEmpty))
+	}
+
+	// 3. Dynamic Add
+	b.Add(document.New("rust language memory safety and fearless concurrency", map[string]any{"category": "programming"}).WithID("doc-4"))
+	resAdd, err := b.Retrieve(ctx, "fearless concurrency", retriever.WithTopK(1))
+	if err != nil {
+		t.Fatalf("retrieve after add failed: %v", err)
+	}
+	if len(resAdd) != 1 || resAdd[0].ID != "doc-4" {
+		t.Fatalf("expected doc-4 after dynamic Add, got %v", resAdd)
+	}
+
+	// 4. Custom Tokenizer
+	customTokenizerCalled := false
+	customTok := func(s string) []string {
+		customTokenizerCalled = true
+		return strings.Fields(strings.ToLower(s))
+	}
+	bCustom := retriever.NewBM25(docs, retriever.WithBM25Tokenizer(customTok))
+	_, err = bCustom.Retrieve(ctx, "quick brown fox")
+	if err != nil {
+		t.Fatalf("custom tokenizer retrieve failed: %v", err)
+	}
+	if !customTokenizerCalled {
+		t.Errorf("expected custom tokenizer to be called")
+	}
+
+	// 5. Middleware
+	var mwCalled bool
+	customMW := func(next retriever.Retriever) retriever.Retriever {
+		return retriever.RetrieverFunc(func(ctx context.Context, q string, opts ...retriever.Option) ([]document.Document, error) {
+			mwCalled = true
+			return next.Retrieve(ctx, q, opts...)
+		})
+	}
+	bWithMW := b.WithMiddleware(customMW)
+	_, err = bWithMW.Retrieve(ctx, "fox")
+	if err != nil {
+		t.Fatalf("retrieve with mw failed: %v", err)
+	}
+	if !mwCalled {
+		t.Errorf("expected middleware to be called")
+	}
+
+	// 6. Query with no matches
+	resNoMatch, err := b.Retrieve(ctx, "completelyunrelatedqueryxyz")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resNoMatch) != 0 {
+		t.Errorf("expected 0 results for no matches, got %d", len(resNoMatch))
+	}
+}
+
+func TestHybridRetrieval_Merger_BM25AndVectorStore(t *testing.T) {
+	ctx := context.Background()
+
+	embedModel, err := embedding.NewModel(deterministicEmbeddingProvider{}, "test-embed", nil)
+	if err != nil {
+		t.Fatalf("failed to create embedding model: %v", err)
+	}
+
+	memStore := memory.New(embedModel)
+	docs := []document.Document{
+		document.New("apple fruit", map[string]any{"type": "fruit"}).WithID("doc-1"),
+		document.New("apple tree", map[string]any{"type": "nature"}).WithID("doc-2"),
+		document.New("sports car", map[string]any{"type": "vehicle"}).WithID("doc-3"),
+	}
+	if _, err := memStore.Add(ctx, docs); err != nil {
+		t.Fatalf("memStore.Add failed: %v", err)
+	}
+
+	vsRet := retriever.FromVectorStore(memStore)
+	bm25Ret := retriever.NewBM25(docs)
+
+	// Combine into Hybrid merger (RRF)
+	hybrid := retriever.NewMerger([]retriever.Retriever{vsRet, bm25Ret})
+
+	results, err := hybrid.Retrieve(ctx, "apple fruit", retriever.WithTopK(2))
+	if err != nil {
+		t.Fatalf("Hybrid retrieve failed: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatalf("expected hybrid results, got 0")
+	}
+	// doc-1 matches both BM25 ("apple fruit") and vector store ("apple fruit")
+	if results[0].ID != "doc-1" {
+		t.Errorf("expected doc-1 as top hybrid result, got %s", results[0].ID)
+	}
+}

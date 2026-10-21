@@ -1558,6 +1558,65 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0,
 		},
 	},
+	"gemini-pro-latest": {
+		ID:          "gemini-pro-latest",
+		Name:        "Gemini Pro Latest",
+		Family:      "gemini-pro",
+		Knowledge:   "2025-01",
+		ReleaseDate: "2026-02-19",
+		LastUpdated: "2026-02-19",
+		Capabilities: profile.Capabilities{
+			Completion:  true,
+			Decision:    false,
+			Embedding:   false,
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: true,
+			ReasoningOptions: []profile.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
+		},
+		Limits: profile.Limits{
+			Context: 1048576,
+			Output:  65536,
+		},
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
+				profile.ModalityAudio,
+				profile.ModalityPDF,
+			},
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: profile.Pricing{
+			Input:      2,
+			Output:     12,
+			CacheRead:  0.2,
+			CacheWrite: 0,
+			TieredLimits: []profile.TierPricing{
+				{
+					Input:      4,
+					Output:     18,
+					CacheRead:  0.4,
+					CacheWrite: 0,
+					TierLimit:  200000,
+				},
+			},
+		},
+	},
 	"gemma-4-26b-a4b-it": {
 		ID:          "gemma-4-26b-a4b-it",
 		Name:        "Gemma 4 26B A4B IT",

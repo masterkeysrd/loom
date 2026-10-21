@@ -17,6 +17,7 @@ import (
 	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/stream"
 	"github.com/ollama/ollama/api"
+	"github.com/ollama/ollama/types/model"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -254,6 +255,11 @@ func toModelProfile(id string, resp *api.ShowResponse) profile.Profile {
 		}
 	}
 
+	if opts := toReasoningOptions(resp.Thinking); len(opts) > 0 {
+		p.Capabilities.Reasoning = true
+		p.Capabilities.ReasoningOptions = opts
+	}
+
 	// Always add text modality
 	p.Modalities.Inputs = append(p.Modalities.Inputs, profile.ModalityText)
 	p.Modalities.Outputs = append(p.Modalities.Outputs, profile.ModalityText)
@@ -289,6 +295,74 @@ func toModelProfile(id string, resp *api.ShowResponse) profile.Profile {
 	}
 
 	return p
+}
+
+func toReasoningOptions(t *model.Thinking) []profile.ReasoningOption {
+	if t == nil || len(t.Values) == 0 {
+		return nil
+	}
+
+	var (
+		hasFalse bool
+		hasTrue  bool
+		efforts  []string
+	)
+
+	for _, v := range t.Values {
+		switch val := v.(type) {
+		case bool:
+			if val {
+				hasTrue = true
+			} else {
+				hasFalse = true
+			}
+		case string:
+			if val != "" {
+				efforts = append(efforts, val)
+			}
+		}
+	}
+
+	var opts []profile.ReasoningOption
+
+	if len(efforts) == 0 {
+		if hasTrue {
+			def := "false"
+			if b, ok := t.Default.(bool); ok && b {
+				def = "true"
+			}
+			opts = append(opts, profile.ReasoningOption{
+				Type:    "toggle",
+				Default: def,
+			})
+		}
+		return opts
+	}
+
+	// If booleans are present alongside named effort levels, the model supports
+	// toggling thinking on/off in addition to selecting an effort level.
+	if hasFalse || hasTrue {
+		toggleDef := "true"
+		if b, ok := t.Default.(bool); ok && !b {
+			toggleDef = "false"
+		}
+		opts = append(opts, profile.ReasoningOption{
+			Type:    "toggle",
+			Default: toggleDef,
+		})
+	}
+
+	var effortDef string
+	if s, ok := t.Default.(string); ok {
+		effortDef = s
+	}
+	opts = append(opts, profile.ReasoningOption{
+		Type:    "effort",
+		Values:  efforts,
+		Default: effortDef,
+	})
+
+	return opts
 }
 
 func toInt(v any) (int, bool) {

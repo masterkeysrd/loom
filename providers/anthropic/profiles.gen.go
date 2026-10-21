@@ -124,6 +124,7 @@ var staticProfiles = map[string]profile.Profile{
 			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "budget_tokens",
+					Min:  1024,
 				},
 			},
 		},
@@ -167,6 +168,7 @@ var staticProfiles = map[string]profile.Profile{
 			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "budget_tokens",
+					Min:  1024,
 				},
 			},
 		},
@@ -280,6 +282,7 @@ var staticProfiles = map[string]profile.Profile{
 				},
 				{
 					Type: "budget_tokens",
+					Min:  1024,
 				},
 			},
 		},
@@ -331,6 +334,7 @@ var staticProfiles = map[string]profile.Profile{
 				},
 				{
 					Type: "budget_tokens",
+					Min:  1024,
 				},
 			},
 		},
@@ -383,6 +387,7 @@ var staticProfiles = map[string]profile.Profile{
 				},
 				{
 					Type: "budget_tokens",
+					Min:  1024,
 				},
 			},
 		},
@@ -626,6 +631,7 @@ var staticProfiles = map[string]profile.Profile{
 			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "budget_tokens",
+					Min:  1024,
 				},
 			},
 		},
@@ -669,6 +675,7 @@ var staticProfiles = map[string]profile.Profile{
 			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "budget_tokens",
+					Min:  1024,
 				},
 			},
 		},
@@ -721,6 +728,7 @@ var staticProfiles = map[string]profile.Profile{
 				},
 				{
 					Type: "budget_tokens",
+					Min:  1024,
 				},
 			},
 		},

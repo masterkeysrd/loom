@@ -135,8 +135,11 @@ type modelEntry struct {
 	Attachment       bool   `json:"attachment"`
 	Reasoning        bool   `json:"reasoning"`
 	ReasoningOptions []struct {
-		Type   string   `json:"type"`
-		Values []string `json:"values"`
+		Type    string   `json:"type"`
+		Values  []string `json:"values"`
+		Default string   `json:"default"`
+		Min     int      `json:"min"`
+		Max     int      `json:"max"`
 	} `json:"reasoning_options"`
 	ToolCall    bool `json:"tool_call"`
 	Temperature bool `json:"temperature"`
@@ -245,9 +248,20 @@ var staticProfiles = map[string]profile.Profile{
 					{{- if .Values }}
 					Values: []string{
 						{{- range .Values }}
+						{{- if . }}
 						{{ printf "%q" . }},
 						{{- end }}
+						{{- end }}
 					},
+					{{- end }}
+					{{- if .Default }}
+					Default: {{ printf "%q" .Default }},
+					{{- end }}
+					{{- if .Min }}
+					Min: {{ .Min }},
+					{{- end }}
+					{{- if .Max }}
+					Max: {{ .Max }},
 					{{- end }}
 				},
 				{{- end }}

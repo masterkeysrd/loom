@@ -1,6 +1,7 @@
 package loomollama
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/masterkeysrd/loom/profile"
@@ -179,5 +180,70 @@ func TestToModelProfileDefaultContext(t *testing.T) {
 
 	if profile.Capabilities.Embedding {
 		t.Error("expected default Embedding capability to be false when capabilities list is empty")
+	}
+}
+
+func TestToModelProfileThinkingOptions(t *testing.T) {
+	tests := []struct {
+		name          string
+		thinking      *model.Thinking
+		wantReasoning bool
+		wantOptions   []profile.ReasoningOption
+	}{
+		{
+			name:          "non-thinking model",
+			thinking:      &model.Thinking{Values: []any{false}, Default: false},
+			wantReasoning: false,
+			wantOptions:   nil,
+		},
+		{
+			name:          "toggle default on",
+			thinking:      &model.Thinking{Values: []any{false, true}, Default: true},
+			wantReasoning: true,
+			wantOptions: []profile.ReasoningOption{
+				{Type: "toggle", Default: "true"},
+			},
+		},
+		{
+			name:          "toggle default off",
+			thinking:      &model.Thinking{Values: []any{false, true}, Default: false},
+			wantReasoning: true,
+			wantOptions: []profile.ReasoningOption{
+				{Type: "toggle", Default: "false"},
+			},
+		},
+		{
+			name:          "effort only",
+			thinking:      &model.Thinking{Values: []any{"low", "medium", "high"}, Default: "medium"},
+			wantReasoning: true,
+			wantOptions: []profile.ReasoningOption{
+				{Type: "effort", Values: []string{"low", "medium", "high"}, Default: "medium"},
+			},
+		},
+		{
+			name:          "mixed toggle and effort",
+			thinking:      &model.Thinking{Values: []any{false, "low", "medium", "xhigh"}, Default: "medium"},
+			wantReasoning: true,
+			wantOptions: []profile.ReasoningOption{
+				{Type: "toggle", Default: "true"},
+				{Type: "effort", Values: []string{"low", "medium", "xhigh"}, Default: "medium"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &api.ShowResponse{
+				Details:  api.ModelDetails{Family: "test"},
+				Thinking: tt.thinking,
+			}
+			prof := toModelProfile("test-model", resp)
+			if prof.Capabilities.Reasoning != tt.wantReasoning {
+				t.Errorf("Reasoning = %v, want %v", prof.Capabilities.Reasoning, tt.wantReasoning)
+			}
+			if !reflect.DeepEqual(prof.Capabilities.ReasoningOptions, tt.wantOptions) {
+				t.Errorf("ReasoningOptions = %#v, want %#v", prof.Capabilities.ReasoningOptions, tt.wantOptions)
+			}
+		})
 	}
 }

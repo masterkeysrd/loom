@@ -101,8 +101,11 @@ type Capabilities struct {
 
 // ReasoningOption describes a supported reasoning parameter configuration.
 type ReasoningOption struct {
-	Type   string   `json:"type"`
-	Values []string `json:"values,omitempty"`
+	Type    string   `json:"type"`
+	Values  []string `json:"values,omitempty"`
+	Default string   `json:"default,omitempty"`
+	Min     int      `json:"min,omitempty"`
+	Max     int      `json:"max,omitempty"`
 }
 
 // Modalities lists the supported input and output modalities of a model.

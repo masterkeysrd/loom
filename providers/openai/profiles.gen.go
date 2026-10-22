@@ -10,6 +10,7 @@ var staticProfiles = map[string]profile.Profile{
 	"chatgpt-image-latest": {
 		ID:          "chatgpt-image-latest",
 		Name:        "chatgpt-image-latest",
+		Description: "Image model for prompt-driven generation, editing, and visual design workflows",
 		Family:      "gpt-image",
 		ReleaseDate: "2025-12-16",
 		LastUpdated: "2025-12-16",
@@ -47,6 +48,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-3.5-turbo": {
 		ID:          "gpt-3.5-turbo",
 		Name:        "GPT-3.5-turbo",
+		Description: "Compact GPT model for low-latency assistance and high-volume workloads",
 		Family:      "gpt",
 		Knowledge:   "2021-09-01",
 		ReleaseDate: "2023-03-01",
@@ -83,6 +85,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-4": {
 		ID:          "gpt-4",
 		Name:        "GPT-4",
+		Description: "GPT model for general reasoning, writing, coding, and tool-assisted tasks",
 		Family:      "gpt",
 		Knowledge:   "2023-11",
 		ReleaseDate: "2023-11-06",
@@ -119,6 +122,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-4-turbo": {
 		ID:          "gpt-4-turbo",
 		Name:        "GPT-4 Turbo",
+		Description: "Compact GPT model for low-latency assistance and high-volume workloads",
 		Family:      "gpt",
 		Knowledge:   "2023-12",
 		ReleaseDate: "2023-11-06",
@@ -156,6 +160,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-4.1": {
 		ID:          "gpt-4.1",
 		Name:        "GPT-4.1",
+		Description: "Long-lived GPT workhorse for coding, instruction following, and production apps",
 		Family:      "gpt",
 		Knowledge:   "2024-04",
 		ReleaseDate: "2025-04-14",
@@ -194,6 +199,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-4.1-mini": {
 		ID:          "gpt-4.1-mini",
 		Name:        "GPT-4.1 mini",
+		Description: "Affordable GPT-4.1 lane for fast coding help and structured extraction",
 		Family:      "gpt-mini",
 		Knowledge:   "2024-04",
 		ReleaseDate: "2025-04-14",
@@ -232,6 +238,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-4.1-nano": {
 		ID:          "gpt-4.1-nano",
 		Name:        "GPT-4.1 nano",
+		Description: "Tiny GPT-4.1 option for classification, routing, and very high-volume tasks",
 		Family:      "gpt-nano",
 		Knowledge:   "2024-04",
 		ReleaseDate: "2025-04-14",
@@ -269,6 +276,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-4o": {
 		ID:          "gpt-4o",
 		Name:        "GPT-4o",
+		Description: "Omni-era GPT for multimodal chat, practical coding, and general assistants",
 		Family:      "gpt",
 		Knowledge:   "2023-09",
 		ReleaseDate: "2024-05-13",
@@ -307,6 +315,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-4o-2024-05-13": {
 		ID:          "gpt-4o-2024-05-13",
 		Name:        "GPT-4o (2024-05-13)",
+		Description: "GPT model for general reasoning, writing, coding, and tool-assisted tasks",
 		Family:      "gpt",
 		Knowledge:   "2023-09",
 		ReleaseDate: "2024-05-13",
@@ -344,6 +353,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-4o-2024-08-06": {
 		ID:          "gpt-4o-2024-08-06",
 		Name:        "GPT-4o (2024-08-06)",
+		Description: "GPT model for general reasoning, writing, coding, and tool-assisted tasks",
 		Family:      "gpt",
 		Knowledge:   "2023-09",
 		ReleaseDate: "2024-08-06",
@@ -381,6 +391,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-4o-2024-11-20": {
 		ID:          "gpt-4o-2024-11-20",
 		Name:        "GPT-4o (2024-11-20)",
+		Description: "GPT model for general reasoning, writing, coding, and tool-assisted tasks",
 		Family:      "gpt",
 		Knowledge:   "2023-09",
 		ReleaseDate: "2024-11-20",
@@ -418,6 +429,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-4o-mini": {
 		ID:          "gpt-4o-mini",
 		Name:        "GPT-4o mini",
+		Description: "Small omni GPT for cheap multimodal assistance and production-scale traffic",
 		Family:      "gpt-mini",
 		Knowledge:   "2023-09",
 		ReleaseDate: "2024-07-18",
@@ -456,6 +468,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-5": {
 		ID:          "gpt-5",
 		Name:        "GPT-5",
+		Description: "Original GPT-5 workhorse for reasoning, coding, writing, and tool workflows",
 		Family:      "gpt",
 		Knowledge:   "2024-09-30",
 		ReleaseDate: "2025-08-07",
@@ -504,6 +517,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-5-mini": {
 		ID:          "gpt-5-mini",
 		Name:        "GPT-5 Mini",
+		Description: "Small GPT-5 for responsive agents, coding help, and everyday automation",
 		Family:      "gpt-mini",
 		Knowledge:   "2024-05-30",
 		ReleaseDate: "2025-08-07",
@@ -552,6 +566,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-5-nano": {
 		ID:          "gpt-5-nano",
 		Name:        "GPT-5 Nano",
+		Description: "Tiny GPT-5 lane for routing, extraction, classification, and bulk jobs",
 		Family:      "gpt-nano",
 		Knowledge:   "2024-05-30",
 		ReleaseDate: "2025-08-07",
@@ -600,6 +615,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-5-pro": {
 		ID:          "gpt-5-pro",
 		Name:        "GPT-5 Pro",
+		Description: "Higher-accuracy GPT-5 tier for tough analysis, coding reviews, and planning",
 		Family:      "gpt-pro",
 		Knowledge:   "2024-09-30",
 		ReleaseDate: "2025-10-06",
@@ -645,6 +661,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-5.1": {
 		ID:          "gpt-5.1",
 		Name:        "GPT-5.1",
+		Description: "Sharper GPT-5 generation for coding, product work, and tool-assisted tasks",
 		Family:      "gpt",
 		Knowledge:   "2024-09-30",
 		ReleaseDate: "2025-11-13",
@@ -693,6 +710,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-5.2": {
 		ID:          "gpt-5.2",
 		Name:        "GPT-5.2",
+		Description: "Reliable GPT generation for broad coding, writing, and tool-assisted product work",
 		Family:      "gpt",
 		Knowledge:   "2025-08-31",
 		ReleaseDate: "2025-12-11",
@@ -742,6 +760,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-5.2-pro": {
 		ID:          "gpt-5.2-pro",
 		Name:        "GPT-5.2 Pro",
+		Description: "Higher-accuracy GPT-5.2 variant for tougher reasoning and review workflows",
 		Family:      "gpt-pro",
 		Knowledge:   "2025-08-31",
 		ReleaseDate: "2025-12-11",
@@ -789,6 +808,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-5.3-codex": {
 		ID:          "gpt-5.3-codex",
 		Name:        "GPT-5.3 Codex",
+		Description: "Coding-optimized GPT model for repository edits, reviews, and agentic software work",
 		Family:      "gpt-codex",
 		Knowledge:   "2025-08-31",
 		ReleaseDate: "2026-02-05",
@@ -839,6 +859,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-5.3-codex-spark": {
 		ID:          "gpt-5.3-codex-spark",
 		Name:        "GPT-5.3 Codex Spark",
+		Description: "Coding-optimized GPT model for repository edits, reviews, and agentic software work",
 		Family:      "gpt-codex-spark",
 		Knowledge:   "2025-08-31",
 		ReleaseDate: "2026-02-05",
@@ -889,6 +910,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-5.4": {
 		ID:          "gpt-5.4",
 		Name:        "GPT-5.4",
+		Description: "Agent-ready GPT for coding and computer-use workflows at a lower cost",
 		Family:      "gpt",
 		Knowledge:   "2025-08-31",
 		ReleaseDate: "2026-03-05",
@@ -948,6 +970,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-5.4-mini": {
 		ID:          "gpt-5.4-mini",
 		Name:        "GPT-5.4 mini",
+		Description: "Strong small GPT for coding subagents, quick tool use, and high-volume work",
 		Family:      "gpt-mini",
 		Knowledge:   "2025-08-31",
 		ReleaseDate: "2026-03-17",
@@ -997,6 +1020,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-5.4-nano": {
 		ID:          "gpt-5.4-nano",
 		Name:        "GPT-5.4 nano",
+		Description: "Cheapest GPT-5.4 lane for simple routing, extraction, and bulk automation",
 		Family:      "gpt-nano",
 		Knowledge:   "2025-08-31",
 		ReleaseDate: "2026-03-17",
@@ -1046,6 +1070,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-5.4-pro": {
 		ID:          "gpt-5.4-pro",
 		Name:        "GPT-5.4 Pro",
+		Description: "More exact GPT-5.4 tier for demanding professional reasoning and agent tasks",
 		Family:      "gpt-pro",
 		Knowledge:   "2025-08-31",
 		ReleaseDate: "2026-03-05",
@@ -1102,6 +1127,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-5.5": {
 		ID:          "gpt-5.5",
 		Name:        "GPT-5.5",
+		Description: "Default frontier GPT for coding, computer use, research, and knowledge work",
 		Family:      "gpt",
 		Knowledge:   "2025-12-01",
 		ReleaseDate: "2026-04-23",
@@ -1161,6 +1187,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-5.5-pro": {
 		ID:          "gpt-5.5-pro",
 		Name:        "GPT-5.5 Pro",
+		Description: "Highest-accuracy GPT-5.5 tier for slower, precision-heavy reasoning and coding",
 		Family:      "gpt-pro",
 		Knowledge:   "2025-12-01",
 		ReleaseDate: "2026-04-23",
@@ -1218,6 +1245,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-5.6": {
 		ID:          "gpt-5.6",
 		Name:        "GPT-5.6",
+		Description: "Frontier GPT-5.6 model for complex professional work, coding, and agentic workflows",
 		Family:      "gpt-sol",
 		Knowledge:   "2026-02-16",
 		ReleaseDate: "2026-07-09",
@@ -1278,6 +1306,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-5.6-luna": {
 		ID:          "gpt-5.6-luna",
 		Name:        "GPT-5.6 Luna",
+		Description: "Cost-efficient GPT-5.6 model for fast, high-volume workloads",
 		Family:      "gpt-luna",
 		Knowledge:   "2026-02-16",
 		ReleaseDate: "2026-07-09",
@@ -1338,6 +1367,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-5.6-sol": {
 		ID:          "gpt-5.6-sol",
 		Name:        "GPT-5.6 Sol",
+		Description: "Frontier GPT-5.6 model for complex professional work, coding, and agentic workflows",
 		Family:      "gpt-sol",
 		Knowledge:   "2026-02-16",
 		ReleaseDate: "2026-07-09",
@@ -1398,6 +1428,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-5.6-terra": {
 		ID:          "gpt-5.6-terra",
 		Name:        "GPT-5.6 Terra",
+		Description: "Balanced GPT-5.6 model for capable, cost-efficient everyday work",
 		Family:      "gpt-terra",
 		Knowledge:   "2026-02-16",
 		ReleaseDate: "2026-07-09",
@@ -1458,6 +1489,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-6-astra": {
 		ID:          "gpt-6-astra",
 		Name:        "GPT-6 Astra",
+		Description: "GPT-6 Astra is OpenAI's most capable model for complex reasoning, coding, computer use, research, and document creation.",
 		Family:      "gpt-astra",
 		Knowledge:   "2026-04-30",
 		ReleaseDate: "2026-09-04",
@@ -1517,6 +1549,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-6-luna": {
 		ID:          "gpt-6-luna",
 		Name:        "GPT-6 Luna",
+		Description: "OpenAI's most efficient model for focused, high-volume tasks",
 		Family:      "gpt-luna",
 		Knowledge:   "2026-05-18",
 		ReleaseDate: "2026-09-22",
@@ -1577,6 +1610,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-6-sol": {
 		ID:          "gpt-6-sol",
 		Name:        "GPT-6 Sol",
+		Description: "OpenAI model for complex coding and agentic workflows",
 		Family:      "gpt-sol",
 		Knowledge:   "2026-04-20",
 		ReleaseDate: "2026-09-22",
@@ -1637,6 +1671,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-6.1-sol": {
 		ID:          "gpt-6.1-sol",
 		Name:        "GPT-6.1 Sol",
+		Description: "Near-Astra performance for complex coding, computer use, and professional work at a lower cost.",
 		Family:      "gpt-sol",
 		Knowledge:   "2026-04-30",
 		ReleaseDate: "2026-09-29",
@@ -1696,6 +1731,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-daybreak-blue-latest": {
 		ID:          "gpt-daybreak-blue-latest",
 		Name:        "Daybreak Blue",
+		Description: "Alias for flagship general-purpose models with safeguards for defensive cybersecurity work",
 		Family:      "gpt-sol",
 		Knowledge:   "2026-02-16",
 		ReleaseDate: "2026-08-07",
@@ -1756,6 +1792,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-daybreak-red-latest": {
 		ID:          "gpt-daybreak-red-latest",
 		Name:        "Daybreak Red",
+		Description: "Alias for advanced cybersecurity models for authorized vulnerability research and security testing",
 		Family:      "gpt",
 		Knowledge:   "2026-02-16",
 		ReleaseDate: "2026-08-07",
@@ -1806,6 +1843,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-image-1": {
 		ID:          "gpt-image-1",
 		Name:        "gpt-image-1",
+		Description: "OpenAI image model for production generation, edits, and brand-safe visual workflows",
 		Family:      "gpt-image",
 		ReleaseDate: "2025-04-24",
 		LastUpdated: "2025-04-24",
@@ -1842,6 +1880,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-image-1-mini": {
 		ID:          "gpt-image-1-mini",
 		Name:        "gpt-image-1-mini",
+		Description: "Image model for prompt-driven generation, editing, and visual design workflows",
 		Family:      "gpt-image",
 		ReleaseDate: "2025-09-26",
 		LastUpdated: "2025-09-26",
@@ -1879,6 +1918,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-image-1.5": {
 		ID:          "gpt-image-1.5",
 		Name:        "gpt-image-1.5",
+		Description: "Image model for prompt-driven generation, editing, and visual design workflows",
 		Family:      "gpt-image",
 		ReleaseDate: "2025-11-25",
 		LastUpdated: "2025-11-25",
@@ -1916,6 +1956,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-image-2": {
 		ID:          "gpt-image-2",
 		Name:        "gpt-image-2",
+		Description: "Image model for prompt-driven generation, editing, and visual design workflows",
 		Family:      "gpt-image",
 		ReleaseDate: "2026-04-21",
 		LastUpdated: "2026-04-21",
@@ -1952,6 +1993,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gpt-realtime-2.1": {
 		ID:          "gpt-realtime-2.1",
 		Name:        "GPT-Realtime-2.1",
+		Description: "Realtime speech-to-speech model with configurable reasoning, tool use, and robust voice-agent behavior",
 		Family:      "gpt",
 		Knowledge:   "2024-09-30",
 		ReleaseDate: "2026-07-06",
@@ -2003,6 +2045,7 @@ var staticProfiles = map[string]profile.Profile{
 	"o1": {
 		ID:          "o1",
 		Name:        "o1",
+		Description: "O-series reasoning model for hard analysis, math, coding, and planning",
 		Family:      "o",
 		Knowledge:   "2023-09",
 		ReleaseDate: "2024-12-05",
@@ -2051,6 +2094,7 @@ var staticProfiles = map[string]profile.Profile{
 	"o1-pro": {
 		ID:          "o1-pro",
 		Name:        "o1-pro",
+		Description: "O-series reasoning model for hard analysis, math, coding, and planning",
 		Family:      "o-pro",
 		Knowledge:   "2023-09",
 		ReleaseDate: "2025-03-19",
@@ -2098,6 +2142,7 @@ var staticProfiles = map[string]profile.Profile{
 	"o3": {
 		ID:          "o3",
 		Name:        "o3",
+		Description: "Deliberate o-series reasoner for hard math, coding, and multi-step analysis",
 		Family:      "o",
 		Knowledge:   "2024-05",
 		ReleaseDate: "2025-04-16",
@@ -2146,6 +2191,7 @@ var staticProfiles = map[string]profile.Profile{
 	"o3-mini": {
 		ID:          "o3-mini",
 		Name:        "o3-mini",
+		Description: "Smaller o-series reasoner for economical coding, math, and planning tasks",
 		Family:      "o-mini",
 		Knowledge:   "2024-05",
 		ReleaseDate: "2024-12-20",
@@ -2192,6 +2238,7 @@ var staticProfiles = map[string]profile.Profile{
 	"o3-pro": {
 		ID:          "o3-pro",
 		Name:        "o3-pro",
+		Description: "High-effort o3 tier for difficult technical reasoning and careful answers",
 		Family:      "o-pro",
 		Knowledge:   "2024-05",
 		ReleaseDate: "2025-06-10",
@@ -2239,6 +2286,7 @@ var staticProfiles = map[string]profile.Profile{
 	"o4-mini": {
 		ID:          "o4-mini",
 		Name:        "o4-mini",
+		Description: "Fast o-series model for compact reasoning, coding, and tool use",
 		Family:      "o-mini",
 		Knowledge:   "2024-05",
 		ReleaseDate: "2025-04-16",
@@ -2286,6 +2334,7 @@ var staticProfiles = map[string]profile.Profile{
 	"text-embedding-3-large": {
 		ID:          "text-embedding-3-large",
 		Name:        "text-embedding-3-large",
+		Description: "Embedding model for semantic search, retrieval, clustering, and ranking pipelines",
 		Family:      "text-embedding",
 		Knowledge:   "2024-01",
 		ReleaseDate: "2024-01-25",
@@ -2323,6 +2372,7 @@ var staticProfiles = map[string]profile.Profile{
 	"text-embedding-3-small": {
 		ID:          "text-embedding-3-small",
 		Name:        "text-embedding-3-small",
+		Description: "Embedding model for semantic search, retrieval, clustering, and ranking pipelines",
 		Family:      "text-embedding",
 		Knowledge:   "2024-01",
 		ReleaseDate: "2024-01-25",
@@ -2360,6 +2410,7 @@ var staticProfiles = map[string]profile.Profile{
 	"text-embedding-ada-002": {
 		ID:          "text-embedding-ada-002",
 		Name:        "text-embedding-ada-002",
+		Description: "Embedding model for semantic search, retrieval, clustering, and ranking pipelines",
 		Family:      "text-embedding",
 		Knowledge:   "2022-12",
 		ReleaseDate: "2022-12-15",

@@ -284,9 +284,10 @@ func toModelProfile(m AvailableModel) profile.Profile {
 	}
 
 	return profile.Profile{
-		ID:     m.ID,
-		Name:   m.DisplayName,
-		Family: family,
+		ID:          m.ID,
+		Name:        m.DisplayName,
+		Description: m.Description,
+		Family:      family,
 		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Attachment:  m.SupportsImages || m.SupportsVideo || len(m.SupportedMimeTypes) > 0,

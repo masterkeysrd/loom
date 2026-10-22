@@ -10,6 +10,7 @@ var staticProfiles = map[string]profile.Profile{
 	"deep-research-max-preview-04-2026": {
 		ID:          "deep-research-max-preview-04-2026",
 		Name:        "Deep Research Max Preview (Apr-21-2026)",
+		Description: "Maximum-comprehensiveness agentic researcher for multi-step investigation, synthesis, and cited reports",
 		Family:      "gemini-pro",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-04-21",
@@ -60,6 +61,7 @@ var staticProfiles = map[string]profile.Profile{
 	"deep-research-preview-04-2026": {
 		ID:          "deep-research-preview-04-2026",
 		Name:        "Deep Research Preview (Apr-21-2026)",
+		Description: "Agentic model for autonomous multi-step research, synthesis, and cited reports",
 		Family:      "gemini-pro",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-04-21",
@@ -110,6 +112,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-2.5-computer-use-preview-10-2025": {
 		ID:          "gemini-2.5-computer-use-preview-10-2025",
 		Name:        "Gemini 2.5 Computer Use Preview 10-2025",
+		Description: "Specialized Gemini 2.5 model for browser-control agents that automate UI tasks",
 		Family:      "gemini-pro",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2025-10-07",
@@ -156,6 +159,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-2.5-flash": {
 		ID:          "gemini-2.5-flash",
 		Name:        "Gemini 2.5 Flash",
+		Description: "Fast Gemini workhorse for multimodal apps where latency and price matter",
 		Family:      "gemini-flash",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2025-06-17",
@@ -205,6 +209,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-2.5-flash-image": {
 		ID:          "gemini-2.5-flash-image",
 		Name:        "Nano Banana",
+		Description: "Nano Banana image model for fast generation, edits, and character-consistent assets",
 		Family:      "gemini-flash",
 		Knowledge:   "2024-06",
 		ReleaseDate: "2025-08-26",
@@ -243,6 +248,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-2.5-flash-lite": {
 		ID:          "gemini-2.5-flash-lite",
 		Name:        "Gemini 2.5 Flash-Lite",
+		Description: "Lean Gemini 2.5 lane for cheap multimodal traffic and quick agents",
 		Family:      "gemini-flash-lite",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2025-06-17",
@@ -293,6 +299,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-2.5-flash-preview-tts": {
 		ID:          "gemini-2.5-flash-preview-tts",
 		Name:        "Gemini 2.5 Flash Preview TTS",
+		Description: "Speech generation model for controllable voice, narration, and audio delivery",
 		Family:      "gemini-flash",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2025-05-01",
@@ -329,6 +336,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-2.5-pro": {
 		ID:          "gemini-2.5-pro",
 		Name:        "Gemini 2.5 Pro",
+		Description: "Google's proven reasoning model for coding, math, and multimodal analysis",
 		Family:      "gemini-pro",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2025-06-17",
@@ -385,6 +393,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-2.5-pro-preview-tts": {
 		ID:          "gemini-2.5-pro-preview-tts",
 		Name:        "Gemini 2.5 Pro Preview TTS",
+		Description: "Speech generation model for controllable voice, narration, and audio delivery",
 		Family:      "gemini-flash",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2025-05-01",
@@ -421,6 +430,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-3-flash-preview": {
 		ID:          "gemini-3-flash-preview",
 		Name:        "Gemini 3 Flash Preview",
+		Description: "New Gemini flash lane bringing frontier-style multimodal reasoning to cheaper runs",
 		Family:      "gemini-flash",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2025-12-17",
@@ -472,6 +482,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-3-pro-image": {
 		ID:          "gemini-3-pro-image",
 		Name:        "Nano Banana Pro",
+		Description: "Nano Banana Pro for higher-fidelity image generation and design-heavy edits",
 		Family:      "gemini-pro",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-05-28",
@@ -519,6 +530,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-3-pro-image-preview": {
 		ID:          "gemini-3-pro-image-preview",
 		Name:        "Nano Banana Pro",
+		Description: "Nano Banana Pro for higher-fidelity image generation and design-heavy edits",
 		Family:      "gemini-pro",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2025-11-20",
@@ -557,6 +569,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-3.1-flash-image": {
 		ID:          "gemini-3.1-flash-image",
 		Name:        "Nano Banana 2",
+		Description: "Image model for prompt-driven generation, editing, and visual design workflows",
 		Family:      "gemini-flash",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-05-28",
@@ -606,6 +619,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-3.1-flash-image-preview": {
 		ID:          "gemini-3.1-flash-image-preview",
 		Name:        "Nano Banana 2",
+		Description: "Image model for prompt-driven generation, editing, and visual design workflows",
 		Family:      "gemini-flash",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-02-26",
@@ -654,6 +668,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-3.1-flash-lite": {
 		ID:          "gemini-3.1-flash-lite",
 		Name:        "Gemini 3.1 Flash Lite",
+		Description: "Low-latency Gemini model for high-volume multimodal and agent workloads",
 		Family:      "gemini-flash-lite",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-05-07",
@@ -705,6 +720,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-3.1-flash-lite-image": {
 		ID:          "gemini-3.1-flash-lite-image",
 		Name:        "Nano Banana 2 Lite",
+		Description: "Fastest, most cost-efficient Gemini image model for high-volume 1K generation and editing",
 		Family:      "gemini-flash-lite",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-06-30",
@@ -752,6 +768,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-3.1-flash-lite-preview": {
 		ID:          "gemini-3.1-flash-lite-preview",
 		Name:        "Gemini 3.1 Flash Lite Preview",
+		Description: "Legacy model retained for compatibility with older integrations",
 		Family:      "gemini-flash-lite",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-03-03",
@@ -803,6 +820,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-3.1-flash-live-preview": {
 		ID:          "gemini-3.1-flash-live-preview",
 		Name:        "Gemini 3.1 Flash Live Preview",
+		Description: "High-quality, low-latency Live API model for real-time dialogue and voice-first AI applications",
 		Family:      "gemini-flash",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-03-26",
@@ -854,6 +872,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-3.1-flash-tts-preview": {
 		ID:          "gemini-3.1-flash-tts-preview",
 		Name:        "Gemini 3.1 Flash TTS Preview",
+		Description: "Low-latency speech generation with steerable prompts and expressive audio tags",
 		Family:      "gemini-flash",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-04-15",
@@ -890,6 +909,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-3.1-pro-preview": {
 		ID:          "gemini-3.1-pro-preview",
 		Name:        "Gemini 3.1 Pro Preview",
+		Description: "Reasoning-first Gemini preview for agentic coding and complex problem solving",
 		Family:      "gemini-pro",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-02-19",
@@ -949,6 +969,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-3.1-pro-preview-customtools": {
 		ID:          "gemini-3.1-pro-preview-customtools",
 		Name:        "Gemini 3.1 Pro Preview Custom Tools",
+		Description: "Advanced Gemini model for complex reasoning, coding, and multimodal analysis",
 		Family:      "gemini-pro",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-02-19",
@@ -1008,6 +1029,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-3.5-flash": {
 		ID:          "gemini-3.5-flash",
 		Name:        "Gemini 3.5 Flash",
+		Description: "Fast Gemini model balancing multimodal reasoning, tool use, and cost",
 		Family:      "gemini-flash",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-05-19",
@@ -1059,6 +1081,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-3.5-flash-lite": {
 		ID:          "gemini-3.5-flash-lite",
 		Name:        "Gemini 3.5 Flash Lite",
+		Description: "Fast Gemini model balancing multimodal reasoning, tool use, and cost",
 		Family:      "gemini-flash-lite",
 		Knowledge:   "2026-03",
 		ReleaseDate: "2026-07-21",
@@ -1110,6 +1133,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-3.5-live-translate-preview": {
 		ID:          "gemini-3.5-live-translate-preview",
 		Name:        "Gemini 3.5 Live Translate Preview",
+		Description: "Low-latency audio-to-audio model for real-time speech translation across 70+ languages",
 		Family:      "gemini-pro",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-06-09",
@@ -1147,6 +1171,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-3.6-flash": {
 		ID:          "gemini-3.6-flash",
 		Name:        "Gemini 3.6 Flash",
+		Description: "Fast Gemini model balancing multimodal reasoning, tool use, and cost",
 		Family:      "gemini-flash",
 		Knowledge:   "2026-03",
 		ReleaseDate: "2026-07-21",
@@ -1198,6 +1223,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-3.7-flash": {
 		ID:          "gemini-3.7-flash",
 		Name:        "Gemini 3.7 Flash",
+		Description: "High-efficiency Gemini model for agentic workflows, coding, and multimodal reasoning",
 		Family:      "gemini-flash",
 		Knowledge:   "2026-03",
 		ReleaseDate: "2026-08-13",
@@ -1248,6 +1274,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-3.8-flash": {
 		ID:          "gemini-3.8-flash",
 		Name:        "Gemini 3.8 Flash",
+		Description: "Google's most intelligent Flash model, engineered for long-horizon software engineering, autonomous agents, and complex enterprise workflows",
 		Family:      "gemini-flash",
 		ReleaseDate: "2026-09-02",
 		LastUpdated: "2026-09-02",
@@ -1297,6 +1324,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-4-argon": {
 		ID:          "gemini-4-argon",
 		Name:        "Gemini 4 Argon",
+		Description: "Google's flagship reasoning model for complex software engineering, deep math and science, and long-horizon autonomous agents",
 		Family:      "gemini",
 		Knowledge:   "2026-03",
 		ReleaseDate: "2026-10-13",
@@ -1347,6 +1375,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-embedding-001": {
 		ID:          "gemini-embedding-001",
 		Name:        "Gemini Embedding 001",
+		Description: "Embedding model for semantic search, retrieval, clustering, and ranking pipelines",
 		Family:      "gemini",
 		Knowledge:   "2025-05",
 		ReleaseDate: "2025-05-20",
@@ -1383,6 +1412,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-embedding-2": {
 		ID:          "gemini-embedding-2",
 		Name:        "Gemini Embedding 2",
+		Description: "Multimodal embedding model mapping text, images, video, audio, and PDFs into a unified embedding space",
 		Family:      "gemini",
 		Knowledge:   "2025-11",
 		ReleaseDate: "2026-04-22",
@@ -1423,6 +1453,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-flash-latest": {
 		ID:          "gemini-flash-latest",
 		Name:        "Gemini Flash Latest",
+		Description: "High-efficiency Gemini model for agentic workflows, coding, and multimodal reasoning",
 		Family:      "gemini-flash",
 		Knowledge:   "2026-03",
 		ReleaseDate: "2026-08-13",
@@ -1473,6 +1504,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-flash-lite-latest": {
 		ID:          "gemini-flash-lite-latest",
 		Name:        "Gemini Flash-Lite Latest",
+		Description: "Fast Gemini model balancing multimodal reasoning, tool use, and cost",
 		Family:      "gemini-flash-lite",
 		Knowledge:   "2026-03",
 		ReleaseDate: "2026-07-21",
@@ -1524,6 +1556,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-omni-flash-preview": {
 		ID:          "gemini-omni-flash-preview",
 		Name:        "Gemini Omni Flash Preview",
+		Description: "Video generation and editing model for fast, conversational text- and image-to-video workflows",
 		Family:      "gemini",
 		ReleaseDate: "2026-06-30",
 		LastUpdated: "2026-06-30",
@@ -1561,6 +1594,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-pro-latest": {
 		ID:          "gemini-pro-latest",
 		Name:        "Gemini Pro Latest",
+		Description: "Reasoning-first Gemini preview for agentic coding and complex problem solving",
 		Family:      "gemini-pro",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-02-19",
@@ -1620,6 +1654,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemma-4-26b-a4b-it": {
 		ID:          "gemma-4-26b-a4b-it",
 		Name:        "Gemma 4 26B A4B IT",
+		Description: "Open Gemma instruction model for efficient chat and self-hosted deployments",
 		Family:      "gemma",
 		ReleaseDate: "2026-04-02",
 		LastUpdated: "2026-04-02",
@@ -1661,6 +1696,7 @@ var staticProfiles = map[string]profile.Profile{
 	"gemma-4-31b-it": {
 		ID:          "gemma-4-31b-it",
 		Name:        "Gemma 4 31B IT",
+		Description: "Largest Gemma 4 instruction model for open, self-hosted chat and reasoning",
 		Family:      "gemma",
 		ReleaseDate: "2026-04-02",
 		LastUpdated: "2026-04-02",
@@ -1702,6 +1738,7 @@ var staticProfiles = map[string]profile.Profile{
 	"lyria-3-clip-preview": {
 		ID:          "lyria-3-clip-preview",
 		Name:        "Lyria 3 Clip Preview",
+		Description: "Music generation model for short 30-second clips, loops, and previews from text or image prompts",
 		Family:      "lyria",
 		ReleaseDate: "2026-03-25",
 		LastUpdated: "2026-03-25",
@@ -1739,6 +1776,7 @@ var staticProfiles = map[string]profile.Profile{
 	"lyria-3-pro-preview": {
 		ID:          "lyria-3-pro-preview",
 		Name:        "Lyria 3 Pro Preview",
+		Description: "Music generation model for full-length songs from text or images with vocals and structure",
 		Family:      "lyria",
 		ReleaseDate: "2026-03-25",
 		LastUpdated: "2026-03-25",
@@ -1776,6 +1814,7 @@ var staticProfiles = map[string]profile.Profile{
 	"veo-3.1-fast-generate-preview": {
 		ID:          "veo-3.1-fast-generate-preview",
 		Name:        "Veo 3.1 fast",
+		Description: "Video model for prompt-guided generation, editing, and motion workflows",
 		Family:      "veo",
 		ReleaseDate: "2025-10-15",
 		LastUpdated: "2026-01-01",
@@ -1813,6 +1852,7 @@ var staticProfiles = map[string]profile.Profile{
 	"veo-3.1-generate-preview": {
 		ID:          "veo-3.1-generate-preview",
 		Name:        "Veo 3.1",
+		Description: "Video model for prompt-guided generation, editing, and motion workflows",
 		Family:      "veo",
 		ReleaseDate: "2025-10-15",
 		LastUpdated: "2026-01",
@@ -1849,6 +1889,7 @@ var staticProfiles = map[string]profile.Profile{
 	"veo-3.1-lite-generate-preview": {
 		ID:          "veo-3.1-lite-generate-preview",
 		Name:        "Veo 3.1 lite",
+		Description: "Video model for prompt-guided generation, editing, and motion workflows",
 		Family:      "veo",
 		ReleaseDate: "2026-03-31",
 		LastUpdated: "2026-03-31",

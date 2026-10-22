@@ -17,6 +17,7 @@ type Provider interface {
 type Profile struct {
 	ID           string       `json:"id"`
 	Name         string       `json:"name"`
+	Description  string       `json:"description,omitempty"`
 	Family       string       `json:"family,omitempty"`
 	Knowledge    string       `json:"knowledge,omitempty"`
 	ReleaseDate  string       `json:"release_date,omitempty"`

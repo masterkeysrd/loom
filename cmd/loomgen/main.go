@@ -128,6 +128,7 @@ type modelEntry struct {
 	ID               string `json:"id"`
 	Type             string `json:"type"`
 	Name             string `json:"name"`
+	Description      string `json:"description"`
 	Family           string `json:"family"`
 	Knowledge        string `json:"knowledge"`
 	ReleaseDate      string `json:"release_date"`
@@ -222,6 +223,9 @@ var staticProfiles = map[string]profile.Profile{
 	{{ printf "%q" .ID }}: {
 		ID:          {{ printf "%q" .ID }},
 		Name:        {{ printf "%q" .Name }},
+		{{- if .Description }}
+		Description: {{ printf "%q" .Description }},
+		{{- end }}
 		Family:      {{ printf "%q" .Family }},
 		{{- if .Knowledge }}
 		Knowledge:   {{ printf "%q" .Knowledge }},

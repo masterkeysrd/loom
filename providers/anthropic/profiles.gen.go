@@ -10,6 +10,7 @@ var staticProfiles = map[string]profile.Profile{
 	"claude-fable-5": {
 		ID:          "claude-fable-5",
 		Name:        "Claude Fable 5",
+		Description: "Claude model for creative writing, analysis, and controlled agent workflows",
 		Family:      "claude-fable",
 		ReleaseDate: "2026-06-07",
 		LastUpdated: "2026-06-09",
@@ -59,6 +60,7 @@ var staticProfiles = map[string]profile.Profile{
 	"claude-fable-5-1": {
 		ID:          "claude-fable-5-1",
 		Name:        "Claude Fable 5.1",
+		Description: "Claude model for demanding reasoning and long-horizon agentic work",
 		Family:      "claude-fable",
 		Knowledge:   "2026-06",
 		ReleaseDate: "2026-09-01",
@@ -109,6 +111,7 @@ var staticProfiles = map[string]profile.Profile{
 	"claude-haiku-4-5": {
 		ID:          "claude-haiku-4-5",
 		Name:        "Claude Haiku 4.5 (latest)",
+		Description: "Fast Claude lane for lightweight agents, office tasks, and responsive chat",
 		Family:      "claude-haiku",
 		Knowledge:   "2025-02-28",
 		ReleaseDate: "2025-10-15",
@@ -153,6 +156,7 @@ var staticProfiles = map[string]profile.Profile{
 	"claude-haiku-4-5-20251001": {
 		ID:          "claude-haiku-4-5-20251001",
 		Name:        "Claude Haiku 4.5",
+		Description: "Fast Claude model for responsive assistance, classification, and lightweight agents",
 		Family:      "claude-haiku",
 		Knowledge:   "2025-02-28",
 		ReleaseDate: "2025-10-15",
@@ -197,6 +201,7 @@ var staticProfiles = map[string]profile.Profile{
 	"claude-haiku-5-5": {
 		ID:          "claude-haiku-5-5",
 		Name:        "Claude Haiku 5.5",
+		Description: "Fast Claude model for responsive assistance, classification, and lightweight agents",
 		Family:      "claude-haiku",
 		Knowledge:   "2026-06",
 		ReleaseDate: "2026-10-07",
@@ -259,6 +264,7 @@ var staticProfiles = map[string]profile.Profile{
 	"claude-opus-4-5": {
 		ID:          "claude-opus-4-5",
 		Name:        "Claude Opus 4.5 (latest)",
+		Description: "Flagship Claude model for deep reasoning, coding, and long-horizon agents",
 		Family:      "claude-opus",
 		Knowledge:   "2025-05",
 		ReleaseDate: "2025-11-24",
@@ -311,6 +317,7 @@ var staticProfiles = map[string]profile.Profile{
 	"claude-opus-4-5-20251101": {
 		ID:          "claude-opus-4-5-20251101",
 		Name:        "Claude Opus 4.5",
+		Description: "Flagship Claude model for deep reasoning, coding, and long-horizon agents",
 		Family:      "claude-opus",
 		Knowledge:   "2025-05",
 		ReleaseDate: "2025-11-24",
@@ -363,6 +370,7 @@ var staticProfiles = map[string]profile.Profile{
 	"claude-opus-4-6": {
 		ID:          "claude-opus-4-6",
 		Name:        "Claude Opus 4.6",
+		Description: "High-end Claude for difficult coding, planning, and slower expert reasoning",
 		Family:      "claude-opus",
 		Knowledge:   "2025-05-31",
 		ReleaseDate: "2026-02-04",
@@ -416,6 +424,7 @@ var staticProfiles = map[string]profile.Profile{
 	"claude-opus-4-7": {
 		ID:          "claude-opus-4-7",
 		Name:        "Claude Opus 4.7",
+		Description: "Stronger Opus tier for advanced software work and high-stakes reasoning",
 		Family:      "claude-opus",
 		Knowledge:   "2026-01-31",
 		ReleaseDate: "2026-04-14",
@@ -466,6 +475,7 @@ var staticProfiles = map[string]profile.Profile{
 	"claude-opus-4-8": {
 		ID:          "claude-opus-4-8",
 		Name:        "Claude Opus 4.8",
+		Description: "Top Claude Opus tier for the hardest reasoning, coding, and long-horizon agents",
 		Family:      "claude-opus",
 		Knowledge:   "2026-01",
 		ReleaseDate: "2026-05-28",
@@ -516,6 +526,7 @@ var staticProfiles = map[string]profile.Profile{
 	"claude-opus-5": {
 		ID:          "claude-opus-5",
 		Name:        "Claude Opus 5",
+		Description: "Strongest Claude Opus model for coding, agents, and professional work",
 		Family:      "claude-opus",
 		Knowledge:   "2026-05",
 		ReleaseDate: "2026-07-24",
@@ -566,6 +577,7 @@ var staticProfiles = map[string]profile.Profile{
 	"claude-opus-5-5": {
 		ID:          "claude-opus-5-5",
 		Name:        "Claude Opus 5.5",
+		Description: "Claude model for long-running agentic coding and knowledge work",
 		Family:      "claude-opus",
 		Knowledge:   "2026-06",
 		ReleaseDate: "2026-09-22",
@@ -616,6 +628,7 @@ var staticProfiles = map[string]profile.Profile{
 	"claude-sonnet-4-5": {
 		ID:          "claude-sonnet-4-5",
 		Name:        "Claude Sonnet 4.5 (latest)",
+		Description: "Balanced Claude model for coding, analysis, agent workflows, and cost control",
 		Family:      "claude-sonnet",
 		Knowledge:   "2025-07-31",
 		ReleaseDate: "2025-09-29",
@@ -660,6 +673,7 @@ var staticProfiles = map[string]profile.Profile{
 	"claude-sonnet-4-5-20250929": {
 		ID:          "claude-sonnet-4-5-20250929",
 		Name:        "Claude Sonnet 4.5",
+		Description: "Balanced Claude model for coding, analysis, agent workflows, and cost control",
 		Family:      "claude-sonnet",
 		Knowledge:   "2025-07-31",
 		ReleaseDate: "2025-09-29",
@@ -704,6 +718,7 @@ var staticProfiles = map[string]profile.Profile{
 	"claude-sonnet-4-6": {
 		ID:          "claude-sonnet-4-6",
 		Name:        "Claude Sonnet 4.6",
+		Description: "Claude workhorse for coding agents, careful analysis, and production cost control",
 		Family:      "claude-sonnet",
 		Knowledge:   "2025-08-31",
 		ReleaseDate: "2026-02-17",
@@ -757,6 +772,7 @@ var staticProfiles = map[string]profile.Profile{
 	"claude-sonnet-5": {
 		ID:          "claude-sonnet-5",
 		Name:        "Claude Sonnet 5",
+		Description: "Everyday Claude agent model for coding, planning, browsing, and general work",
 		Family:      "claude-sonnet",
 		Knowledge:   "2026-01-31",
 		ReleaseDate: "2026-06-29",
@@ -810,6 +826,7 @@ var staticProfiles = map[string]profile.Profile{
 	"claude-sonnet-5-5": {
 		ID:          "claude-sonnet-5-5",
 		Name:        "Claude Sonnet 5.5",
+		Description: "Fast Claude model for everyday coding, agents, and knowledge work",
 		Family:      "claude-sonnet",
 		Knowledge:   "2026-06",
 		ReleaseDate: "2026-09-28",

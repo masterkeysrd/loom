@@ -1728,6 +1728,67 @@ var staticProfiles = map[string]profile.Profile{
 			},
 		},
 	},
+	"gpt-6.1-terra": {
+		ID:          "gpt-6.1-terra",
+		Name:        "GPT-6.1 Terra",
+		Description: "Fast, efficient model for visual reasoning, precise computer use, and clear, natural writing.",
+		Family:      "gpt-terra",
+		Knowledge:   "2026-06-01",
+		ReleaseDate: "2026-10-26",
+		LastUpdated: "2026-10-26",
+		Capabilities: profile.Capabilities{
+			Completion:  true,
+			Decision:    false,
+			Embedding:   false,
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []profile.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"none",
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: profile.Limits{
+			Context: 1050000,
+			Output:  128000,
+		},
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityPDF,
+			},
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: profile.Pricing{
+			Input:      1,
+			Output:     5,
+			CacheRead:  0.05,
+			CacheWrite: 1.25,
+			TieredLimits: []profile.TierPricing{
+				{
+					Input:      2,
+					Output:     7.5,
+					CacheRead:  0.1,
+					CacheWrite: 2.5,
+					TierLimit:  272000,
+				},
+			},
+		},
+	},
 	"gpt-daybreak-blue-latest": {
 		ID:          "gpt-daybreak-blue-latest",
 		Name:        "Daybreak Blue",

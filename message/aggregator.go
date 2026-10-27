@@ -1,6 +1,9 @@
 package message
 
-import "fmt"
+import (
+	"fmt"
+	"maps"
+)
 
 // AssistantAggregator accumulates a stream of [AssistantChunk] values into
 // coherent content blocks. Consecutive text chunks are merged into a single
@@ -10,6 +13,7 @@ import "fmt"
 // complete [ToolCall] blocks, mirroring the LangChain streaming convention.
 type AssistantAggregator struct {
 	id           string
+	metadata     map[string]any
 	blocks       []Block
 	metrics      *TokenMetrics
 	pendingCalls map[int]*ToolCallChunk
@@ -40,6 +44,12 @@ func (a *AssistantAggregator) Add(chunk *AssistantChunk) {
 	for _, block := range chunk.Content {
 		a.upsert(block)
 	}
+	if len(chunk.Metadata) > 0 {
+		if a.metadata == nil {
+			a.metadata = make(map[string]any)
+		}
+		maps.Copy(a.metadata, chunk.Metadata)
+	}
 	if chunk.Metrics != nil {
 		if a.metrics == nil {
 			a.metrics = &TokenMetrics{}
@@ -59,7 +69,8 @@ func (a *AssistantAggregator) Build() (*Assistant, error) {
 
 	return &Assistant{
 		Base: Base{
-			ID: a.id,
+			ID:       a.id,
+			Metadata: a.metadata,
 		},
 		Content:    blocks,
 		Metrics:    a.metrics,
@@ -99,24 +110,48 @@ func (a *AssistantAggregator) upsert(incoming Block) {
 		if len(a.blocks) > 0 {
 			last := a.blocks[len(a.blocks)-1]
 			if last.Kind() == BlockKindText {
-				last.(*TextBlock).Text += incoming.Text
+				txt := last.(*TextBlock)
+				txt.Text += incoming.Text
+				if len(incoming.Extras) > 0 {
+					if txt.Extras == nil {
+						txt.Extras = make(map[string]any)
+					}
+					maps.Copy(txt.Extras, incoming.Extras)
+				}
 				return
 			}
 		}
 		// Store an independent copy so that mutations to a.blocks[n].Text
 		// (e.g. by a sibling aggregator sharing the same *TextBlock pointer)
 		// do not affect the block owned by this aggregator, and vice-versa.
-		a.blocks = append(a.blocks, &TextBlock{Text: incoming.Text})
+		txt := &TextBlock{Text: incoming.Text}
+		if len(incoming.Extras) > 0 {
+			txt.Extras = make(map[string]any)
+			maps.Copy(txt.Extras, incoming.Extras)
+		}
+		a.blocks = append(a.blocks, txt)
 	case *ThinkingBlock:
 		if len(a.blocks) > 0 {
 			last := a.blocks[len(a.blocks)-1]
 			if last.Kind() == BlockKindThinking {
-				last.(*ThinkingBlock).Thinking += incoming.Thinking
+				tb := last.(*ThinkingBlock)
+				tb.Thinking += incoming.Thinking
+				if len(incoming.Extras) > 0 {
+					if tb.Extras == nil {
+						tb.Extras = make(map[string]any)
+					}
+					maps.Copy(tb.Extras, incoming.Extras)
+				}
 				return
 			}
 		}
 		// Same defensive copy as TextBlock above.
-		a.blocks = append(a.blocks, &ThinkingBlock{Thinking: incoming.Thinking})
+		tb := &ThinkingBlock{Thinking: incoming.Thinking}
+		if len(incoming.Extras) > 0 {
+			tb.Extras = make(map[string]any)
+			maps.Copy(tb.Extras, incoming.Extras)
+		}
+		a.blocks = append(a.blocks, tb)
 	case *ToolCallChunk:
 		pt, ok := a.pendingCalls[incoming.Index]
 		if !ok {

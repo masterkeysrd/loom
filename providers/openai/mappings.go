@@ -334,6 +334,12 @@ func ensureValidContent(content string) string {
 
 func toAssistantChunk(chunk *openai.ChatCompletionChunk) (message.AssistantChunk, error) {
 	res := message.AssistantChunk{}
+	if chunk.ID != "" {
+		res.ID = chunk.ID
+		res.Metadata = map[string]any{
+			ResponseIDKey: chunk.ID,
+		}
+	}
 
 	if len(chunk.Choices) > 0 {
 		choice := chunk.Choices[0]

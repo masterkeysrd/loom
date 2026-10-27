@@ -19,9 +19,10 @@ type BaseChunk struct {
 type AssistantChunk struct {
 	BaseChunk `json:",inline"`
 
-	Model   string        `json:"model,omitempty"`
-	Content []Block       `json:"content"`
-	Metrics *TokenMetrics `json:"metrics,omitempty"`
+	Model    string         `json:"model,omitempty"`
+	Content  []Block        `json:"content"`
+	Metrics  *TokenMetrics  `json:"metrics,omitempty"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 
 	Done       bool   `json:"done"`
 	DoneReason string `json:"done_reason,omitempty"`

@@ -179,3 +179,80 @@ func TestAggregatorCumulativeMetrics(t *testing.T) {
 		t.Errorf("expected Output tokens 3, got %d", msg.Metrics.Tokens.Output)
 	}
 }
+
+func TestAggregatorMetadata(t *testing.T) {
+	agg := NewAssistantAggregator()
+	agg.Add(&AssistantChunk{
+		Metadata: map[string]any{
+			"openai.response_id": "resp_123",
+		},
+	})
+	agg.Add(&AssistantChunk{
+		Content: []Block{&TextBlock{Text: "Hello"}},
+		Metadata: map[string]any{
+			"custom_key": "custom_val",
+		},
+	})
+
+	msg, err := agg.Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	meta := msg.GetMetadata()
+	if meta == nil {
+		t.Fatal("expected metadata to be populated")
+	}
+	if meta["openai.response_id"] != "resp_123" {
+		t.Errorf("expected openai.response_id 'resp_123', got %v", meta["openai.response_id"])
+	}
+	if meta["custom_key"] != "custom_val" {
+		t.Errorf("expected custom_key 'custom_val', got %v", meta["custom_key"])
+	}
+}
+
+func TestAggregatorExtrasPreservation(t *testing.T) {
+	agg := NewAssistantAggregator()
+	agg.Add(&AssistantChunk{
+		Content: []Block{
+			&ThinkingBlock{
+				Thinking: "Step 1: thinking...",
+				Extras: map[string]any{
+					"openai.reasoning_id": "rs_1",
+				},
+			},
+		},
+	})
+	agg.Add(&AssistantChunk{
+		Content: []Block{
+			&ThinkingBlock{
+				Thinking: " Step 2: conclusion.",
+				Extras: map[string]any{
+					"openai.encrypted_content": "enc_blob_123",
+				},
+			},
+		},
+	})
+
+	msg, err := agg.Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	if len(msg.Content) != 1 {
+		t.Fatalf("expected 1 merged thinking block, got %d", len(msg.Content))
+	}
+	tb, ok := msg.Content[0].(*ThinkingBlock)
+	if !ok {
+		t.Fatalf("expected *ThinkingBlock, got %T", msg.Content[0])
+	}
+	if tb.Thinking != "Step 1: thinking... Step 2: conclusion." {
+		t.Errorf("unexpected thinking text: %q", tb.Thinking)
+	}
+	if tb.Extras["openai.reasoning_id"] != "rs_1" {
+		t.Errorf("expected reasoning_id 'rs_1', got %v", tb.Extras["openai.reasoning_id"])
+	}
+	if tb.Extras["openai.encrypted_content"] != "enc_blob_123" {
+		t.Errorf("expected encrypted_content 'enc_blob_123', got %v", tb.Extras["openai.encrypted_content"])
+	}
+}

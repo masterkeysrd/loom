@@ -7,6 +7,7 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/openai/openai-go/v3"
 )
 
 func TestToAssistantMessageParamToolCallsUseNullContent(t *testing.T) {
@@ -174,5 +175,30 @@ func TestToChatCompletionNewParamsStructuredOutput(t *testing.T) {
 	}
 	if !jsonSchema.Strict.Value {
 		t.Error("expected Strict to be true")
+	}
+}
+
+func TestToAssistantChunkPopulatesResponseID(t *testing.T) {
+	chunk := &openai.ChatCompletionChunk{
+		ID: "chatcmpl_abc123",
+		Choices: []openai.ChatCompletionChunkChoice{
+			{
+				Delta: openai.ChatCompletionChunkChoiceDelta{
+					Content: "Hello world",
+				},
+			},
+		},
+	}
+
+	res, err := toAssistantChunk(chunk)
+	if err != nil {
+		t.Fatalf("toAssistantChunk failed: %v", err)
+	}
+
+	if res.ID != "chatcmpl_abc123" {
+		t.Errorf("expected res.ID 'chatcmpl_abc123', got %q", res.ID)
+	}
+	if res.Metadata == nil || res.Metadata[ResponseIDKey] != "chatcmpl_abc123" {
+		t.Errorf("expected res.Metadata[%q] == 'chatcmpl_abc123', got %v", ResponseIDKey, res.Metadata)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/masterkeysrd/loom/llm"
@@ -42,27 +43,36 @@ func (p PromptCache) ExtensionID() string {
 //
 //go:generate loomgen llm-profiles -provider=openai -out=profiles.gen.go -pkg=loomopenai
 type Provider struct {
-	client    *openai.Client
-	overrides sync.Map
+	client         *openai.Client
+	overrides      sync.Map
+	defaultAPIMode APIMode
 }
 
 // NewDefaultProvider creates a [Provider] using the OpenAI client configured
 // from the OPENAI_API_KEY environment variable.
-func NewDefaultProvider() (*Provider, error) {
+func NewDefaultProvider(opts ...Option) (*Provider, error) {
 	httpClient := &http.Client{
 		Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
 	client := openai.NewClient(option.WithHTTPClient(httpClient))
-	return &Provider{
+	p := &Provider{
 		client: &client,
-	}, nil
+	}
+	for _, opt := range opts {
+		opt(p)
+	}
+	return p, nil
 }
 
 // NewProvider creates a [Provider] using the provided OpenAI client.
-func NewProvider(client *openai.Client) *Provider {
-	return &Provider{
+func NewProvider(client *openai.Client, opts ...Option) *Provider {
+	p := &Provider{
 		client: client,
 	}
+	for _, opt := range opts {
+		opt(p)
+	}
+	return p
 }
 
 // Name returns "openai", uniquely identifying this provider in a [llm.Registry].
@@ -70,10 +80,77 @@ func (p *Provider) Name() string {
 	return "openai"
 }
 
+var responsesAPIOnlyPrefixes = []string{
+	"gpt-5-pro",
+	"gpt-5.2-pro",
+	"gpt-5.4-pro",
+	"gpt-5.5-pro",
+	"gpt-5.6-sol",
+}
+
+func modelPrefersResponsesAPI(modelName string, hasTools bool) bool {
+	lower := strings.ToLower(modelName)
+	for _, prefix := range responsesAPIOnlyPrefixes {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	if strings.Contains(lower, "codex") ||
+		strings.Contains(lower, "deep-research") ||
+		strings.HasPrefix(lower, "computer-use") ||
+		strings.Contains(lower, "cyber") ||
+		strings.Contains(lower, "rosalind") {
+		return true
+	}
+	if strings.HasPrefix(lower, "gpt-6") && hasTools {
+		return true
+	}
+	return false
+}
+
+func (p *Provider) shouldUseResponsesAPI(req *llm.Request) (bool, ResponsesOptions) {
+	var opts ResponsesOptions
+	if ext, ok := req.Extensions[ResponsesExtensionID]; ok {
+		if ro, ok := ext.(ResponsesOptions); ok {
+			opts = ro
+		}
+	}
+
+	// 1. Explicit request-level flag
+	if opts.Enabled {
+		return true, opts
+	}
+
+	// 2. Feature-based triggers (built-in tools, state continuation)
+	if opts.WebSearch || opts.FileSearch != nil || opts.CodeInterpreter ||
+		opts.UsePreviousResponseID || opts.PreviousResponseID != "" {
+		return true, opts
+	}
+
+	// 3. Explicit provider-level mode
+	if p.defaultAPIMode == APIModeResponses {
+		return true, opts
+	}
+	if p.defaultAPIMode == APIModeChatCompletions {
+		return false, opts
+	}
+
+	// 4. Model-based auto-detection (models that require or prefer Responses API)
+	if modelPrefersResponsesAPI(req.Model, len(req.Tools) > 0) {
+		return true, opts
+	}
+
+	return false, opts
+}
+
 // Stream converts request into an OpenAI chat request, initiates the streaming
 // call, and returns an iterator that yields [message.AssistantChunk] values as
 // tokens arrive from the OpenAI server.
 func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.StreamResponse, error) {
+	if useResponses, opts := p.shouldUseResponsesAPI(request); useResponses {
+		return p.streamResponses(ctx, request, opts)
+	}
+
 	params, err := toChatCompletionNewParams(request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert chat request: %w", err)

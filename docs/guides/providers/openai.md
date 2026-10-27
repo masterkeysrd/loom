@@ -76,7 +76,65 @@ model = model.WithExtension(loomopenai.PromptCache{
 })
 ```
 
-## 5. Model Catalog
+## 5. Responses API ⚡
+
+OpenAI's **Responses API** (`/v1/responses`) provides agentic capabilities including built-in tools (web search, file search), server-side state continuation, and encrypted reasoning persistence.
+
+### Hybrid Routing
+
+You can enable the Responses API either globally or per-request:
+
+```go
+// 1. Explicit opt-in at provider level:
+provider, err := loomopenai.NewDefaultProvider(
+    loomopenai.WithResponsesAPI(true), // or loomopenai.WithAPIMode(loomopenai.APIModeResponses)
+)
+
+// 2. Or automatic feature-triggered routing:
+// Loom automatically routes to /v1/responses whenever Responses features
+// (such as WebSearch, FileSearch, or conversation continuation) are used:
+model = model.WithExtension(loomopenai.WithWebSearch())
+```
+
+### State Management & Message Pruning (`use_previous_response_id`)
+
+When continuing conversational threads with `store: true` (default), Loom can automatically extract the response ID from the latest assistant message metadata (`openai.response_id`), set `previous_response_id`, and drop previous messages from the request payload to minimize token transmission:
+
+```go
+model = model.WithExtension(loomopenai.ResponsesOptions{
+    Enabled:               true,
+    UsePreviousResponseID: true,
+})
+
+// Turn 1
+history := []message.Message{
+    message.NewUserText("Hi, I'm Bob."),
+}
+resp1, _ := model.Generate(ctx, history)
+// resp1 has metadata["openai.response_id"] = "resp_abc123"
+history = append(history, resp1)
+
+// Turn 2
+history = append(history, message.NewUserText("What is my name?"))
+// Loom automatically prunes Turn 1 and sets previous_response_id="resp_abc123"
+resp2, _ := model.Generate(ctx, history)
+```
+
+### Dual Storage Modes & Encrypted Content (`encrypted_content`)
+
+The Responses API supports both stateful server storage and Zero Data Retention (ZDR):
+
+* **`Store: true` (Default)**: OpenAI retains conversation trees server-side, enabling message pruning via `previous_response_id`.
+* **`Store: false` (Zero Data Retention)**: OpenAI retains no conversation history. Loom sends the complete conversation history client-side while preserving internal reasoning tokens via OpenAI's `encrypted_content` in `ThinkingBlock.Extras[openai.encrypted_content]`.
+
+```go
+storeFalse := false
+model = model.WithExtension(loomopenai.ResponsesOptions{
+    Store: &storeFalse, // Enforce Zero Data Retention compliance
+})
+```
+
+## 6. Model Catalog
 
 The provider includes a static catalog of common OpenAI models with their context limits and capabilities. You can search or list them at runtime:
 
@@ -87,7 +145,7 @@ for _, p := range profiles {
 }
 ```
 
-## 6. Decision Models (System One) ⚖️
+## 7. Decision Models (System One) ⚖️
 
 `loomopenai.Provider` natively implements the [`decision.Provider`](../decision.md) interface, communicating directly with OpenAI's `/v1/decisions` endpoint. This allows you to evaluate fast, calibrated probabilistic questions using decision models such as `gpt-6-luna`.
 
@@ -129,7 +187,7 @@ if ans.Passed(0.80) {
 
 Calls to OpenAI decisions automatically record OpenTelemetry client spans decorated with `openai.api.type = "decisions"`.
 
-## 7. Embedding Models 🧭
+## 8. Embedding Models 🧭
 
 `loomopenai.Provider` also implements the [`embedding.Provider`](../embedding.md) interface for generating dense text embeddings using models like `text-embedding-3-small` and `text-embedding-3-large`:
 

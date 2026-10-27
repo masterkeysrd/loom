@@ -181,6 +181,19 @@ func TestToResponseNewParamsBasic(t *testing.T) {
 	if len(params.Tools) != 2 {
 		t.Fatalf("expected 2 tools, got %d", len(params.Tools))
 	}
+	weatherTool := params.Tools[1].OfFunction
+	if weatherTool == nil {
+		t.Fatalf("expected function tool at index 1")
+	}
+	if weatherTool.Name != "get_weather" {
+		t.Errorf("expected tool name 'get_weather', got %s", weatherTool.Name)
+	}
+	if weatherTool.Description.Value != "Get the current weather" {
+		t.Errorf("expected tool description 'Get the current weather', got %s", weatherTool.Description.Value)
+	}
+	if weatherTool.Strict.Value != false {
+		t.Errorf("expected tool strict to be false by default, got %v", weatherTool.Strict.Value)
+	}
 
 	// Verify input has only the User message (System message moved to Instructions)
 	inputList := params.Input.OfInputItemList
@@ -385,5 +398,53 @@ func TestToResponseNewParamsStructuredOutput(t *testing.T) {
 	}
 	if jsonSchema.Strict.Value != true {
 		t.Errorf("expected strict true, got %v", jsonSchema.Strict.Value)
+	}
+}
+
+func TestToResponseNewParamsStrictTools(t *testing.T) {
+	req := &llm.Request{
+		Model: "gpt-4o",
+		Tools: []tool.Definition{
+			{
+				Name:        "view",
+				Description: "View a file with optional limit",
+				InputSchema: &jsonschema.Schema{
+					Type: "object",
+					Properties: map[string]*jsonschema.Schema{
+						"path":  {Type: "string"},
+						"limit": {Type: "integer"},
+					},
+					Required: []string{"path"},
+				},
+			},
+		},
+		Messages: []message.Message{
+			message.NewUserText("view file"),
+		},
+	}
+
+	// Default: StrictTools = false (optional properties like 'limit' are allowed without being in Required)
+	paramsDefault, err := toResponseNewParams(req, ResponsesOptions{})
+	if err != nil {
+		t.Fatalf("failed default: %v", err)
+	}
+	if len(paramsDefault.Tools) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(paramsDefault.Tools))
+	}
+	funcTool := paramsDefault.Tools[0].OfFunction
+	if funcTool.Strict.Value != false {
+		t.Errorf("expected strict false by default, got %v", funcTool.Strict.Value)
+	}
+	if funcTool.Description.Value != "View a file with optional limit" {
+		t.Errorf("expected description preserved, got %s", funcTool.Description.Value)
+	}
+
+	// Explicit: WithStrictTools(true)
+	paramsStrict, err := toResponseNewParams(req, WithStrictTools(true))
+	if err != nil {
+		t.Fatalf("failed strict: %v", err)
+	}
+	if paramsStrict.Tools[0].OfFunction.Strict.Value != true {
+		t.Errorf("expected strict true when enabled, got %v", paramsStrict.Tools[0].OfFunction.Strict.Value)
 	}
 }

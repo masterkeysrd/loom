@@ -405,7 +405,11 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 				paramsMap["additionalProperties"] = false
 			}
 		}
-		tools = append(tools, responses.ToolParamOfFunction(t.Name, paramsMap, true))
+		funcTool := responses.ToolParamOfFunction(t.Name, paramsMap, opts.StrictTools)
+		if t.Description != "" {
+			funcTool.OfFunction.Description = openai.String(t.Description)
+		}
+		tools = append(tools, funcTool)
 	}
 
 	if len(tools) > 0 {

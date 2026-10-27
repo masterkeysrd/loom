@@ -69,6 +69,11 @@ type ResponsesOptions struct {
 
 	// CodeInterpreter enables OpenAI's built-in code interpreter tool.
 	CodeInterpreter bool `json:"code_interpreter,omitempty"`
+
+	// StrictTools enables strict parameter validation (Structured Outputs) for function tools.
+	// When false (default), standard schema rules apply, allowing optional parameters.
+	// When true, all properties must be marked as required and additionalProperties must be false.
+	StrictTools bool `json:"strict_tools,omitempty"`
 }
 
 // ExtensionID returns the identifier for ResponsesOptions in llm.Request extensions.
@@ -94,6 +99,13 @@ func WithFileSearch(vectorStoreIDs ...string) ResponsesOptions {
 func WithPreviousResponse(responseID string) ResponsesOptions {
 	return ResponsesOptions{
 		PreviousResponseID: responseID,
+	}
+}
+
+// WithStrictTools returns a ResponsesOptions extension enabling strict schema validation for function tools.
+func WithStrictTools(strict bool) ResponsesOptions {
+	return ResponsesOptions{
+		StrictTools: strict,
 	}
 }
 

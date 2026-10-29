@@ -13,6 +13,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/masterkeysrd/loom/checkpoint/pg"
 	"github.com/masterkeysrd/loom/graph"
+	"github.com/masterkeysrd/loom/message"
 )
 
 type TestState struct {
@@ -138,5 +139,125 @@ func TestCheckpointer(t *testing.T) {
 
 	if !reflect.DeepEqual(state2, loadedState2) {
 		t.Errorf("expected state %+v, got %+v", state2, loadedState2)
+	}
+}
+
+type SampleToolResult struct {
+	Zebra string `json:"zebra"`
+	Apple string `json:"apple"`
+}
+
+type AgentStateWithTool struct {
+	Messages message.MessageList `json:"messages"`
+}
+
+func TestStructuredContent_PGCheckpointerDeterminism(t *testing.T) {
+	dsn := os.Getenv("POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("POSTGRES_DSN not set")
+	}
+
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	cp, err := pg.NewCheckpointer(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	loc := graph.Location{
+		ThreadID:     "thread-tool-test-" + uuid.New().String(),
+		CheckpointNS: "",
+		CheckpointID: uuid.Must(uuid.NewV7()).String(),
+	}
+
+	toolMsg := &message.Tool{
+		ToolCallID:        "call_123",
+		Name:              "get_sample",
+		StructuredContent: SampleToolResult{Zebra: "stripes", Apple: "red"},
+	}
+
+	state := AgentStateWithTool{
+		Messages: message.MessageList{toolMsg},
+	}
+
+	// 1. Serialization BEFORE checkpoint:
+	beforeToolBytes, err := json.Marshal(toolMsg)
+	if err != nil {
+		t.Fatalf("failed to marshal before checkpoint: %v", err)
+	}
+
+	beforeCanonBytes, err := toolMsg.CanonicalStructuredContent()
+	if err != nil {
+		t.Fatalf("failed to get canonical bytes before checkpoint: %v", err)
+	}
+
+	// 2. Record checkpoint into PostgreSQL
+	channels, err := graph.DecomposeState(state)
+	if err != nil {
+		t.Fatalf("failed to decompose state: %v", err)
+	}
+
+	checkpoint := graph.Checkpoint{
+		Location:  loc,
+		State:     channels,
+		Next:      []string{"next-node"},
+		Timestamp: time.Now().UTC(),
+	}
+
+	if err := cp.Record(ctx, checkpoint); err != nil {
+		t.Fatalf("failed to record checkpoint: %v", err)
+	}
+
+	// 3. Load checkpoint from PostgreSQL
+	loadedCP, err := cp.Load(ctx, loc)
+	if err != nil {
+		t.Fatalf("failed to load checkpoint: %v", err)
+	}
+	if loadedCP == nil {
+		t.Fatal("expected checkpoint to be found")
+	}
+
+	var loadedState AgentStateWithTool
+	stateBytes, err := marshalStateMap(loadedCP.State)
+	if err != nil {
+		t.Fatalf("failed to marshal loaded state map: %v", err)
+	}
+
+	if err := json.Unmarshal(stateBytes, &loadedState); err != nil {
+		t.Fatalf("failed to unmarshal loaded state: %v", err)
+	}
+
+	if len(loadedState.Messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(loadedState.Messages))
+	}
+
+	loadedTool, ok := loadedState.Messages[0].(*message.Tool)
+	if !ok {
+		t.Fatalf("expected loaded message to be *message.Tool, got %T", loadedState.Messages[0])
+	}
+
+	// 4. Serialization AFTER checkpoint:
+	afterToolBytes, err := json.Marshal(loadedTool)
+	if err != nil {
+		t.Fatalf("failed to marshal after checkpoint: %v", err)
+	}
+
+	afterCanonBytes, err := loadedTool.CanonicalStructuredContent()
+	if err != nil {
+		t.Fatalf("failed to get canonical bytes after checkpoint: %v", err)
+	}
+
+	// VERIFICATION: Serialization is 100% deterministic before and after PostgreSQL checkpoint!
+	if string(beforeToolBytes) != string(afterToolBytes) {
+		t.Fatalf("expected Tool JSON to be identical, but differed:\nBefore: %s\nAfter:  %s", string(beforeToolBytes), string(afterToolBytes))
+	}
+
+	if string(beforeCanonBytes) != string(afterCanonBytes) {
+		t.Fatalf("expected CanonicalStructuredContent to be identical, but differed:\nBefore: %s\nAfter:  %s", string(beforeCanonBytes), string(afterCanonBytes))
 	}
 }

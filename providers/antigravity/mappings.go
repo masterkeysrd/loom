@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"strings"
 
 	"github.com/masterkeysrd/loom/llm"
@@ -279,12 +278,8 @@ func toFunctionResponsePart(msg *message.Tool) (Part, error) {
 			response["output"] = text
 		}
 	} else if msg.StructuredContent != nil {
-		if m, ok := msg.StructuredContent.(map[string]any); ok {
-			maps.Copy(response, m)
-		} else {
-			data, _ := json.Marshal(msg.StructuredContent)
-			_ = json.Unmarshal(data, &response)
-		}
+		data, _ := msg.CanonicalStructuredContent()
+		_ = json.Unmarshal(data, &response)
 	}
 
 	if msg.IsError && response["error"] == nil {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/llm"
+	"github.com/masterkeysrd/loom/message"
 )
 
 func TestToChatRequestStructuredOutput(t *testing.T) {
@@ -97,5 +98,39 @@ func TestToChatRequestThinkingToggle(t *testing.T) {
 	}
 	if ollamaReqDisabled.Think == nil || ollamaReqDisabled.Think.Value != false {
 		t.Errorf("expected Think to be false, got %v", ollamaReqDisabled.Think)
+	}
+}
+
+func TestToAPIToolCall_DeterministicArgumentOrder(t *testing.T) {
+	tc := &message.ToolCall{
+		ID:   "call_1",
+		Name: "test_fn",
+		Args: map[string]any{
+			"alpha":   1,
+			"beta":    2,
+			"gamma":   3,
+			"delta":   4,
+			"epsilon": 5,
+			"zeta":    6,
+			"eta":     7,
+			"theta":   8,
+			"iota":    9,
+			"kappa":   10,
+		},
+	}
+
+	firstBytes, err := json.Marshal(toAPIToolCall(tc).Function.Arguments)
+	if err != nil {
+		t.Fatalf("failed to marshal first arguments: %v", err)
+	}
+
+	for i := range 50 {
+		iterBytes, err := json.Marshal(toAPIToolCall(tc).Function.Arguments)
+		if err != nil {
+			t.Fatalf("failed to marshal iter arguments: %v", err)
+		}
+		if string(firstBytes) != string(iterBytes) {
+			t.Fatalf("expected deterministic argument ordering across iterations, but iteration %d differed:\nFirst: %s\nIter:  %s", i, string(firstBytes), string(iterBytes))
+		}
 	}
 }

@@ -3,6 +3,8 @@ package loomollama
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/masterkeysrd/loom/llm"
@@ -112,7 +114,7 @@ func toAPIMessage(msg message.Message) (api.Message, error) {
 		ollamaMsg.ToolCallID = v.ToolCallID
 		isError = v.IsError
 		if len(v.Content) == 0 && v.StructuredContent != nil {
-			data, _ := json.Marshal(v.StructuredContent)
+			data, _ := v.CanonicalStructuredContent()
 			content.WriteString(string(data))
 		}
 	}
@@ -170,8 +172,8 @@ func toAPIRole(role message.Role) string {
 // wire format, copying the ID, name, index, and argument map.
 func toAPIToolCall(c *message.ToolCall) api.ToolCall {
 	args := api.NewToolCallFunctionArguments()
-	for k, v := range c.Args {
-		args.Set(k, v)
+	for _, k := range slices.Sorted(maps.Keys(c.Args)) {
+		args.Set(k, c.Args[k])
 	}
 
 	return api.ToolCall{

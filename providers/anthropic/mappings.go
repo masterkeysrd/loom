@@ -96,7 +96,7 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 			if len(msg.Content) > 0 {
 				contentBlocks = toToolResultContent(msg.Content)
 			} else if msg.StructuredContent != nil {
-				data, _ := json.Marshal(msg.StructuredContent)
+				data, _ := msg.CanonicalStructuredContent()
 				contentBlocks = []anthropic.ToolResultBlockParamContentUnion{
 					{
 						OfText: &anthropic.TextBlockParam{

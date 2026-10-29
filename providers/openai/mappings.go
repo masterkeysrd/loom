@@ -318,7 +318,7 @@ func toToolString(m *message.Tool) string {
 	}
 
 	if m.StructuredContent != nil {
-		data, _ := json.Marshal(m.StructuredContent)
+		data, _ := m.CanonicalStructuredContent()
 		return string(data)
 	}
 

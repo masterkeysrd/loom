@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"strings"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -315,12 +314,8 @@ func toFunctionResponsePart(msg *message.Tool) (*genai.Part, error) {
 		}
 	} else if msg.StructuredContent != nil {
 		// Fall back to StructuredContent if Content is not populated
-		if m, ok := msg.StructuredContent.(map[string]any); ok {
-			maps.Copy(response, m)
-		} else {
-			data, _ := json.Marshal(msg.StructuredContent)
-			_ = json.Unmarshal(data, &response)
-		}
+		data, _ := msg.CanonicalStructuredContent()
+		_ = json.Unmarshal(data, &response)
 	}
 
 	// Ensure error key is set if IsError is true but missing from structured content

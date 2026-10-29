@@ -330,7 +330,9 @@ func toAssistantChunk(event anthropic.MessageStreamEventUnion) (message.Assistan
 		chunk.Metrics = &message.TokenMetrics{
 			TotalTokens: inputTokens + outputTokens + cacheRead + cacheWrite,
 			Tokens: message.TokenDetails{
-				Input:      inputTokens + cacheRead + cacheWrite, // Summed for OTel compliance
+				// Anthropic input_tokens excludes cache tokens; add them back so
+				// Input is the total prompt size (cache tokens are a subset).
+				Input:      inputTokens + cacheRead + cacheWrite,
 				Output:     outputTokens,
 				CacheRead:  cacheRead,
 				CacheWrite: cacheWrite,

@@ -75,6 +75,13 @@ type Streamer func(context.Context, *Request) (StreamResponse, error)
 
 // Middleware is a function that wraps a [Streamer], allowing for cross-cutting
 // concerns like logging, tracing, or request modification.
+//
+// Cost is attached to chunk.Metrics by [Model.Stream] AFTER the middleware
+// chain runs, so middleware sees chunk.Metrics with tokens but no cost,
+// CostTier, or Priced. Middleware that needs them should obtain the profile via
+// [RuntimeFromContext] and call rt.Profile.Estimate(chunk.Metrics.Tokens)
+// (rt.Profile may be nil). Runtime.Profile is always the same profile Stream
+// uses for its own estimate, including one injected with [Model.WithProfile].
 type Middleware func(Streamer) Streamer
 
 // CallOption is a functional option that modifies an LLM [Request]
@@ -314,6 +321,18 @@ func (m *Model) WithMiddleware(mw ...Middleware) *Model {
 	return clone
 }
 
+// WithProfile returns a clone of the model that uses p for cost estimation,
+// Runtime.Profile, and any other profile-driven behavior. Passing nil clears
+// the profile (cost estimation is skipped and Priced is false).
+//
+// ModelConfig defaults derived from the profile at NewModel time (MaxTokens,
+// ContextWindow) are not recomputed.
+func (m *Model) WithProfile(p *profile.Profile) *Model {
+	clone := m.clone()
+	clone.profile = p
+	return clone
+}
+
 // WithExtension returns a clone of the model with the given provider-specific
 // extension set.
 func (m *Model) WithExtension(ext Extension) *Model {
@@ -432,9 +451,11 @@ func (m *Model) Stream(ctx context.Context, messages []message.Message, opts ...
 	return func(yield func(message.AssistantChunk, error) bool) {
 		for chunk, err := range resp {
 			if err == nil && chunk.Metrics != nil && m.profile != nil {
-				costs, total := m.profile.EstimateCost(chunk.Metrics.Tokens)
-				chunk.Metrics.Cost = costs
-				chunk.Metrics.TotalCost = total
+				est := m.profile.Estimate(chunk.Metrics.Tokens)
+				chunk.Metrics.Cost = est.Details
+				chunk.Metrics.TotalCost = est.Total
+				chunk.Metrics.CostTier = est.Tier
+				chunk.Metrics.Priced = est.Priced
 			}
 
 			if hasWriter && err == nil {

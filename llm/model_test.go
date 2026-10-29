@@ -13,6 +13,7 @@ import (
 type modelMockProvider struct {
 	llm.Provider
 	lastRequest *llm.Request
+	chunks      []message.AssistantChunk
 }
 
 func (m *modelMockProvider) Name() string {
@@ -21,7 +22,18 @@ func (m *modelMockProvider) Name() string {
 
 func (m *modelMockProvider) Stream(ctx context.Context, req *llm.Request) (llm.StreamResponse, error) {
 	m.lastRequest = req
-	return func(yield func(message.AssistantChunk, error) bool) {}, nil
+	return func(yield func(message.AssistantChunk, error) bool) {
+		for _, c := range m.chunks {
+			if c.Metrics != nil {
+				// Copy so Model.Stream's cost attachment doesn't leak across calls.
+				metrics := *c.Metrics
+				c.Metrics = &metrics
+			}
+			if !yield(c, nil) {
+				return
+			}
+		}
+	}, nil
 }
 
 func (m *modelMockProvider) GetProfile(id string) (profile.Profile, bool) {
@@ -190,5 +202,69 @@ func TestModel_WithContextWindow(t *testing.T) {
 	_, _ = m1.Stream(context.Background(), nil)
 	if provider.lastRequest.ContextWindow != 16384 {
 		t.Errorf("expected ContextWindow to be 16384, got %d", provider.lastRequest.ContextWindow)
+	}
+}
+
+func TestModel_WithProfile(t *testing.T) {
+	provider := &modelMockProvider{chunks: []message.AssistantChunk{{Metrics: &message.TokenMetrics{
+		Tokens: message.TokenDetails{Input: 310, CacheRead: 300, Output: 5},
+	}}}}
+	model, err := llm.NewModel(provider, "m", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &profile.Profile{Pricing: profile.Pricing{
+		Input: 1, Output: 2, CacheRead: 0.5,
+		TieredLimits: []profile.TierPricing{{
+			Label:     "Context over 300",
+			Condition: profile.TierCondition{Type: profile.TierConditionContext, Size: 300},
+			Input:     2, Output: 4, CacheRead: 1,
+		}},
+	}}
+
+	withP := model.WithProfile(p)
+	if model.Profile() != nil {
+		t.Fatal("original model profile must be unchanged")
+	}
+	if withP.Profile() != p {
+		t.Fatal("clone must use injected profile")
+	}
+
+	var rtProfile *profile.Profile
+	withP = withP.WithMiddleware(func(next llm.Streamer) llm.Streamer {
+		return func(ctx context.Context, r *llm.Request) (llm.StreamResponse, error) {
+			rt, _ := llm.RuntimeFromContext(ctx)
+			rtProfile = rt.Profile
+			return next(ctx, r)
+		}
+	})
+
+	resp, err := withP.Stream(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got *message.TokenMetrics
+	for chunk, err := range resp {
+		if err != nil {
+			t.Fatal(err)
+		}
+		got = chunk.Metrics
+	}
+	if rtProfile != p {
+		t.Fatal("Runtime.Profile must equal injected profile")
+	}
+	if got.CostTier != "Context over 300" || !got.Priced {
+		t.Fatalf("tier/priced not set: %+v", got)
+	}
+	if want := message.Cost(10*2000 + 300*1000 + 5*4000); got.TotalCost != want {
+		t.Fatalf("total = %v, want %v", got.TotalCost, want)
+	}
+
+	// WithProfile(nil) skips estimation.
+	resp, _ = withP.WithProfile(nil).Stream(context.Background(), nil)
+	for chunk := range resp {
+		if chunk.Metrics.Priced || chunk.Metrics.TotalCost != 0 {
+			t.Fatalf("nil profile must skip estimation: %+v", chunk.Metrics)
+		}
 	}
 }

@@ -1,6 +1,7 @@
 package profile
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/masterkeysrd/loom/message"
@@ -29,46 +30,72 @@ type Profile struct {
 	Pricing      Pricing      `json:"pricing"`
 }
 
-// EstimateCost calculates the estimated financial cost of a request based on
-// the provided token details. It automatically handles tiered pricing logic
-// if the model's profile defines it.
-func (p Profile) EstimateCost(details message.TokenDetails) (message.CostDetails, message.Cost) {
-	// 1. Select the appropriate pricing tier.
-	// Some models (like Anthropic/Gemini) charge more if the total context window is large.
-	pricing := p.Pricing
-	totalTokens := details.Input + details.Output
+// CostEstimate is the result of estimating a request's cost.
+type CostEstimate struct {
+	Details message.CostDetails
+	Total   message.Cost
+	// Tier is the label of the applied tier; empty when base pricing applied.
+	Tier string
+	// Priced is false when the profile carries no pricing data.
+	Priced bool
+}
 
-	for _, tier := range p.Pricing.TieredLimits {
-		if totalTokens >= tier.TierLimit {
-			pricing.Input = tier.Input
-			pricing.Output = tier.Output
-			pricing.CacheRead = tier.CacheRead
-			pricing.CacheWrite = tier.CacheWrite
-			pricing.Reasoning = tier.Reasoning
+// Estimate computes the cost of a request and reports the applied tier.
+//
+// message.TokenDetails.Input is the total prompt size and includes cache
+// read/write tokens (see that type's documentation); the uncached part is
+// billed at the input price. Of all tiers whose condition matches, the
+// one with the highest Size wins, regardless of slice order. Conditions are
+// strict: a tier applies when measured tokens are > Size ("over N tokens").
+// Unknown condition types never match.
+func (p Profile) Estimate(details message.TokenDetails) CostEstimate {
+	pricing := p.Pricing
+	var tier string
+
+	var best *TierPricing
+	bestSize := 0
+	for i := range p.Pricing.TieredLimits {
+		t := &p.Pricing.TieredLimits[i]
+		cond := t.Condition
+		if !cond.matches(details) {
+			continue
+		}
+		if best == nil || cond.Size > bestSize {
+			best, bestSize = t, cond.Size
 		}
 	}
+	if best != nil {
+		pricing.Input = best.Input
+		pricing.Output = best.Output
+		pricing.CacheRead = best.CacheRead
+		pricing.CacheWrite = best.CacheWrite
+		pricing.Reasoning = best.Reasoning
+		tier = best.EffectiveLabel()
+	}
 
-	// 2. Helper to convert "price per million" to "nano-dollars per token"
-	// $1.00 = 1,000,000,000 nano-dollars.
-	// (price / 1,000,000) * 1,000,000,000 = price * 1,000.
+	// "price per million" -> nano-dollars per token: price * 1,000.
 	toNano := func(price float64, tokens int) message.Cost {
 		return message.Cost(price * 1000 * float64(tokens))
 	}
 
+	uncached := max(0, details.Input-details.CacheRead-details.CacheWrite)
 	costs := message.CostDetails{
-		Input:      toNano(pricing.Input, details.Input),
+		Input:      toNano(pricing.Input, uncached),
 		Output:     toNano(pricing.Output, details.Output),
 		CacheRead:  toNano(pricing.CacheRead, details.CacheRead),
 		CacheWrite: toNano(pricing.CacheWrite, details.CacheWrite),
 		Reasoning:  toNano(pricing.Reasoning, details.Reasoning),
 	}
 
-	total := costs.Input + costs.Output + costs.CacheRead + costs.CacheWrite + costs.Reasoning
-
-	return costs, total
+	return CostEstimate{
+		Details: costs,
+		Total:   costs.Input + costs.Output + costs.CacheRead + costs.CacheWrite + costs.Reasoning,
+		Tier:    tier,
+		Priced:  !p.Pricing.IsZero(),
+	}
 }
 
-// Pricing defines per-million-token pricing and optional context-window tiers.
+// Pricing defines per-million-token pricing and optional conditional tiers.
 type Pricing struct {
 	Input        float64       `json:"input"`
 	Output       float64       `json:"output"`
@@ -78,14 +105,57 @@ type Pricing struct {
 	TieredLimits []TierPricing `json:"tiers,omitempty"`
 }
 
-// TierPricing defines pricing overrides when total token usage exceeds TierLimit.
+// IsZero reports whether the pricing carries no data: all prices are zero and
+// there are no tiers.
+func (p Pricing) IsZero() bool {
+	return p.Input == 0 && p.Output == 0 && p.CacheRead == 0 &&
+		p.CacheWrite == 0 && p.Reasoning == 0 && len(p.TieredLimits) == 0
+}
+
+// TierConditionType identifies what a pricing tier condition measures.
+type TierConditionType string
+
+const (
+	// TierConditionContext compares the prompt/context size of the request:
+	// TokenDetails.Input, which includes cache read/write tokens; output excluded.
+	TierConditionContext TierConditionType = "context"
+)
+
+// TierCondition describes when a pricing tier applies.
+type TierCondition struct {
+	Type TierConditionType `json:"type"`
+	// Size is the threshold: the tier applies when measured tokens > Size.
+	Size int `json:"size"`
+}
+
+func (c TierCondition) matches(d message.TokenDetails) bool {
+	switch c.Type {
+	case TierConditionContext:
+		return d.Input > c.Size
+	default:
+		return false
+	}
+}
+
+// TierPricing defines pricing overrides for a conditional tier.
 type TierPricing struct {
-	Input      float64 `json:"input"`
-	Output     float64 `json:"output"`
-	CacheRead  float64 `json:"cache_read,omitempty"`
-	CacheWrite float64 `json:"cache_write,omitempty"`
-	Reasoning  float64 `json:"reasoning,omitempty"`
-	TierLimit  int     `json:"limit"`
+	Label      string        `json:"label,omitempty"` // e.g. "Context over 200k"
+	Condition  TierCondition `json:"condition"`
+	Input      float64       `json:"input"`
+	Output     float64       `json:"output"`
+	CacheRead  float64       `json:"cache_read,omitempty"`
+	CacheWrite float64       `json:"cache_write,omitempty"`
+	Reasoning  float64       `json:"reasoning,omitempty"`
+}
+
+// EffectiveLabel returns Label, or a stable generated label such as
+// "context>200000" when Label is empty.
+func (t TierPricing) EffectiveLabel() string {
+	if t.Label != "" {
+		return t.Label
+	}
+	c := t.Condition
+	return fmt.Sprintf("%s>%d", c.Type, c.Size)
 }
 
 // Capabilities describes the supported operations and features of a model.

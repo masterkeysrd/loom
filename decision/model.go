@@ -119,6 +119,14 @@ func (m *Model) WithMiddleware(mw ...Middleware) *Model {
 	return clone
 }
 
+// WithProfile returns a clone of the model that uses p for cost estimation.
+// Passing nil clears the profile.
+func (m *Model) WithProfile(p *profile.Profile) *Model {
+	clone := m.clone()
+	clone.profile = p
+	return clone
+}
+
 // WithExtension returns a clone of the model with the given provider-specific extension set.
 func (m *Model) WithExtension(ext Extension) *Model {
 	clone := m.clone()
@@ -193,9 +201,11 @@ func (m *Model) EvaluateWithOptions(ctx context.Context, input Input, questions 
 
 	// Compute token cost if metrics and profile are available
 	if resp.Metrics != nil && m.profile != nil {
-		costs, total := m.profile.EstimateCost(resp.Metrics.Tokens)
-		resp.Metrics.Cost = costs
-		resp.Metrics.TotalCost = total
+		est := m.profile.Estimate(resp.Metrics.Tokens)
+		resp.Metrics.Cost = est.Details
+		resp.Metrics.TotalCost = est.Total
+		resp.Metrics.CostTier = est.Tier
+		resp.Metrics.Priced = est.Priced
 	}
 
 	// Emit on_decision event if stream writer is present

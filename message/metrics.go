@@ -37,8 +37,23 @@ type TokenMetrics struct {
 
 	// Timing provides a detailed breakdown of durations.
 	Timing TimingMetrics `json:"timing"`
+
+	// CostTier is the label of the applied pricing tier; empty means base pricing.
+	CostTier string `json:"cost_tier,omitempty"`
+
+	// Priced reports whether pricing data was available for the estimate.
+	Priced bool `json:"priced,omitempty"`
 }
 
+// TokenDetails is a breakdown of token counts.
+//
+// Normalization rule (every provider mapping MUST follow it): Input is the
+// TOTAL prompt size and INCLUDES cached tokens. CacheRead and CacheWrite are
+// subsets of Input, not additions to it. Providers whose usage reports already
+// include cached tokens in the prompt count (OpenAI, Gemini, Ollama) pass them
+// through; providers that report them separately (Anthropic) sum them in. This
+// matches LangChain's UsageMetadata. The uncached part of the prompt is
+// Input - CacheRead - CacheWrite.
 type TokenDetails struct {
 	Input      int `json:"input,omitempty"`
 	Output     int `json:"output,omitempty"`
@@ -61,8 +76,16 @@ type TimingMetrics struct {
 	Generation time.Duration `json:"generation,omitempty"`
 }
 
+// Add sums two metrics. CostTier is kept only when both operands share the
+// same tier (otherwise cleared); Priced is the logical AND of both operands.
 func (m TokenMetrics) Add(other TokenMetrics) TokenMetrics {
+	tier := ""
+	if m.CostTier == other.CostTier {
+		tier = m.CostTier
+	}
 	return TokenMetrics{
+		CostTier:    tier,
+		Priced:      m.Priced && other.Priced,
 		TotalTokens: m.TotalTokens + other.TotalTokens,
 		TotalCost:   m.TotalCost + other.TotalCost,
 		Tokens: TokenDetails{

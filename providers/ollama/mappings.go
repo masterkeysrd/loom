@@ -202,11 +202,18 @@ func toAssistantChunk(resp api.ChatResponse) (message.AssistantChunk, error) {
 	}
 
 	if resp.PromptEvalCount >= 0 || resp.EvalCount >= 0 {
+		cachedCount := 0
+		if resp.PromptEvalCachedCount != nil {
+			cachedCount = *resp.PromptEvalCachedCount
+		}
+
 		chunk.Metrics = &message.TokenMetrics{
 			TotalTokens: resp.PromptEvalCount + resp.EvalCount,
 			Tokens: message.TokenDetails{
-				Input:  resp.PromptEvalCount,
-				Output: resp.EvalCount,
+				Input:      resp.PromptEvalCount,
+				Output:     resp.EvalCount,
+				CacheRead:  cachedCount,
+				CacheWrite: resp.PromptEvalCount - cachedCount,
 			},
 			Timing: message.TimingMetrics{
 				Total:      resp.TotalDuration,

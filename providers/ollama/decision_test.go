@@ -175,7 +175,7 @@ func TestToSystemOneRequestSinglePredicateCriteria(t *testing.T) {
 	req1 := &decision.Request{
 		Model: "model-x",
 		Questions: []decision.Question{
-			decision.Question{
+			{
 				Name:            "has_access",
 				Type:            decision.QuestionPredicate,
 				Instructions:    "Check access",
@@ -200,7 +200,7 @@ func TestToSystemOneRequestSinglePredicateCriteria(t *testing.T) {
 	req2 := &decision.Request{
 		Model: "model-x",
 		Questions: []decision.Question{
-			decision.Question{
+			{
 				Name:             "has_access",
 				Type:             decision.QuestionPredicate,
 				Instructions:     "Check access",
@@ -322,7 +322,7 @@ func TestToDecisionResponseConversion(t *testing.T) {
 	if len(scoreAns.ScoreProbabilities) != 3 {
 		t.Fatalf("expected 3 score probabilities, got %d", len(scoreAns.ScoreProbabilities))
 	}
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		sp := scoreAns.ScoreProbabilities[i]
 		if sp.Index != i {
 			t.Errorf("at index %d, expected Index %d, got %d", i, i, sp.Index)

@@ -85,7 +85,7 @@ type Provider struct {
 // It prioritizes environment variables (ANTIGRAVITY_TOKEN, GOOGLE_ACCESS_TOKEN)
 // and falls back to an OAuth2TokenProvider using the cached token file.
 func NewDefaultProvider(ctx context.Context) (*Provider, error) {
-	var tp TokenProvider = NewEnvTokenProvider()
+	var tp = NewEnvTokenProvider()
 	if _, err := tp.Token(ctx); err != nil {
 		// Fallback to OAuth2 provider with default token cache file
 		oauthTP, err := NewOAuth2TokenProvider(OAuth2Config{})
@@ -317,9 +317,7 @@ func (p *Provider) ListProfiles() []profile.Profile {
 	maps.Copy(merged, staticProfiles)
 
 	p.cachedMu.RLock()
-	for k, v := range p.cached {
-		merged[k] = v
-	}
+	maps.Copy(merged, p.cached)
 	p.cachedMu.RUnlock()
 
 	p.overrides.Range(func(k, v any) bool {

@@ -264,5 +264,3 @@ func TestToMessageNewParams_MidConversationSystemMessage(t *testing.T) {
 		t.Errorf("expected mid-conversation system content, got %+v", midSys.Content)
 	}
 }
-
-

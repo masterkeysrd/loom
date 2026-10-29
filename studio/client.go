@@ -62,7 +62,6 @@ func findMessageListFields(t reflect.Type) map[string]bool {
 	}
 
 	for f := range t.Fields() {
-		f := f
 		isMsgList := false
 		if f.Type.Kind() == reflect.Slice {
 			elem := f.Type.Elem()

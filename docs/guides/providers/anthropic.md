@@ -48,13 +48,18 @@ model = model.WithAdaptiveThinking()
 
 Anthropic support "Prompt Caching" via ephemeral markers. Loom provides a structured way to leverage this at two levels:
 
-#### 1. Caching the "Header" (Call Extension)
-This is the most common pattern. It caches the static parts of your request (system prompt and tool definitions) so they are reused across turns.
+#### 1. Caching the "Header" or Auto-Caching (Call Extension)
+This is the most common pattern. It caches the static parts of your request (system prompt and tool definitions) so they are reused across turns, or auto-caches the last cacheable block using top-level cache control.
 
 ```go
-// Use the PromptCaching extension
+// Cache the static invariant header (tools and system prompt)
 model = model.WithExtension(loomanthropic.PromptCaching{
     CacheHeader: true,
+})
+
+// Or auto-cache the entire conversation up to the last message turn
+model = model.WithExtension(loomanthropic.PromptCaching{
+    Auto: true,
 })
 ```
 

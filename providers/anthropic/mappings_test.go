@@ -118,6 +118,27 @@ func TestToMessageNewParams_Caching(t *testing.T) {
 	}
 }
 
+func TestToMessageNewParams_Caching_Auto(t *testing.T) {
+	req := &llm.Request{
+		Model: "claude-3-5-sonnet-latest",
+		Extensions: map[string]llm.Extension{
+			PromptCaching{}.ExtensionID(): PromptCaching{Auto: true},
+		},
+		Messages: []message.Message{
+			message.NewUserText("Hello Claude"),
+		},
+	}
+
+	params, err := toMessageNewParams(req)
+	if err != nil {
+		t.Fatalf("toMessageNewParams failed: %v", err)
+	}
+
+	if params.CacheControl.Type != "ephemeral" {
+		t.Errorf("expected top-level cache control to be ephemeral, got %v", params.CacheControl.Type)
+	}
+}
+
 func TestToContentBlocksParamsMultimodal(t *testing.T) {
 	content := message.Content{
 		&message.TextBlock{Text: "Analyze this image."},

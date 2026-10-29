@@ -48,6 +48,10 @@ type PromptCaching struct {
 	// CacheHeader signals the provider to cache the "header" of the request
 	// (system prompt and tool definitions).
 	CacheHeader bool
+
+	// Auto signals the provider to set top-level CacheControl, which automatically
+	// applies a cache_control marker to the last cacheable block in the request.
+	Auto bool
 }
 
 func (p PromptCaching) ExtensionID() string {

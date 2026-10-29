@@ -54,9 +54,11 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 	}
 
 	var cacheHeader bool
+	var cacheAuto bool
 	if ext, ok := request.Extensions[PromptCaching{}.ExtensionID()]; ok {
 		if pc, ok := ext.(PromptCaching); ok {
 			cacheHeader = pc.CacheHeader
+			cacheAuto = pc.Auto
 		}
 	}
 
@@ -153,6 +155,10 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 
 	if cacheHeader && len(anthropicReq.System) > 0 {
 		anthropicReq.System[len(anthropicReq.System)-1].CacheControl = anthropic.NewCacheControlEphemeralParam()
+	}
+
+	if cacheAuto {
+		anthropicReq.CacheControl = anthropic.NewCacheControlEphemeralParam()
 	}
 
 	if len(request.Tools) > 0 {

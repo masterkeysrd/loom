@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
 	"github.com/masterkeysrd/loom/tool"
@@ -150,3 +151,97 @@ func TestToContentBlocksParamsMultimodal(t *testing.T) {
 		t.Errorf("expected block 2 to be document, got %v", got[2]["type"])
 	}
 }
+
+func TestToMessageNewParams_PendingToolCallsFlushedInOrder(t *testing.T) {
+	req := &llm.Request{
+		Model: "claude-3-5-sonnet",
+		Messages: message.MessageList{
+			&message.Assistant{
+				Content: message.Content{
+					&message.ToolCall{ID: "call_alpha", Name: "tool_alpha"},
+					&message.ToolCall{ID: "call_beta", Name: "tool_beta"},
+					&message.ToolCall{ID: "call_gamma", Name: "tool_gamma"},
+				},
+			},
+			// Only call_beta was answered
+			&message.Tool{
+				ToolCallID: "call_beta",
+				Name:       "tool_beta",
+				Content:    message.Content{&message.TextBlock{Text: "beta result"}},
+			},
+		},
+	}
+
+	params, err := toMessageNewParams(req)
+	if err != nil {
+		t.Fatalf("toMessageNewParams failed: %v", err)
+	}
+
+	// Messages should be:
+	// 0: Assistant with 3 tool calls
+	// 1: User with tool result for call_beta
+	// 2: User with synthetic tool result for call_alpha (first pending)
+	// 3: User with synthetic tool result for call_gamma (second pending)
+	if len(params.Messages) != 4 {
+		t.Fatalf("expected 4 messages, got %d", len(params.Messages))
+	}
+
+	// Verify order of flushed messages
+	msg2 := params.Messages[2]
+	if len(msg2.Content) == 0 || msg2.Content[0].OfToolResult == nil || msg2.Content[0].OfToolResult.ToolUseID != "call_alpha" {
+		t.Errorf("expected message 2 to be flushed result for call_alpha, got %+v", msg2)
+	}
+
+	msg3 := params.Messages[3]
+	if len(msg3.Content) == 0 || msg3.Content[0].OfToolResult == nil || msg3.Content[0].OfToolResult.ToolUseID != "call_gamma" {
+		t.Errorf("expected message 3 to be flushed result for call_gamma, got %+v", msg3)
+	}
+}
+
+func TestToMessageNewParams_MidConversationSystemMessage(t *testing.T) {
+	req := &llm.Request{
+		Model: "claude-3-5-sonnet",
+		Messages: message.MessageList{
+			&message.System{
+				Content: message.Content{&message.TextBlock{Text: "Initial root instructions"}},
+			},
+			&message.User{
+				Content: message.Content{&message.TextBlock{Text: "Hello"}},
+			},
+			&message.Assistant{
+				Content: message.Content{&message.TextBlock{Text: "Hi there"}},
+			},
+			&message.System{
+				Content: message.Content{&message.TextBlock{Text: "Updated mid-conversation instructions"}},
+			},
+			&message.User{
+				Content: message.Content{&message.TextBlock{Text: "Proceed"}},
+			},
+		},
+	}
+
+	params, err := toMessageNewParams(req)
+	if err != nil {
+		t.Fatalf("toMessageNewParams failed: %v", err)
+	}
+
+	// Root system should contain the initial instruction
+	if len(params.System) != 1 || params.System[0].Text != "Initial root instructions" {
+		t.Errorf("expected initial system in params.System, got %+v", params.System)
+	}
+
+	// Messages should be: User, Assistant, System (mid-conversation), User
+	if len(params.Messages) != 4 {
+		t.Fatalf("expected 4 messages, got %d", len(params.Messages))
+	}
+
+	midSys := params.Messages[2]
+	if midSys.Role != anthropic.MessageParamRoleSystem {
+		t.Errorf("expected message 2 to have role 'system', got %q", midSys.Role)
+	}
+	if len(midSys.Content) != 1 || midSys.Content[0].OfText == nil || midSys.Content[0].OfText.Text != "Updated mid-conversation instructions" {
+		t.Errorf("expected mid-conversation system content, got %+v", midSys.Content)
+	}
+}
+
+

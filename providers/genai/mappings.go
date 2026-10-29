@@ -85,10 +85,12 @@ func toGenerateContentArgs(req *llm.Request) ([]*genai.Content, *genai.GenerateC
 	}
 
 	var contents []*genai.Content
+	var activeToolTurn *genai.Content
 
 	for i, msg := range req.Messages {
 		switch v := msg.(type) {
 		case *message.System:
+			activeToolTurn = nil
 			// GenAI accepts a single system instruction at the config level.
 			// When multiple system messages are present, their text is concatenated.
 			text := v.Content.Text()
@@ -102,6 +104,7 @@ func toGenerateContentArgs(req *llm.Request) ([]*genai.Content, *genai.GenerateC
 			}
 
 		case *message.User:
+			activeToolTurn = nil
 			parts, err := toUserParts(v.GetContent())
 			if err != nil {
 				return nil, nil, fmt.Errorf("user message at index %d: %w", i, err)
@@ -112,6 +115,7 @@ func toGenerateContentArgs(req *llm.Request) ([]*genai.Content, *genai.GenerateC
 			})
 
 		case *message.Assistant:
+			activeToolTurn = nil
 			parts, err := toModelParts(v.GetContent())
 			if err != nil {
 				return nil, nil, fmt.Errorf("assistant message at index %d: %w", i, err)
@@ -126,11 +130,16 @@ func toGenerateContentArgs(req *llm.Request) ([]*genai.Content, *genai.GenerateC
 			if err != nil {
 				return nil, nil, fmt.Errorf("tool message at index %d: %w", i, err)
 			}
-			// Tool results must be sent as user-role content with a FunctionResponse part.
-			contents = append(contents, &genai.Content{
-				Role:  "user",
-				Parts: []*genai.Part{part},
-			})
+			// Tool results answering the preceding assistant turn are grouped into a single user turn.
+			if activeToolTurn != nil {
+				activeToolTurn.Parts = append(activeToolTurn.Parts, part)
+			} else {
+				activeToolTurn = &genai.Content{
+					Role:  "user",
+					Parts: []*genai.Part{part},
+				}
+				contents = append(contents, activeToolTurn)
+			}
 
 		default:
 			return nil, nil, fmt.Errorf("unsupported message type at index %d: %T", i, msg)

@@ -817,3 +817,56 @@ func TestCountTokens_Fallback(t *testing.T) {
 		t.Errorf("expected 4 tokens from fallback, got %d", count)
 	}
 }
+
+func TestToGenerateContentRequest_GroupsConsecutiveToolResults(t *testing.T) {
+	req := &llm.Request{
+		Model: "gemini-2.5-flash",
+		Messages: message.MessageList{
+			&message.User{
+				Content: message.Content{&message.TextBlock{Text: "Fetch info"}},
+			},
+			&message.Assistant{
+				Content: message.Content{
+					&message.ToolCall{ID: "call_1", Name: "tool_1"},
+					&message.ToolCall{ID: "call_2", Name: "tool_2"},
+				},
+			},
+			&message.Tool{
+				ToolCallID: "call_1",
+				Name:       "tool_1",
+				Content:    message.Content{&message.TextBlock{Text: "result 1"}},
+			},
+			&message.Tool{
+				ToolCallID: "call_2",
+				Name:       "tool_2",
+				Content:    message.Content{&message.TextBlock{Text: "result 2"}},
+			},
+			&message.User{
+				Content: message.Content{&message.TextBlock{Text: "Thank you"}},
+			},
+		},
+	}
+
+	result, err := toGenerateContentRequest(req)
+	if err != nil {
+		t.Fatalf("toGenerateContentRequest failed: %v", err)
+	}
+
+	if len(result.Contents) != 4 {
+		t.Fatalf("expected 4 contents, got %d", len(result.Contents))
+	}
+
+	toolTurn := result.Contents[2]
+	if toolTurn.Role != "user" {
+		t.Errorf("expected role user, got %q", toolTurn.Role)
+	}
+	if len(toolTurn.Parts) != 2 {
+		t.Fatalf("expected 2 parts in tool turn, got %d", len(toolTurn.Parts))
+	}
+	if toolTurn.Parts[0].FunctionResponse == nil || toolTurn.Parts[0].FunctionResponse.Name != "tool_1" {
+		t.Errorf("expected first part to be FunctionResponse for tool_1, got %#v", toolTurn.Parts[0])
+	}
+	if toolTurn.Parts[1].FunctionResponse == nil || toolTurn.Parts[1].FunctionResponse.Name != "tool_2" {
+		t.Errorf("expected second part to be FunctionResponse for tool_2, got %#v", toolTurn.Parts[1])
+	}
+}

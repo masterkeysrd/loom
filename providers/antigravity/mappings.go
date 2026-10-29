@@ -82,9 +82,11 @@ func toGenerateContentRequest(req *llm.Request) (GenerateContentRequest, error) 
 	}
 
 	// 2. Messages & System Instructions
+	activeToolTurnIdx := -1
 	for i, msg := range req.Messages {
 		switch v := msg.(type) {
 		case *message.System:
+			activeToolTurnIdx = -1
 			text := v.Content.Text()
 			if out.SystemInstruction == nil {
 				out.SystemInstruction = &Content{
@@ -95,6 +97,7 @@ func toGenerateContentRequest(req *llm.Request) (GenerateContentRequest, error) 
 			}
 
 		case *message.User:
+			activeToolTurnIdx = -1
 			parts, err := toUserParts(v.GetContent())
 			if err != nil {
 				return out, fmt.Errorf("user message at index %d: %w", i, err)
@@ -105,6 +108,7 @@ func toGenerateContentRequest(req *llm.Request) (GenerateContentRequest, error) 
 			})
 
 		case *message.Assistant:
+			activeToolTurnIdx = -1
 			parts, err := toAssistantParts(v.GetContent())
 			if err != nil {
 				return out, fmt.Errorf("assistant message at index %d: %w", i, err)
@@ -119,10 +123,16 @@ func toGenerateContentRequest(req *llm.Request) (GenerateContentRequest, error) 
 			if err != nil {
 				return out, fmt.Errorf("tool message at index %d: %w", i, err)
 			}
-			out.Contents = append(out.Contents, Content{
-				Role:  "user",
-				Parts: []Part{part},
-			})
+			// Tool results answering the preceding assistant turn are grouped into a single user turn.
+			if activeToolTurnIdx != -1 {
+				out.Contents[activeToolTurnIdx].Parts = append(out.Contents[activeToolTurnIdx].Parts, part)
+			} else {
+				out.Contents = append(out.Contents, Content{
+					Role:  "user",
+					Parts: []Part{part},
+				})
+				activeToolTurnIdx = len(out.Contents) - 1
+			}
 
 		default:
 			return out, fmt.Errorf("unsupported message type at index %d: %T", i, msg)

@@ -60,10 +60,14 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 		}
 	}
 
-	// mark if the tool was completed.
-	toolUsage := make(map[string]bool)
-	registerToolUsage := func(toolCallID string, used bool) {
-		toolUsage[toolCallID] = toolUsage[toolCallID] || used
+	var pendingToolCallIDs []string
+	flushPending := func() {
+		for _, id := range pendingToolCallIDs {
+			anthropicReq.Messages = append(anthropicReq.Messages, anthropic.NewUserMessage(
+				anthropic.NewToolResultBlock(id, "", false),
+			))
+		}
+		pendingToolCallIDs = nil
 	}
 
 	for _, msg := range request.Messages {
@@ -76,21 +80,41 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 
 		switch msg := msg.(type) {
 		case *message.System:
-			anthropicReq.System = toTextBlocksParams(msg.Content, cacheHeader)
+			if len(anthropicReq.Messages) == 0 {
+				anthropicReq.System = append(anthropicReq.System, toTextBlocksParams(msg.Content, false)...)
+			} else {
+				flushPending()
+				anthropicReq.Messages = append(anthropicReq.Messages, anthropic.MessageParam{
+					Role:    anthropic.MessageParamRoleSystem,
+					Content: toContentBlocksParams(msg.Content, cache),
+				})
+			}
 		case *message.Assistant:
+			flushPending()
 			anthropicReq.Messages = append(anthropicReq.Messages, anthropic.NewAssistantMessage(
 				toContentBlocksParams(msg.Content, cache)...,
 			))
 
-			// Mark any tool calls in the assistant message as used, so that we know to expect results for them later.
 			for _, block := range msg.ToolCalls() {
-				registerToolUsage(block.ID, true)
+				pendingToolCallIDs = append(pendingToolCallIDs, block.ID)
 			}
 		case *message.User:
+			flushPending()
 			anthropicReq.Messages = append(anthropicReq.Messages, anthropic.NewUserMessage(
 				toContentBlocksParams(msg.Content, cache)...,
 			))
 		case *message.Tool:
+			foundIdx := -1
+			for i, id := range pendingToolCallIDs {
+				if id == msg.ToolCallID {
+					foundIdx = i
+					break
+				}
+			}
+			if foundIdx != -1 {
+				pendingToolCallIDs = append(pendingToolCallIDs[:foundIdx], pendingToolCallIDs[foundIdx+1:]...)
+			}
+
 			// Consistently use ToolResultBlockParam for all tool outputs.
 			var contentBlocks []anthropic.ToolResultBlockParamContentUnion
 			if len(msg.Content) > 0 {
@@ -122,18 +146,13 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 					},
 				},
 			})
-
-			registerToolUsage(msg.ToolCallID, false)
 		}
 	}
 
-	for toolCallID, used := range toolUsage {
-		if !used {
-			// If a tool was called but not marked as used, we need to add an empty tool result block for it so that the response includes results for this tool call.
-			anthropicReq.Messages = append(anthropicReq.Messages, anthropic.NewUserMessage(
-				anthropic.NewToolResultBlock(toolCallID, "", false),
-			))
-		}
+	flushPending()
+
+	if cacheHeader && len(anthropicReq.System) > 0 {
+		anthropicReq.System[len(anthropicReq.System)-1].CacheControl = anthropic.NewCacheControlEphemeralParam()
 	}
 
 	if len(request.Tools) > 0 {

@@ -26,7 +26,7 @@ type Profile struct {
 	Limits       Limits       `json:"limits"`
 	Modalities   Modalities   `json:"modalities"`
 	OpenWeights  bool         `json:"open_weights,omitempty"`
-	Pricing      Pricing      `json:"pricing,omitempty"`
+	Pricing      Pricing      `json:"pricing"`
 }
 
 // EstimateCost calculates the estimated financial cost of a request based on

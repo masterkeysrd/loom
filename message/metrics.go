@@ -30,13 +30,13 @@ type TokenMetrics struct {
 	TotalCost Cost `json:"total_cost,omitempty"`
 
 	// Tokens provides a detailed breakdown of token counts.
-	Tokens TokenDetails `json:"tokens,omitempty"`
+	Tokens TokenDetails `json:"tokens"`
 
 	// Cost provides a detailed breakdown of estimated costs.
-	Cost CostDetails `json:"cost,omitempty"`
+	Cost CostDetails `json:"cost"`
 
 	// Timing provides a detailed breakdown of durations.
-	Timing TimingMetrics `json:"timing,omitempty"`
+	Timing TimingMetrics `json:"timing"`
 }
 
 type TokenDetails struct {

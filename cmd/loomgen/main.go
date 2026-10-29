@@ -8,6 +8,7 @@ import (
 	"go/format"
 	"net/http"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"text/template"
@@ -183,12 +184,7 @@ func (m modelEntry) IsEmbedding() bool {
 	if m.Type == "embedding" || strings.Contains(m.ID, "embedding") {
 		return true
 	}
-	for _, mod := range m.Modalities.Output {
-		if mod == "embedding" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(m.Modalities.Output, "embedding")
 }
 
 func (m modelEntry) OutputLimit() int {
@@ -341,7 +337,8 @@ func printCommand() string {
 		if strings.Contains(arg, " ") {
 			fmt.Fprintf(&cmd, "%q ", arg)
 		} else {
-			cmd.WriteString(arg + " ")
+			cmd.WriteString(arg)
+			cmd.WriteString(" ")
 		}
 	}
 	return strings.TrimSpace(cmd.String())

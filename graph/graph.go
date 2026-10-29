@@ -187,7 +187,7 @@ func (g *Graph[State]) Execute(ctx context.Context, input Command[State], loc *L
 		}
 
 		// 3. In a single setup loop for i := 0; i < numNodes; i++:
-		for i := 0; i < numNodes; i++ {
+		for i := range numNodes {
 			nodeName := executedNames[i]
 			node := nodes[i]
 
@@ -231,7 +231,7 @@ func (g *Graph[State]) Execute(ctx context.Context, input Command[State], loc *L
 		// 4. Execute:
 		var wg sync.WaitGroup
 		wg.Add(numNodes)
-		for i := 0; i < numNodes; i++ {
+		for i := range numNodes {
 			nodeState := snapshot.State.Copy()
 			go func(idx int, st State) {
 				defer wg.Done()
@@ -249,7 +249,7 @@ func (g *Graph[State]) Execute(ctx context.Context, input Command[State], loc *L
 			}
 		}
 		if firstErr != nil {
-			for i := 0; i < numNodes; i++ {
+			for i := range numNodes {
 				rec.endNode(ctx, executedNames[i], spans[i], startTimes[i], errs[i])
 			}
 			return snapshot, fmt.Errorf("failed to execute node: %w", firstErr)
@@ -290,13 +290,13 @@ func (g *Graph[State]) Execute(ctx context.Context, input Command[State], loc *L
 		var interrupt bool
 		snapshot, interrupt, err = g.transition(ctx, snapshot, combinedCmd, checkpointID)
 		if err != nil {
-			for i := 0; i < numNodes; i++ {
+			for i := range numNodes {
 				rec.endNode(ctx, executedNames[i], spans[i], startTimes[i], err)
 			}
 			return snapshot, fmt.Errorf("failed to transition to next nodes: %w", err)
 		}
 
-		for i := 0; i < numNodes; i++ {
+		for i := range numNodes {
 			rec.endNode(ctx, executedNames[i], spans[i], startTimes[i], nil)
 		}
 

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"strings"
@@ -82,9 +83,7 @@ func WithAliases(aliases map[string]string) ClientOption {
 		if c.aliases == nil {
 			c.aliases = make(map[string]string)
 		}
-		for k, v := range aliases {
-			c.aliases[k] = v
-		}
+		maps.Copy(c.aliases, aliases)
 	}
 }
 
@@ -346,8 +345,8 @@ func (c *Client) FetchAvailableModels(ctx context.Context) ([]AvailableModel, er
 		models = append(models, baseModel)
 
 		// Dynamic heuristic expansion for "-tiered" gateway models
-		if strings.HasSuffix(id, "-tiered") {
-			baseID := strings.TrimSuffix(id, "-tiered")
+		if before, ok := strings.CutSuffix(id, "-tiered"); ok {
+			baseID := before
 			baseName := cleanDisplayName(name, id, baseID)
 			for _, eff := range []struct {
 				suffix string

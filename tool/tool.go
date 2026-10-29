@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -387,9 +388,7 @@ func AdaptStreamHandler[In any](name, desc string, schema *jsonschema.Resolved, 
 						if chunk.Metadata == nil {
 							chunk.Metadata = make(map[string]any)
 						}
-						for k, v := range meta {
-							chunk.Metadata[k] = v
-						}
+						maps.Copy(chunk.Metadata, meta)
 					}
 				}
 

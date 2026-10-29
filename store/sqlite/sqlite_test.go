@@ -182,7 +182,7 @@ func TestSearchWithLimitOffset(t *testing.T) {
 
 	ctx := context.Background()
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		key := fmt.Sprintf("key%d", i)
 		s.Put(ctx, "ns", key, testItem{Name: key})
 	}
@@ -326,7 +326,7 @@ func TestConcurrentAccess(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Phase 1: concurrent writes.
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
@@ -339,7 +339,7 @@ func TestConcurrentAccess(t *testing.T) {
 	wg.Wait()
 
 	// Phase 2: concurrent reads.
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()

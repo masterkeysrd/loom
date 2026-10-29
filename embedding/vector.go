@@ -224,7 +224,7 @@ func MMR(query Vector, candidates []Vector, lambda float32, k int) []int {
 		bestIdx := -1
 		var bestScore float32
 
-		for i := 0; i < n; i++ {
+		for i := range n {
 			if selectedSet[i] {
 				continue
 			}
@@ -250,7 +250,7 @@ func MMR(query Vector, candidates []Vector, lambda float32, k int) []int {
 		selectedSet[bestIdx] = true
 
 		newVec := candidates[bestIdx]
-		for i := 0; i < n; i++ {
+		for i := range n {
 			if selectedSet[i] {
 				continue
 			}

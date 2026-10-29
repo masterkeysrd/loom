@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 )
 
@@ -11,9 +12,9 @@ type Middleware[S any] func(Node[S]) Node[S]
 
 // ChainMiddleware applies middlewares in order (first middleware is outermost), skipping nil middlewares.
 func ChainMiddleware[S any](node Node[S], mws ...Middleware[S]) Node[S] {
-	for i := len(mws) - 1; i >= 0; i-- {
-		if mws[i] != nil {
-			node = mws[i](node)
+	for _, mw := range slices.Backward(mws) {
+		if mw != nil {
+			node = mw(node)
 		}
 	}
 	return node
@@ -85,7 +86,7 @@ func RetryMiddleware[S State[S]](opts ...RetryOption) Middleware[S] {
 	}
 
 	return func(next Node[S]) Node[S] {
-		return NodeFunc[S](func(ctx context.Context, state S) (Command[S], error) {
+		return NodeFunc(func(ctx context.Context, state S) (Command[S], error) {
 			wait := cfg.InitialWait
 			for attempt := 1; attempt <= cfg.MaxAttempts; attempt++ {
 				if err := ctx.Err(); err != nil {

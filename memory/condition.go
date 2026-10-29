@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/bits"
+	"slices"
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
@@ -49,12 +50,12 @@ func TriggerSummaryOnFraction(ratio float64) SummarizerTrigger {
 }
 
 func usageThresholdReached(messages []message.Message, threshold int) (bool, bool) {
-	for i := len(messages) - 1; i >= 0; i-- {
-		msg, ok := messages[i].(*message.Assistant)
-		if !ok || msg.Metrics == nil {
+	for _, msg := range slices.Backward(messages) {
+		assistant, ok := msg.(*message.Assistant)
+		if !ok || assistant.Metrics == nil {
 			continue
 		}
-		return msg.Metrics.TotalTokens >= threshold, true
+		return assistant.Metrics.TotalTokens >= threshold, true
 	}
 	return false, false
 }

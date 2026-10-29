@@ -2,6 +2,7 @@ package document
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 )
 
@@ -262,9 +263,7 @@ func (s *MarkdownSplitter) splitIntoSections(text string) []markdownSection {
 		}
 		if content != "" {
 			hCopy := make(map[string]string, len(activeHeadings))
-			for k, v := range activeHeadings {
-				hCopy[k] = v
-			}
+			maps.Copy(hCopy, activeHeadings)
 			sections = append(sections, markdownSection{
 				headings: hCopy,
 				content:  content,

@@ -655,7 +655,7 @@ Final notes in Section 2.`
 func TestMarkdownSplitter_OversizedSection(t *testing.T) {
 	// A section whose content is much larger than ChunkSize (100)
 	hugeSection := "# Chapter 1\n\n"
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		hugeSection += fmt.Sprintf("Paragraph %d contains some repetitive sentence text for testing. ", i)
 	}
 

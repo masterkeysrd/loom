@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 	"strings"
@@ -212,9 +213,7 @@ func (b *BM25Retriever) WithMiddleware(mws ...Middleware) *BM25Retriever {
 		df:         make(map[string]int, len(b.df)),
 		totalLen:   b.totalLen,
 	}
-	for k, v := range b.df {
-		clone.df[k] = v
-	}
+	maps.Copy(clone.df, b.df)
 	return clone
 }
 

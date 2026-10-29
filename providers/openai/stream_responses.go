@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/masterkeysrd/loom/llm"
@@ -292,8 +293,8 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 	if !isStoreFalse {
 		prevID := opts.PreviousResponseID
 		if prevID == "" && opts.UsePreviousResponseID {
-			for i := len(convMessages) - 1; i >= 0; i-- {
-				msg := convMessages[i]
+			for i, msg := range slices.Backward(convMessages) {
+
 				if msg.Role() == message.RoleAssistant {
 					if id := extractResponseID(msg); id != "" {
 						prevID = id

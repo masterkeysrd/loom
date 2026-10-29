@@ -1,5 +1,7 @@
 package document
 
+import "maps"
+
 // Document represents a piece of text with associated metadata, an optional
 // unique identifier, and an optional relevance score.
 type Document struct {
@@ -19,18 +21,16 @@ func New(content string, metadata ...map[string]any) Document {
 	}
 }
 
-func mergeMetadata(maps ...map[string]any) map[string]any {
+func mergeMetadata(metas ...map[string]any) map[string]any {
 	var meta map[string]any
-	for _, m := range maps {
+	for _, m := range metas {
 		if len(m) == 0 {
 			continue
 		}
 		if meta == nil {
 			meta = make(map[string]any, len(m))
 		}
-		for k, v := range m {
-			meta[k] = v
-		}
+		maps.Copy(meta, m)
 	}
 	return meta
 }
@@ -67,8 +67,6 @@ func CloneMetadata(m map[string]any) map[string]any {
 		return nil
 	}
 	clone := make(map[string]any, len(m))
-	for k, v := range m {
-		clone[k] = v
-	}
+	maps.Copy(clone, m)
 	return clone
 }

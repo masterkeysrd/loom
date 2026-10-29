@@ -283,12 +283,12 @@ func partiallyInclude(
 	// --- Phase 2: split the text of the relevant TextBlock. ---
 	textIdx := -1
 	if partialFromEnd {
-		for i := len(content) - 1; i >= 0; i-- {
-			if _, ok := content[i].(*TextBlock); ok {
+		for i, c := range slices.Backward(content) {
+			if _, ok := c.(*TextBlock); ok {
 				textIdx = i
 				break
 			}
-			if _, ok := content[i].(*ThinkingBlock); ok {
+			if _, ok := c.(*ThinkingBlock); ok {
 				textIdx = i
 				break
 			}

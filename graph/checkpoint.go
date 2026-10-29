@@ -98,7 +98,7 @@ func DecomposeState(state any) (StateMap, error) {
 
 	// Try to resolve pointers/interfaces to the underlying concrete value.
 	v := reflect.ValueOf(state)
-	for v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface {
+	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
 		if v.IsNil() {
 			return nil, nil
 		}

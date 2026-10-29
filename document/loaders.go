@@ -688,7 +688,8 @@ func extractHTMLMetadata(n *html.Node, meta *map[string]any) {
 	}
 	if n.Type == html.ElementNode {
 		tag := strings.ToLower(n.Data)
-		if tag == "title" {
+		switch tag {
+		case "title":
 			if *meta == nil || (*meta)["title"] == nil || (*meta)["title"] == "" {
 				titleText := strings.TrimSpace(extractNodeRawText(n))
 				if titleText != "" {
@@ -698,7 +699,7 @@ func extractHTMLMetadata(n *html.Node, meta *map[string]any) {
 					(*meta)["title"] = titleText
 				}
 			}
-		} else if tag == "meta" {
+		case "meta":
 			if *meta == nil || (*meta)["description"] == nil || (*meta)["description"] == "" {
 				var isDesc bool
 				var contentVal string

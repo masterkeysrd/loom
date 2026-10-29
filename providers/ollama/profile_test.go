@@ -2,6 +2,7 @@ package loomollama
 
 import (
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/masterkeysrd/loom/profile"
@@ -40,13 +41,7 @@ func TestToModelProfile(t *testing.T) {
 		t.Errorf("expected context limit 131072, got %d", prof.Limits.Context)
 	}
 
-	hasVision := false
-	for _, m := range prof.Modalities.Inputs {
-		if m == profile.ModalityImage {
-			hasVision = true
-			break
-		}
-	}
+	hasVision := slices.Contains(prof.Modalities.Inputs, profile.ModalityImage)
 	if !hasVision {
 		t.Error("expected vision modality to be present")
 	}

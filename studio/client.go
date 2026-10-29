@@ -61,8 +61,8 @@ func findMessageListFields(t reflect.Type) map[string]bool {
 		return fields
 	}
 
-	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i)
+	for f := range t.Fields() {
+		f := f
 		isMsgList := false
 		if f.Type.Kind() == reflect.Slice {
 			elem := f.Type.Elem()
@@ -104,7 +104,7 @@ func RegisterGraph[S graph.State[S]](g *graph.Graph[S], opts GraphOptions) {
 		inputSchema = schema
 
 		// Set semantic flags for message list properties
-		msgListFields := findMessageListFields(reflect.TypeOf((*S)(nil)).Elem())
+		msgListFields := findMessageListFields(reflect.TypeFor[S]())
 		for name, prop := range inputSchema.Properties {
 			if msgListFields[name] {
 				if prop.Extra == nil {
@@ -138,7 +138,7 @@ func RegisterGraph[S graph.State[S]](g *graph.Graph[S], opts GraphOptions) {
 			var foundCmd any
 			for _, registeredCmd := range opts.Commands {
 				t := reflect.TypeOf(registeredCmd)
-				if t.Kind() == reflect.Ptr {
+				if t.Kind() == reflect.Pointer {
 					t = t.Elem()
 				}
 				if t.Name() == cmdName {
@@ -152,7 +152,7 @@ func RegisterGraph[S graph.State[S]](g *graph.Graph[S], opts GraphOptions) {
 			}
 
 			t := reflect.TypeOf(foundCmd)
-			isPtr := t.Kind() == reflect.Ptr
+			isPtr := t.Kind() == reflect.Pointer
 			if isPtr {
 				t = t.Elem()
 			}
@@ -376,10 +376,7 @@ func reconnectLoop(ctx context.Context, wsURL string) {
 			dialer := websocket.DefaultDialer
 			conn, _, err := dialer.DialContext(ctx, wsURL, nil)
 			if err != nil {
-				backoff = backoff * 2
-				if backoff > maxBackoff {
-					backoff = maxBackoff
-				}
+				backoff = min(backoff*2, maxBackoff)
 				continue
 			}
 
@@ -612,7 +609,7 @@ func buildManifest(wID string) (*Manifest, error) {
 
 func buildGraphManifestFromEntry(name string, entry registryEntry) (GraphManifest, error) {
 	v := reflect.ValueOf(entry.graph)
-	if v.Kind() != reflect.Ptr || v.IsNil() {
+	if v.Kind() != reflect.Pointer || v.IsNil() {
 		return GraphManifest{}, fmt.Errorf("graph must be a non-nil pointer")
 	}
 
@@ -625,7 +622,7 @@ func buildGraphManifestFromEntry(name string, entry registryEntry) (GraphManifes
 	commands := make([]CommandDefinition, 0, len(entry.commands))
 	for _, cmd := range entry.commands {
 		t := reflect.TypeOf(cmd)
-		if t.Kind() == reflect.Ptr {
+		if t.Kind() == reflect.Pointer {
 			t = t.Elem()
 		}
 		cmdName := t.Name()

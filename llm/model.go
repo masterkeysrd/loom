@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -410,8 +411,8 @@ func (m *Model) Stream(ctx context.Context, messages []message.Message, opts ...
 	}
 
 	// Wrap with middleware in reverse order so the first added middleware is the outermost
-	for i := len(m.middleware) - 1; i >= 0; i-- {
-		streamer = m.middleware[i](streamer)
+	for _, v := range slices.Backward(m.middleware) {
+		streamer = v(streamer)
 	}
 
 	sw, hasWriter := stream.WriterFromContext(ctx)

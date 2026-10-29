@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"slices"
 
 	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/stream"
@@ -181,8 +182,8 @@ func (m *Model) EvaluateWithOptions(ctx context.Context, input Input, questions 
 	}
 
 	// Wrap with middleware in reverse order so the first added middleware is the outermost
-	for i := len(m.middleware) - 1; i >= 0; i-- {
-		evaluator = m.middleware[i](evaluator)
+	for _, v := range slices.Backward(m.middleware) {
+		evaluator = v(evaluator)
 	}
 
 	resp, err := evaluator(ctx, req)

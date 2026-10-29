@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"slices"
 
 	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/stream"
@@ -203,8 +204,8 @@ func (m *Model) Embed(ctx context.Context, inputs []Input, opts ...CallOption) (
 	}
 
 	// Wrap with middleware in reverse order so the first added middleware is the outermost
-	for i := len(m.middleware) - 1; i >= 0; i-- {
-		embedder = m.middleware[i](embedder)
+	for _, v := range slices.Backward(m.middleware) {
+		embedder = v(embedder)
 	}
 
 	resp, err := embedder(ctx, req)

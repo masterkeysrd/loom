@@ -2,6 +2,7 @@ package retriever
 
 import (
 	"context"
+	"slices"
 
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -30,9 +31,9 @@ type Middleware func(Retriever) Retriever
 // Chain combines a [Retriever] with multiple middlewares.
 // Middlewares are executed in the order provided (the first middleware is outermost).
 func Chain(r Retriever, mws ...Middleware) Retriever {
-	for i := len(mws) - 1; i >= 0; i-- {
-		if mws[i] != nil {
-			r = mws[i](r)
+	for _, mw := range slices.Backward(mws) {
+		if mw != nil {
+			r = mw(r)
 		}
 	}
 	return r

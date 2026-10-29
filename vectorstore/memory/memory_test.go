@@ -232,11 +232,11 @@ func TestMemoryStore_Concurrency(t *testing.T) {
 	workers := 10
 	iterations := 20
 
-	for w := 0; w < workers; w++ {
+	for w := range workers {
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
-			for i := 0; i < iterations; i++ {
+			for i := range iterations {
 				docID := fmt.Sprintf("doc-%d-%d", workerID, i)
 				_, _ = store.Add(ctx, []document.Document{
 					document.New("apple fruit").WithID(docID),

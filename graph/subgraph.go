@@ -21,7 +21,7 @@ func computeTaskID(threadID, checkpointNS string, step int, nodeName string) str
 // It scopes checkpoints to a nested namespace based on the parent's location, node name, and task ID,
 // and preserves interrupt semantics if the subgraph pauses before completion.
 func (g *Graph[State]) AsNode() Node[State] {
-	return NodeFunc[State](func(ctx context.Context, state State) (Command[State], error) {
+	return NodeFunc(func(ctx context.Context, state State) (Command[State], error) {
 		var childLoc *Location
 		if rt, ok := RuntimeFromContext(ctx); ok {
 			ns := rt.Location.CheckpointNS
@@ -63,7 +63,7 @@ func MapNode[P State[P], C State[C]](
 	toChild func(P) C,
 	fromChild func(P, C) P,
 ) Node[P] {
-	return NodeFunc[P](func(ctx context.Context, parentState P) (Command[P], error) {
+	return NodeFunc(func(ctx context.Context, parentState P) (Command[P], error) {
 		childState := toChild(parentState.Copy())
 		cmd, err := node.Execute(ctx, childState.Copy())
 		if err != nil {

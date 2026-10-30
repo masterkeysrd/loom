@@ -51,6 +51,16 @@ func TestCloneMessage(t *testing.T) {
 			&TextBlock{Text: "response"},
 			&ToolCall{ID: "call-1", Name: "my_tool", Args: map[string]any{"arg": 1}},
 		},
+		Metrics: &TokenMetrics{
+			TotalTokens: 150,
+			Tokens: TokenDetails{
+				Input:     100,
+				Output:    50,
+				CacheRead: 40,
+			},
+		},
+		Done:       true,
+		DoneReason: "stop",
 	}
 	assistantCloned := CloneMessage(assistant).(*Assistant)
 	if assistantCloned == assistant {
@@ -58,6 +68,14 @@ func TestCloneMessage(t *testing.T) {
 	}
 	if !reflect.DeepEqual(assistantCloned, assistant) {
 		t.Errorf("expected cloned assistant message to equal original, got %v", assistantCloned)
+	}
+	// Verify deep copy of metrics
+	assistantCloned.Metrics.TotalTokens = 200
+	if assistant.Metrics.TotalTokens != 150 {
+		t.Error("metrics were not deep copied")
+	}
+	if !assistantCloned.Done || assistantCloned.DoneReason != "stop" {
+		t.Errorf("done or done_reason not cloned: got Done=%v, DoneReason=%s", assistantCloned.Done, assistantCloned.DoneReason)
 	}
 	// Verify deep copy of content block args
 	assistantCloned.Content[1].(*ToolCall).Args["arg"] = 2

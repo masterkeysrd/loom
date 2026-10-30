@@ -131,9 +131,17 @@ func CloneMessage(msg Message) Message {
 			Content: CloneContent(m.Content),
 		}
 	case *Assistant:
+		var metrics *TokenMetrics
+		if m.Metrics != nil {
+			mc := *m.Metrics
+			metrics = &mc
+		}
 		return &Assistant{
-			Base:    cloneBase(m.Base),
-			Content: CloneContent(m.Content),
+			Base:       cloneBase(m.Base),
+			Content:    CloneContent(m.Content),
+			Metrics:    metrics,
+			Done:       m.Done,
+			DoneReason: m.DoneReason,
 		}
 	case *Tool:
 		return &Tool{

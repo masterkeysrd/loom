@@ -252,12 +252,12 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0.125,
 			TieredLimits: []profile.TierPricing{
 				{
+					Label:      "context>100000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 100000},
 					Input:      0.5,
 					Output:     2.5,
 					CacheRead:  0.05,
 					CacheWrite: 0.625,
-					Label:      "context>100000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 100000},
 				},
 			},
 		},

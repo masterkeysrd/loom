@@ -49,12 +49,12 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0,
 			TieredLimits: []profile.TierPricing{
 				{
+					Label:      "context>200000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 200000},
 					Input:      4,
 					Output:     18,
 					CacheRead:  0.4,
 					CacheWrite: 0,
-					Label:      "context>200000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 200000},
 				},
 			},
 		},
@@ -101,12 +101,12 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0,
 			TieredLimits: []profile.TierPricing{
 				{
+					Label:      "context>200000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 200000},
 					Input:      4,
 					Output:     18,
 					CacheRead:  0.4,
 					CacheWrite: 0,
-					Label:      "context>200000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 200000},
 				},
 			},
 		},
@@ -149,12 +149,12 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0,
 			TieredLimits: []profile.TierPricing{
 				{
+					Label:      "context>200000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 200000},
 					Input:      2.5,
 					Output:     15,
 					CacheRead:  0,
 					CacheWrite: 0,
-					Label:      "context>200000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 200000},
 				},
 			},
 		},
@@ -384,12 +384,12 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0,
 			TieredLimits: []profile.TierPricing{
 				{
+					Label:      "context>200000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 200000},
 					Input:      2.5,
 					Output:     15,
 					CacheRead:  0.25,
 					CacheWrite: 0,
-					Label:      "context>200000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 200000},
 				},
 			},
 		},
@@ -531,45 +531,6 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0,
 		},
 	},
-	"gemini-3-pro-image-preview": {
-		ID:          "gemini-3-pro-image-preview",
-		Name:        "Nano Banana Pro",
-		Description: "Nano Banana Pro for higher-fidelity image generation and design-heavy edits",
-		Family:      "gemini-pro",
-		Knowledge:   "2025-01",
-		ReleaseDate: "2025-11-20",
-		LastUpdated: "2025-11-20",
-		Capabilities: profile.Capabilities{
-			Completion:  false,
-			Decision:    false,
-			Embedding:   false,
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    false,
-			Temperature: true,
-		},
-		Limits: profile.Limits{
-			Context: 131072,
-			Output:  32768,
-		},
-		Modalities: profile.Modalities{
-			Inputs: []profile.Modality{
-				profile.ModalityText,
-				profile.ModalityImage,
-			},
-			Outputs: []profile.Modality{
-				profile.ModalityText,
-				profile.ModalityImage,
-			},
-		},
-		OpenWeights: false,
-		Pricing: profile.Pricing{
-			Input:      2,
-			Output:     120,
-			CacheRead:  0,
-			CacheWrite: 0,
-		},
-	},
 	"gemini-3.1-flash-image": {
 		ID:          "gemini-3.1-flash-image",
 		Name:        "Nano Banana 2",
@@ -605,55 +566,6 @@ var staticProfiles = map[string]profile.Profile{
 				profile.ModalityText,
 				profile.ModalityImage,
 				profile.ModalityVideo,
-				profile.ModalityPDF,
-			},
-			Outputs: []profile.Modality{
-				profile.ModalityText,
-				profile.ModalityImage,
-			},
-		},
-		OpenWeights: false,
-		Pricing: profile.Pricing{
-			Input:      0.5,
-			Output:     60,
-			CacheRead:  0,
-			CacheWrite: 0,
-		},
-	},
-	"gemini-3.1-flash-image-preview": {
-		ID:          "gemini-3.1-flash-image-preview",
-		Name:        "Nano Banana 2",
-		Description: "Image model for prompt-driven generation, editing, and visual design workflows",
-		Family:      "gemini-flash",
-		Knowledge:   "2025-01",
-		ReleaseDate: "2026-02-26",
-		LastUpdated: "2026-02-26",
-		Capabilities: profile.Capabilities{
-			Completion:  false,
-			Decision:    false,
-			Embedding:   false,
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    false,
-			Temperature: true,
-			ReasoningOptions: []profile.ReasoningOption{
-				{
-					Type: "effort",
-					Values: []string{
-						"minimal",
-						"high",
-					},
-				},
-			},
-		},
-		Limits: profile.Limits{
-			Context: 65536,
-			Output:  65536,
-		},
-		Modalities: profile.Modalities{
-			Inputs: []profile.Modality{
-				profile.ModalityText,
-				profile.ModalityImage,
 				profile.ModalityPDF,
 			},
 			Outputs: []profile.Modality{
@@ -961,12 +873,12 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0,
 			TieredLimits: []profile.TierPricing{
 				{
+					Label:      "context>200000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 200000},
 					Input:      4,
 					Output:     18,
 					CacheRead:  0.4,
 					CacheWrite: 0,
-					Label:      "context>200000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 200000},
 				},
 			},
 		},
@@ -1022,12 +934,12 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0,
 			TieredLimits: []profile.TierPricing{
 				{
+					Label:      "context>200000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 200000},
 					Input:      4,
 					Output:     18,
 					CacheRead:  0.4,
 					CacheWrite: 0,
-					Label:      "context>200000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 200000},
 				},
 			},
 		},
@@ -1648,12 +1560,12 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0,
 			TieredLimits: []profile.TierPricing{
 				{
+					Label:      "context>200000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 200000},
 					Input:      4,
 					Output:     18,
 					CacheRead:  0.4,
 					CacheWrite: 0,
-					Label:      "context>200000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 200000},
 				},
 			},
 		},

@@ -104,6 +104,25 @@ func TestToModelParts_DummySignature(t *testing.T) {
 	}
 }
 
+func TestToModelParts_EmptyThinkingBlock(t *testing.T) {
+	sig := encodeThoughtSignature([]byte("sig"))
+	content := message.Content{
+		&message.ThinkingBlock{Thinking: "", Extras: map[string]any{ThoughtSignatureKey: sig}},
+		&message.TextBlock{Text: "answer"},
+	}
+
+	parts, err := toModelParts(content)
+	if err != nil {
+		t.Fatalf("toModelParts failed: %v", err)
+	}
+	if len(parts) != 1 {
+		t.Fatalf("expected 1 part (empty thought dropped), got %d", len(parts))
+	}
+	if parts[0].Thought || parts[0].Text != "answer" || string(parts[0].ThoughtSignature) != "sig" {
+		t.Errorf("unexpected part: %+v", parts[0])
+	}
+}
+
 func TestToAssistantChunk(t *testing.T) {
 	signature := []byte("test-signature")
 	encodedSignature := encodeThoughtSignature(signature)

@@ -243,6 +243,7 @@ func toUserParts(content message.Content) ([]*genai.Part, error) {
 func toModelParts(content message.Content) ([]*genai.Part, error) {
 	var parts []*genai.Part
 	var firstFCSeen bool
+	var pendingSig []byte
 	for _, block := range content {
 		switch v := block.(type) {
 		case *message.TextBlock:
@@ -260,20 +261,30 @@ func toModelParts(content message.Content) ([]*genai.Part, error) {
 				parts = append(parts, part)
 			}
 		case *message.ThinkingBlock:
-			part := &genai.Part{
-				Text:    v.Thinking,
-				Thought: true,
-			}
-
-			if sig, ok := v.Extras[ThoughtSignatureKey].(string); ok {
-				decodedSig, err := decodeThoughtSignature(sig)
+			var sig []byte
+			if s, ok := v.Extras[ThoughtSignatureKey].(string); ok {
+				decodedSig, err := decodeThoughtSignature(s)
 				if err != nil {
 					return nil, fmt.Errorf("decode thought signature for thinking block: %w", err)
 				}
-				part.ThoughtSignature = decodedSig
+				sig = decodedSig
 			}
 
-			parts = append(parts, part)
+			if v.Thinking == "" {
+				// A thought part without text is rejected by the API
+				// ("Unsupported input part"). Keep only its signature and
+				// attach it to the next part that has none.
+				if len(sig) > 0 {
+					pendingSig = sig
+				}
+				continue
+			}
+
+			parts = append(parts, &genai.Part{
+				Text:             v.Thinking,
+				Thought:          true,
+				ThoughtSignature: sig,
+			})
 		case *message.ToolCall:
 			part := &genai.Part{
 				FunctionCall: &genai.FunctionCall{
@@ -291,6 +302,11 @@ func toModelParts(content message.Content) ([]*genai.Part, error) {
 				part.ThoughtSignature = decodedSig
 			}
 
+			if len(part.ThoughtSignature) == 0 && len(pendingSig) > 0 {
+				part.ThoughtSignature = pendingSig
+				pendingSig = nil
+			}
+
 			if !firstFCSeen && len(part.ThoughtSignature) == 0 {
 				decodedDummy, err := decodeThoughtSignature(DummyThoughtSignature)
 				if err != nil {
@@ -303,6 +319,15 @@ func toModelParts(content message.Content) ([]*genai.Part, error) {
 			parts = append(parts, part)
 		default:
 			return nil, fmt.Errorf("unsupported content block type in assistant message: %T", block)
+		}
+
+		// Attach a signature carried over from an empty thinking block to the
+		// text part just appended, if it has none of its own.
+		if n := len(parts); n > 0 && len(pendingSig) > 0 {
+			if last := parts[n-1]; !last.Thought && last.FunctionCall == nil && len(last.ThoughtSignature) == 0 {
+				last.ThoughtSignature = pendingSig
+				pendingSig = nil
+			}
 		}
 	}
 	return parts, nil

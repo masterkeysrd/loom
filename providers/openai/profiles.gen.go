@@ -958,12 +958,12 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0,
 			TieredLimits: []profile.TierPricing{
 				{
+					Label:      "context>272000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 					Input:      5,
 					Output:     22.5,
 					CacheRead:  0.5,
 					CacheWrite: 0,
-					Label:      "context>272000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 				},
 			},
 		},
@@ -1116,12 +1116,12 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0,
 			TieredLimits: []profile.TierPricing{
 				{
+					Label:      "context>272000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 					Input:      60,
 					Output:     270,
 					CacheRead:  0,
 					CacheWrite: 0,
-					Label:      "context>272000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 				},
 			},
 		},
@@ -1177,12 +1177,12 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0,
 			TieredLimits: []profile.TierPricing{
 				{
+					Label:      "context>272000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 					Input:      10,
 					Output:     45,
 					CacheRead:  1,
 					CacheWrite: 0,
-					Label:      "context>272000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 				},
 			},
 		},
@@ -1236,12 +1236,12 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0,
 			TieredLimits: []profile.TierPricing{
 				{
+					Label:      "context>272000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 					Input:      60,
 					Output:     270,
 					CacheRead:  0,
 					CacheWrite: 0,
-					Label:      "context>272000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 				},
 			},
 		},
@@ -1298,12 +1298,12 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 5,
 			TieredLimits: []profile.TierPricing{
 				{
+					Label:      "context>272000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 					Input:      8,
 					Output:     30,
 					CacheRead:  0.8,
 					CacheWrite: 10,
-					Label:      "context>272000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 				},
 			},
 		},
@@ -1360,12 +1360,12 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0.25,
 			TieredLimits: []profile.TierPricing{
 				{
+					Label:      "context>272000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 					Input:      0.4,
 					Output:     1.8,
 					CacheRead:  0.04,
 					CacheWrite: 0.5,
-					Label:      "context>272000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 				},
 			},
 		},
@@ -1422,12 +1422,12 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 5,
 			TieredLimits: []profile.TierPricing{
 				{
+					Label:      "context>272000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 					Input:      8,
 					Output:     30,
 					CacheRead:  0.8,
 					CacheWrite: 10,
-					Label:      "context>272000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 				},
 			},
 		},
@@ -1484,12 +1484,12 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 2.5,
 			TieredLimits: []profile.TierPricing{
 				{
+					Label:      "context>272000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 					Input:      4,
 					Output:     18,
 					CacheRead:  0.4,
 					CacheWrite: 5,
-					Label:      "context>272000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 				},
 			},
 		},
@@ -1545,12 +1545,12 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 12.5,
 			TieredLimits: []profile.TierPricing{
 				{
+					Label:      "context>272000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 					Input:      20,
 					Output:     75,
 					CacheRead:  2,
 					CacheWrite: 25,
-					Label:      "context>272000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 				},
 			},
 		},
@@ -1607,12 +1607,12 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0.125,
 			TieredLimits: []profile.TierPricing{
 				{
+					Label:      "context>272000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 					Input:      0.2,
 					Output:     0.75,
 					CacheRead:  0.02,
 					CacheWrite: 0.25,
-					Label:      "context>272000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 				},
 			},
 		},
@@ -1669,12 +1669,12 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 2.5,
 			TieredLimits: []profile.TierPricing{
 				{
+					Label:      "context>272000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 					Input:      4,
 					Output:     15,
 					CacheRead:  0.4,
 					CacheWrite: 5,
-					Label:      "context>272000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 				},
 			},
 		},
@@ -1730,12 +1730,12 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 2.5,
 			TieredLimits: []profile.TierPricing{
 				{
+					Label:      "context>272000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 					Input:      4,
 					Output:     15,
 					CacheRead:  0.2,
 					CacheWrite: 5,
-					Label:      "context>272000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 				},
 			},
 		},
@@ -1792,12 +1792,12 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 1.25,
 			TieredLimits: []profile.TierPricing{
 				{
+					Label:      "context>272000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 					Input:      2,
 					Output:     7.5,
 					CacheRead:  0.1,
 					CacheWrite: 2.5,
-					Label:      "context>272000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 				},
 			},
 		},
@@ -1854,12 +1854,12 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 5,
 			TieredLimits: []profile.TierPricing{
 				{
+					Label:      "context>272000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 					Input:      8,
 					Output:     30,
 					CacheRead:  0.8,
 					CacheWrite: 10,
-					Label:      "context>272000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
 				},
 			},
 		},
@@ -1913,43 +1913,6 @@ var staticProfiles = map[string]profile.Profile{
 			Output:     75,
 			CacheRead:  1.25,
 			CacheWrite: 15.625,
-		},
-	},
-	"gpt-image-1": {
-		ID:          "gpt-image-1",
-		Name:        "gpt-image-1",
-		Description: "OpenAI image model for production generation, edits, and brand-safe visual workflows",
-		Family:      "gpt-image",
-		ReleaseDate: "2025-04-24",
-		LastUpdated: "2025-04-24",
-		Capabilities: profile.Capabilities{
-			Completion:  false,
-			Decision:    false,
-			Embedding:   false,
-			Attachment:  true,
-			Reasoning:   false,
-			ToolCall:    false,
-			Temperature: false,
-		},
-		Limits: profile.Limits{
-			Context: 0,
-			Output:  0,
-		},
-		Modalities: profile.Modalities{
-			Inputs: []profile.Modality{
-				profile.ModalityText,
-				profile.ModalityImage,
-			},
-			Outputs: []profile.Modality{
-				profile.ModalityImage,
-			},
-		},
-		OpenWeights: false,
-		Pricing: profile.Pricing{
-			Input:      0,
-			Output:     0,
-			CacheRead:  0,
-			CacheWrite: 0,
 		},
 	},
 	"gpt-image-1-mini": {

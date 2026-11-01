@@ -3,6 +3,7 @@ package message
 import (
 	"fmt"
 	"maps"
+	"slices"
 
 	"github.com/masterkeysrd/loom/internal/collection"
 )
@@ -146,8 +147,8 @@ func (a *AssistantAggregator) upsert(incoming Block) {
 		}
 		a.blocks = append(a.blocks, tb)
 	case *ToolCallChunk:
-		for i := len(a.blocks) - 1; i >= 0; i-- {
-			if pt, ok := a.blocks[i].(*ToolCallChunk); ok && pt.Index == incoming.Index {
+		for _, v := range slices.Backward(a.blocks) {
+			if pt, ok := v.(*ToolCallChunk); ok && pt.Index == incoming.Index {
 				pt.Aggregate(incoming)
 				return
 			}
@@ -156,8 +157,8 @@ func (a *AssistantAggregator) upsert(incoming Block) {
 		pt.Aggregate(incoming)
 		a.blocks = append(a.blocks, pt)
 	case *ServerToolCallChunk:
-		for i := len(a.blocks) - 1; i >= 0; i-- {
-			if pt, ok := a.blocks[i].(*ServerToolCallChunk); ok && pt.Index == incoming.Index {
+		for _, v := range slices.Backward(a.blocks) {
+			if pt, ok := v.(*ServerToolCallChunk); ok && pt.Index == incoming.Index {
 				pt.Aggregate(incoming)
 				return
 			}

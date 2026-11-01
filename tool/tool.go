@@ -52,6 +52,7 @@ type Definition struct {
 	Annotation   Annotation
 	InputSchema  *jsonschema.Schema
 	OutputSchema *jsonschema.Schema
+	DeferLoading bool
 }
 
 // Annotation defines the safety and execution profile of a tool.
@@ -153,6 +154,21 @@ func WithAnnotation(a Annotation) Option {
 		d.Annotation = a
 		d.Definition.Annotation = a
 	}
+}
+
+// WithDeferLoading marks the tool for deferred loading. Deferred tools are
+// withheld from the initial model context until discovered via tool search.
+func WithDeferLoading() Option {
+	return func(d *Tool) {
+		d.Definition.DeferLoading = true
+	}
+}
+
+// WithDeferLoading returns a shallow copy of t with Definition.DeferLoading set to deferLoading.
+func (t *Tool) WithDeferLoading(deferLoading bool) *Tool {
+	clone := *t
+	clone.Definition.DeferLoading = deferLoading
+	return &clone
 }
 
 // Validate manually checks the given arguments against the tool's input schema.
@@ -283,10 +299,28 @@ func AdaptHandler[In, Out any](name, desc string, schema *jsonschema.Resolved, f
 			}
 
 			var content message.Content
-			if p, ok := any(out).(ContentProvider); ok {
-				content = p.ToolContent()
-			} else if p, ok := any(out).(TextContentProvider); ok {
-				content = message.Content{&message.TextBlock{Text: p.TextContent()}}
+			switch v := any(out).(type) {
+			case ContentProvider:
+				content = v.ToolContent()
+			case TextContentProvider:
+				content = message.Content{&message.TextBlock{Text: v.TextContent()}}
+			case message.Content:
+				content = v
+			case message.Block:
+				content = message.Content{v}
+			case []message.ToolReferenceBlock:
+				content = make(message.Content, len(v))
+				for i := range v {
+					ref := v[i]
+					content[i] = &ref
+				}
+			case []*message.ToolReferenceBlock:
+				content = make(message.Content, 0, len(v))
+				for _, ref := range v {
+					if ref != nil {
+						content = append(content, ref)
+					}
+				}
 			}
 
 			if telemetry.ShouldRecordContent(ctx) {

@@ -4,15 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
-	"math"
 	"slices"
-	"strings"
 	"sync"
-	"unicode"
 
 	"github.com/masterkeysrd/loom/decision"
 	"github.com/masterkeysrd/loom/document"
+	"github.com/masterkeysrd/loom/internal/bm25"
 	"github.com/masterkeysrd/loom/tool"
 	"github.com/masterkeysrd/loom/vectorstore"
 )
@@ -111,7 +108,7 @@ func (r *VectorStoreRetriever) Retrieve(ctx context.Context, query string, opts 
 // -------------------------------------------------------------------------
 
 // TokenizerFunc tokenizes a text string into a sequence of terms.
-type TokenizerFunc func(string) []string
+type TokenizerFunc = bm25.TokenizerFunc
 
 // BM25Option configures a [BM25Retriever].
 type BM25Option func(*BM25Retriever)
@@ -143,26 +140,6 @@ func WithBM25Tokenizer(fn TokenizerFunc) BM25Option {
 	}
 }
 
-// defaultBM25Tokenizer provides a Unicode-aware lowercase letter/digit word tokenizer.
-func defaultBM25Tokenizer(text string) []string {
-	var tokens []string
-	var b strings.Builder
-	for _, r := range strings.ToLower(text) {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			b.WriteRune(r)
-		} else {
-			if b.Len() > 0 {
-				tokens = append(tokens, b.String())
-				b.Reset()
-			}
-		}
-	}
-	if b.Len() > 0 {
-		tokens = append(tokens, b.String())
-	}
-	return tokens
-}
-
 // BM25Retriever implements the Okapi BM25 ranking algorithm for lexical document retrieval.
 type BM25Retriever struct {
 	mu         sync.RWMutex
@@ -170,12 +147,7 @@ type BM25Retriever struct {
 	b          float64
 	tokenizer  TokenizerFunc
 	middleware []Middleware
-
-	docs       []document.Document
-	docLengths []int
-	docTF      []map[string]int
-	df         map[string]int
-	totalLen   int
+	idx        *bm25.Index[document.Document]
 }
 
 // NewBM25 creates a new [BM25Retriever] indexed with docs and wrapped with [TelemetryMiddleware]("bm25").
@@ -183,15 +155,19 @@ func NewBM25(docs []document.Document, opts ...BM25Option) *BM25Retriever {
 	ret := &BM25Retriever{
 		k1:         1.5,
 		b:          0.75,
-		tokenizer:  defaultBM25Tokenizer,
+		tokenizer:  bm25.DefaultTokenizer,
 		middleware: []Middleware{TelemetryMiddleware("bm25")},
-		df:         make(map[string]int),
 	}
 	for _, opt := range opts {
 		if opt != nil {
 			opt(ret)
 		}
 	}
+	ret.idx = bm25.New(
+		bm25.WithK1[document.Document](ret.k1),
+		bm25.WithB[document.Document](ret.b),
+		bm25.WithTokenizer[document.Document](ret.tokenizer),
+	)
 	if len(docs) > 0 {
 		ret.Add(docs...)
 	}
@@ -207,13 +183,12 @@ func (b *BM25Retriever) WithMiddleware(mws ...Middleware) *BM25Retriever {
 		b:          b.b,
 		tokenizer:  b.tokenizer,
 		middleware: append(slices.Clone(b.middleware), mws...),
-		docs:       slices.Clone(b.docs),
-		docLengths: slices.Clone(b.docLengths),
-		docTF:      slices.Clone(b.docTF),
-		df:         make(map[string]int, len(b.df)),
-		totalLen:   b.totalLen,
+		idx: b.idx.Clone(func(doc document.Document) document.Document {
+			docCopy := doc
+			docCopy.Metadata = document.CloneMetadata(doc.Metadata)
+			return docCopy
+		}),
 	}
-	maps.Copy(clone.df, b.df)
 	return clone
 }
 
@@ -228,21 +203,7 @@ func (b *BM25Retriever) Add(docs ...document.Document) {
 	for _, doc := range docs {
 		storedDoc := doc
 		storedDoc.Metadata = document.CloneMetadata(doc.Metadata)
-
-		tokens := b.tokenizer(doc.Content)
-		docLen := len(tokens)
-		b.totalLen += docLen
-		b.docLengths = append(b.docLengths, docLen)
-
-		tf := make(map[string]int, len(tokens))
-		for _, tok := range tokens {
-			tf[tok]++
-		}
-		for term := range tf {
-			b.df[term]++
-		}
-		b.docTF = append(b.docTF, tf)
-		b.docs = append(b.docs, storedDoc)
+		b.idx.Add(doc.Content, storedDoc)
 	}
 }
 
@@ -275,65 +236,21 @@ func (b *BM25Retriever) retrieve(ctx context.Context, query string, opts ...Opti
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
-	N := len(b.docs)
-	if N == 0 {
-		return nil, nil
-	}
-
-	queryTokens := b.tokenizer(query)
-	if len(queryTokens) == 0 {
-		return nil, nil
-	}
-
-	uniqueTerms := make(map[string]struct{}, len(queryTokens))
-	for _, tok := range queryTokens {
-		uniqueTerms[tok] = struct{}{}
-	}
-
-	avgdl := float64(b.totalLen) / float64(N)
-	if avgdl == 0 {
-		avgdl = 1.0
-	}
-
-	// Compute IDF for query terms
-	idfs := make(map[string]float64, len(uniqueTerms))
-	for term := range uniqueTerms {
-		dfVal := float64(b.df[term])
-		if dfVal > 0 {
-			idf := math.Log(1.0 + (float64(N)-dfVal+0.5)/(dfVal+0.5))
-			idfs[term] = idf
-		}
-	}
+	results := b.idx.Search(query, func(doc document.Document) bool {
+		return vectorstore.MatchesFilter(doc.Metadata, cfg.Filter)
+	})
 
 	var matched []document.Document
-	for i, doc := range b.docs {
-		if !vectorstore.MatchesFilter(doc.Metadata, cfg.Filter) {
-			continue
-		}
-
-		tfMap := b.docTF[i]
-		docLen := float64(b.docLengths[i])
-		lenNorm := 1.0 - b.b + b.b*(docLen/avgdl)
-
-		var score float64
-		for term, idf := range idfs {
-			tf := float64(tfMap[term])
-			if tf <= 0 {
-				continue
-			}
-			score += idf * (tf * (b.k1 + 1.0)) / (tf + b.k1*lenNorm)
-		}
-
-		score32 := float32(score)
+	for _, res := range results {
+		score32 := float32(res.Score)
 		if score32 <= 0 {
 			continue
 		}
 		if cfg.HasMinScore && score32 < cfg.MinScore {
 			continue
 		}
-
-		docCopy := doc.WithScore(score32)
-		docCopy.Metadata = document.CloneMetadata(doc.Metadata)
+		docCopy := res.Item.WithScore(score32)
+		docCopy.Metadata = document.CloneMetadata(res.Item.Metadata)
 		matched = append(matched, docCopy)
 	}
 
@@ -569,7 +486,7 @@ func NewTool(name, description string, r Retriever, defaultOpts ...Option) (*too
 		return r.Retrieve(ctx, in.Query, callOpts...)
 	}
 
-	return tool.New[ToolInput, []document.Document](
+	return tool.New(
 		name,
 		name,
 		description,

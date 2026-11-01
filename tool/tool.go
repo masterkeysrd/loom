@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/masterkeysrd/loom/internal/collection"
 	internalctx "github.com/masterkeysrd/loom/internal/context"
 	"github.com/masterkeysrd/loom/message"
 	"github.com/masterkeysrd/loom/store"
@@ -384,12 +384,7 @@ func AdaptStreamHandler[In any](name, desc string, schema *jsonschema.Resolved, 
 
 			for chunk, err := range stream {
 				if err == nil {
-					if meta := rt.GetMeta(); len(meta) > 0 {
-						if chunk.Metadata == nil {
-							chunk.Metadata = make(map[string]any)
-						}
-						maps.Copy(chunk.Metadata, meta)
-					}
+					chunk.Metadata = collection.MergeMap(chunk.Metadata, rt.GetMeta())
 				}
 
 				if err != nil {

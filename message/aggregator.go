@@ -3,29 +3,29 @@ package message
 import (
 	"fmt"
 	"maps"
+
+	"github.com/masterkeysrd/loom/internal/collection"
 )
 
 // AssistantAggregator accumulates a stream of [AssistantChunk] values into
 // coherent content blocks. Consecutive text chunks are merged into a single
 // [TextBlock], and consecutive thinking chunks are merged into a single
 // [ThinkingBlock], to avoid excessive fragmentation when the full response is
-// assembled after streaming. ToolCallChunk fragments are merged by index into
-// complete [ToolCall] blocks, mirroring the LangChain streaming convention.
+// assembled after streaming. ToolCallChunk and ServerToolCallChunk fragments
+// are merged by index into complete [ToolCall] and [ServerToolCall] blocks in place.
 type AssistantAggregator struct {
-	id           string
-	metadata     map[string]any
-	blocks       []Block
-	metrics      *TokenMetrics
-	pendingCalls map[int]*ToolCallChunk
-	done         bool
-	doneReason   string
+	id         string
+	metadata   map[string]any
+	blocks     []Block
+	metrics    *TokenMetrics
+	done       bool
+	doneReason string
 }
 
 // NewAssistantAggregator returns an empty [AssistantAggregator] ready to accept chunks.
 func NewAssistantAggregator() *AssistantAggregator {
 	return &AssistantAggregator{
-		blocks:       make([]Block, 0),
-		pendingCalls: make(map[int]*ToolCallChunk),
+		blocks: make([]Block, 0),
 	}
 }
 
@@ -44,12 +44,7 @@ func (a *AssistantAggregator) Add(chunk *AssistantChunk) {
 	for _, block := range chunk.Content {
 		a.upsert(block)
 	}
-	if len(chunk.Metadata) > 0 {
-		if a.metadata == nil {
-			a.metadata = make(map[string]any)
-		}
-		maps.Copy(a.metadata, chunk.Metadata)
-	}
+	a.metadata = collection.MergeMap(a.metadata, chunk.Metadata)
 	if chunk.Metrics != nil {
 		if a.metrics == nil {
 			a.metrics = &TokenMetrics{}
@@ -83,17 +78,27 @@ func (a *AssistantAggregator) ID() string {
 	return a.id
 }
 
-// GetBlocks flushes any pending tool call chunks into complete [ToolCall] blocks
-// and returns the fully merged slice of content blocks.
+// GetBlocks flushes any pending tool call chunks and server tool call chunks into
+// complete blocks in place, and returns the fully merged slice of content blocks.
 func (a *AssistantAggregator) GetBlocks() ([]Block, error) {
-	blocks := make([]Block, 0, len(a.blocks)+len(a.pendingCalls))
-	blocks = append(blocks, a.blocks...)
-	for _, call := range a.pendingCalls {
-		tc, err := call.ToToolCall()
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert tool call chunk to tool call: %w", err)
+	blocks := make([]Block, len(a.blocks))
+	for i, b := range a.blocks {
+		switch block := b.(type) {
+		case *ToolCallChunk:
+			tc, err := block.ToToolCall()
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert tool call chunk to tool call: %w", err)
+			}
+			blocks[i] = tc
+		case *ServerToolCallChunk:
+			stc, err := block.ToServerToolCall()
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert server tool call chunk to server tool call: %w", err)
+			}
+			blocks[i] = stc
+		default:
+			blocks[i] = block
 		}
-		blocks = append(blocks, tc)
 	}
 	return blocks, nil
 }
@@ -112,22 +117,16 @@ func (a *AssistantAggregator) upsert(incoming Block) {
 			if last.Kind() == BlockKindText {
 				txt := last.(*TextBlock)
 				txt.Text += incoming.Text
-				if len(incoming.Extras) > 0 {
-					if txt.Extras == nil {
-						txt.Extras = make(map[string]any)
-					}
-					maps.Copy(txt.Extras, incoming.Extras)
-				}
+				txt.Extras = collection.MergeMap(txt.Extras, incoming.Extras)
 				return
 			}
 		}
 		// Store an independent copy so that mutations to a.blocks[n].Text
 		// (e.g. by a sibling aggregator sharing the same *TextBlock pointer)
 		// do not affect the block owned by this aggregator, and vice-versa.
-		txt := &TextBlock{Text: incoming.Text}
-		if len(incoming.Extras) > 0 {
-			txt.Extras = make(map[string]any)
-			maps.Copy(txt.Extras, incoming.Extras)
+		txt := &TextBlock{
+			Text:   incoming.Text,
+			Extras: maps.Clone(incoming.Extras),
 		}
 		a.blocks = append(a.blocks, txt)
 	case *ThinkingBlock:
@@ -136,30 +135,39 @@ func (a *AssistantAggregator) upsert(incoming Block) {
 			if last.Kind() == BlockKindThinking {
 				tb := last.(*ThinkingBlock)
 				tb.Thinking += incoming.Thinking
-				if len(incoming.Extras) > 0 {
-					if tb.Extras == nil {
-						tb.Extras = make(map[string]any)
-					}
-					maps.Copy(tb.Extras, incoming.Extras)
-				}
+				tb.Extras = collection.MergeMap(tb.Extras, incoming.Extras)
 				return
 			}
 		}
 		// Same defensive copy as TextBlock above.
-		tb := &ThinkingBlock{Thinking: incoming.Thinking}
-		if len(incoming.Extras) > 0 {
-			tb.Extras = make(map[string]any)
-			maps.Copy(tb.Extras, incoming.Extras)
+		tb := &ThinkingBlock{
+			Thinking: incoming.Thinking,
+			Extras:   maps.Clone(incoming.Extras),
 		}
 		a.blocks = append(a.blocks, tb)
 	case *ToolCallChunk:
-		pt, ok := a.pendingCalls[incoming.Index]
-		if !ok {
-			pt = &ToolCallChunk{Index: incoming.Index}
-			a.pendingCalls[incoming.Index] = pt
+		for i := len(a.blocks) - 1; i >= 0; i-- {
+			if pt, ok := a.blocks[i].(*ToolCallChunk); ok && pt.Index == incoming.Index {
+				pt.Aggregate(incoming)
+				return
+			}
 		}
+		pt := &ToolCallChunk{Index: incoming.Index}
 		pt.Aggregate(incoming)
+		a.blocks = append(a.blocks, pt)
+	case *ServerToolCallChunk:
+		for i := len(a.blocks) - 1; i >= 0; i-- {
+			if pt, ok := a.blocks[i].(*ServerToolCallChunk); ok && pt.Index == incoming.Index {
+				pt.Aggregate(incoming)
+				return
+			}
+		}
+		pt := &ServerToolCallChunk{Index: incoming.Index}
+		pt.Aggregate(incoming)
+		a.blocks = append(a.blocks, pt)
 	default:
-		a.blocks = append(a.blocks, incoming)
+		// Make a defensive copy of incoming block so two aggregators
+		// sharing a chunk stream do not mutate shared pointers.
+		a.blocks = append(a.blocks, CloneBlock(incoming))
 	}
 }

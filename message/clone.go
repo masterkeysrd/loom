@@ -1,6 +1,9 @@
 package message
 
-import "maps"
+import (
+	"maps"
+	"slices"
+)
 
 func CloneAssistantChunk(chunk AssistantChunk) AssistantChunk {
 	clone := chunk
@@ -27,90 +30,96 @@ func CloneContent(content Content) Content {
 func CloneBlock(block Block) Block {
 	switch current := block.(type) {
 	case *TextBlock:
-		return &TextBlock{Text: current.Text}
+		return &TextBlock{
+			Text:   current.Text,
+			Extras: maps.Clone(current.Extras),
+		}
 	case *ThinkingBlock:
-		return &ThinkingBlock{Thinking: current.Thinking}
+		return &ThinkingBlock{
+			Thinking: current.Thinking,
+			Extras:   maps.Clone(current.Extras),
+		}
 	case *ImageBlock:
-		clone := &ImageBlock{
+		return &ImageBlock{
+			Data:     slices.Clone(current.Data),
 			MIMEType: current.MIMEType,
 			URL:      current.URL,
+			Extras:   maps.Clone(current.Extras),
 		}
-		if current.Data != nil {
-			clone.Data = make([]byte, len(current.Data))
-			copy(clone.Data, current.Data)
-		}
-		if current.Extras != nil {
-			clone.Extras = cloneMap(current.Extras)
-		}
-		return clone
 	case *AudioBlock:
-		clone := &AudioBlock{
+		return &AudioBlock{
+			Data:     slices.Clone(current.Data),
 			MIMEType: current.MIMEType,
 			URL:      current.URL,
+			Extras:   maps.Clone(current.Extras),
 		}
-		if current.Data != nil {
-			clone.Data = make([]byte, len(current.Data))
-			copy(clone.Data, current.Data)
-		}
-		if current.Extras != nil {
-			clone.Extras = cloneMap(current.Extras)
-		}
-		return clone
 	case *VideoBlock:
-		clone := &VideoBlock{
+		return &VideoBlock{
+			Data:     slices.Clone(current.Data),
 			MIMEType: current.MIMEType,
 			URL:      current.URL,
+			Extras:   maps.Clone(current.Extras),
 		}
-		if current.Data != nil {
-			clone.Data = make([]byte, len(current.Data))
-			copy(clone.Data, current.Data)
-		}
-		if current.Extras != nil {
-			clone.Extras = cloneMap(current.Extras)
-		}
-		return clone
 	case *DocumentBlock:
-		clone := &DocumentBlock{
+		return &DocumentBlock{
+			Data:     slices.Clone(current.Data),
 			MIMEType: current.MIMEType,
 			URL:      current.URL,
+			Extras:   maps.Clone(current.Extras),
 		}
-		if current.Data != nil {
-			clone.Data = make([]byte, len(current.Data))
-			copy(clone.Data, current.Data)
-		}
-		if current.Extras != nil {
-			clone.Extras = cloneMap(current.Extras)
-		}
-		return clone
 	case *ToolCall:
-		clone := &ToolCall{
-			ID:    current.ID,
-			Name:  current.Name,
-			Index: current.Index,
+		return &ToolCall{
+			ID:     current.ID,
+			Name:   current.Name,
+			Index:  current.Index,
+			Args:   maps.Clone(current.Args),
+			Extras: maps.Clone(current.Extras),
 		}
-		if current.Args != nil {
-			clone.Args = cloneMap(current.Args)
-		}
-		if current.Extras != nil {
-			clone.Extras = cloneMap(current.Extras)
-		}
-		return clone
 	case *ToolCallChunk:
 		return &ToolCallChunk{
 			Index:     current.Index,
 			ID:        current.ID,
 			Name:      current.Name,
 			ArgsChunk: current.ArgsChunk,
+			Extras:    maps.Clone(current.Extras),
+		}
+	case *ServerToolCall:
+		return &ServerToolCall{
+			ID:     current.ID,
+			Name:   current.Name,
+			Index:  current.Index,
+			Args:   maps.Clone(current.Args),
+			Extras: maps.Clone(current.Extras),
+		}
+	case *ServerToolCallChunk:
+		return &ServerToolCallChunk{
+			Index:     current.Index,
+			ID:        current.ID,
+			Name:      current.Name,
+			ArgsChunk: current.ArgsChunk,
+			Extras:    maps.Clone(current.Extras),
+		}
+	case *ServerToolResult:
+		clone := &ServerToolResult{
+			ToolCallID: current.ToolCallID,
+			Name:       current.Name,
+			Content:    CloneContent(current.Content),
+			Output:     current.Output,
+			IsError:    current.IsError,
+			Extras:     maps.Clone(current.Extras),
+		}
+		if m, ok := current.Output.(map[string]any); ok {
+			clone.Output = maps.Clone(m)
+		}
+		return clone
+	case *ToolReferenceBlock:
+		return &ToolReferenceBlock{
+			ToolName: current.ToolName,
+			Extras:   maps.Clone(current.Extras),
 		}
 	default:
 		return block
 	}
-}
-
-func cloneMap(input map[string]any) map[string]any {
-	clone := make(map[string]any, len(input))
-	maps.Copy(clone, input)
-	return clone
 }
 
 // CloneMessage returns a deep copy of the given Message.
@@ -158,15 +167,9 @@ func CloneMessage(msg Message) Message {
 }
 
 func cloneBase(b Base) Base {
-	clone := Base{
-		ID: b.ID,
+	return Base{
+		ID:         b.ID,
+		Metadata:   maps.Clone(b.Metadata),
+		Extensions: maps.Clone(b.Extensions),
 	}
-	if b.Metadata != nil {
-		clone.Metadata = cloneMap(b.Metadata)
-	}
-	if b.Extensions != nil {
-		clone.Extensions = make(ExtensionMap, len(b.Extensions))
-		maps.Copy(clone.Extensions, b.Extensions)
-	}
-	return clone
 }

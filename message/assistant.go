@@ -48,3 +48,25 @@ func (a *Assistant) ToolCalls() []*ToolCall {
 	}
 	return calls
 }
+
+// ServerToolCalls returns all [ServerToolCall] blocks present in the assistant's content.
+func (a *Assistant) ServerToolCalls() []*ServerToolCall {
+	var calls []*ServerToolCall
+	for _, b := range a.Content {
+		if tc, ok := b.(*ServerToolCall); ok {
+			calls = append(calls, tc)
+		}
+	}
+	return calls
+}
+
+// ServerToolResults returns all [ServerToolResult] blocks present in the assistant's content.
+func (a *Assistant) ServerToolResults() []*ServerToolResult {
+	var results []*ServerToolResult
+	for _, b := range a.Content {
+		if tr, ok := b.(*ServerToolResult); ok {
+			results = append(results, tr)
+		}
+	}
+	return results
+}

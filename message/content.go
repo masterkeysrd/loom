@@ -100,6 +100,8 @@ func (c *Content) UnmarshalJSON(data []byte) error {
 			block = &TextBlock{}
 		case BlockKindToolCall:
 			block = &ToolCall{}
+		case BlockKindToolCallChunk:
+			block = &ToolCallChunk{}
 		case BlockKindThinking:
 			block = &ThinkingBlock{}
 		case BlockKindImage:
@@ -110,6 +112,14 @@ func (c *Content) UnmarshalJSON(data []byte) error {
 			block = &VideoBlock{}
 		case BlockKindDocument:
 			block = &DocumentBlock{}
+		case BlockKindServerToolCall:
+			block = &ServerToolCall{}
+		case BlockKindServerToolCallChunk:
+			block = &ServerToolCallChunk{}
+		case BlockKindServerToolResult:
+			block = &ServerToolResult{}
+		case BlockKindToolReference:
+			block = &ToolReferenceBlock{}
 		default:
 			return fmt.Errorf("unknown block kind: %s", header.Kind)
 		}
@@ -137,14 +147,18 @@ type Block interface {
 type BlockKind string
 
 const (
-	BlockKindText          BlockKind = "text"
-	BlockKindToolCall      BlockKind = "tool_call"
-	BlockKindToolCallChunk BlockKind = "tool_call_chunk"
-	BlockKindThinking      BlockKind = "thinking"
-	BlockKindImage         BlockKind = "image"
-	BlockKindAudio         BlockKind = "audio"
-	BlockKindVideo         BlockKind = "video"
-	BlockKindDocument      BlockKind = "document"
+	BlockKindText                BlockKind = "text"
+	BlockKindToolCall            BlockKind = "tool_call"
+	BlockKindToolCallChunk       BlockKind = "tool_call_chunk"
+	BlockKindThinking            BlockKind = "thinking"
+	BlockKindImage               BlockKind = "image"
+	BlockKindAudio               BlockKind = "audio"
+	BlockKindVideo               BlockKind = "video"
+	BlockKindDocument            BlockKind = "document"
+	BlockKindServerToolCall      BlockKind = "server_tool_call"
+	BlockKindServerToolCallChunk BlockKind = "server_tool_call_chunk"
+	BlockKindServerToolResult    BlockKind = "server_tool_result"
+	BlockKindToolReference       BlockKind = "tool_reference"
 )
 
 // TextBlock is a plain-text content block. It is the most common block type,
@@ -236,3 +250,16 @@ func (b *ThinkingBlock) Kind() BlockKind {
 }
 
 func (b *ThinkingBlock) isBlock() {}
+
+// ToolReferenceBlock references a deferred tool by name so that it is
+// loaded into the model's active toolset on subsequent turns.
+type ToolReferenceBlock struct {
+	ToolName string         `json:"tool_name"`
+	Extras   map[string]any `json:"extras,omitempty"`
+}
+
+func (b *ToolReferenceBlock) Kind() BlockKind {
+	return BlockKindToolReference
+}
+
+func (b *ToolReferenceBlock) isBlock() {}

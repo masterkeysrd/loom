@@ -3,7 +3,6 @@ package tool
 import (
 	"context"
 	"fmt"
-	"maps"
 
 	"github.com/masterkeysrd/loom/internal/collection"
 	"github.com/masterkeysrd/loom/message"
@@ -96,12 +95,7 @@ func (c *Container) Call(ctx context.Context, tc *message.ToolCall) (*message.To
 		if chunk.IsError {
 			isError = true
 		}
-		if len(chunk.Metadata) > 0 {
-			if metadata == nil {
-				metadata = make(map[string]any)
-			}
-			maps.Copy(metadata, chunk.Metadata)
-		}
+		metadata = collection.MergeMap(metadata, chunk.Metadata)
 	}
 
 	toolMsg := &message.Tool{

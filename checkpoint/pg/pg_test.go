@@ -261,3 +261,273 @@ func TestStructuredContent_PGCheckpointerDeterminism(t *testing.T) {
 		t.Fatalf("expected CanonicalStructuredContent to be identical, but differed:\nBefore: %s\nAfter:  %s", string(beforeCanonBytes), string(afterCanonBytes))
 	}
 }
+
+type MessagesState struct {
+	Messages []string `json:"messages"`
+}
+
+func TestArrayAppendDeltaDeduplication(t *testing.T) {
+	dsn := os.Getenv("POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("POSTGRES_DSN not set")
+	}
+
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	cp, err := pg.NewCheckpointer(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	threadID := "thread-delta-" + uuid.New().String()
+
+	var locs []graph.Location
+	var prevChannels graph.StateMap
+	var prevLoc *graph.Location
+
+	var expectedHistory [][]string
+	currentMessages := []string{}
+
+	// Record 5 checkpoints appending 1 message per step
+	for step := 1; step <= 5; step++ {
+		msg := "message-" + string(rune('0'+step))
+		currentMessages = append(currentMessages, msg)
+		expectedHistory = append(expectedHistory, append([]string(nil), currentMessages...))
+
+		st := MessagesState{Messages: currentMessages}
+		channels, err := graph.DecomposeState(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var writes map[string]graph.ChannelWrite
+		if prevLoc == nil {
+			writes = graph.DiffState(nil, channels)
+		} else {
+			writes = graph.DiffState(prevChannels, channels)
+		}
+
+		loc := graph.Location{
+			ThreadID:     threadID,
+			CheckpointNS: "",
+			CheckpointID: uuid.Must(uuid.NewV7()).String(),
+		}
+
+		checkpoint := graph.Checkpoint{
+			Location:      loc,
+			Parent:        prevLoc,
+			State:         channels,
+			ChannelWrites: writes,
+			Next:          []string{"next"},
+			Timestamp:     time.Now().UTC(),
+		}
+
+		if err := cp.Record(ctx, checkpoint); err != nil {
+			t.Fatalf("step %d: record failed: %v", step, err)
+		}
+
+		locs = append(locs, loc)
+		prevChannels = channels
+		prevLoc = &locs[len(locs)-1]
+	}
+
+	// Verify only 5 total blobs exist in CAS for this thread
+	var blobCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM checkpoint_blobs WHERE thread_id = $1", threadID).Scan(&blobCount); err != nil {
+		t.Fatal(err)
+	}
+	if blobCount != 5 {
+		t.Fatalf("expected exactly 5 blobs (1 per appended message delta), got %d", blobCount)
+	}
+
+	// Verify time-travel and accurate state reconstruction for every checkpoint
+	for i, loc := range locs {
+		loaded, err := cp.Load(ctx, loc)
+		if err != nil {
+			t.Fatalf("failed to load checkpoint %d: %v", i+1, err)
+		}
+		if loaded == nil {
+			t.Fatalf("checkpoint %d not found", i+1)
+		}
+
+		stateBytes, err := marshalStateMap(loaded.State)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var loadedState MessagesState
+		if err := json.Unmarshal(stateBytes, &loadedState); err != nil {
+			t.Fatalf("unmarshal step %d state: %v", i+1, err)
+		}
+
+		if !reflect.DeepEqual(loadedState.Messages, expectedHistory[i]) {
+			t.Fatalf("step %d reconstructed state mismatch:\nGot:  %v\nWant: %v", i+1, loadedState.Messages, expectedHistory[i])
+		}
+	}
+}
+
+func TestCompactionReplacementSeedReset(t *testing.T) {
+	dsn := os.Getenv("POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("POSTGRES_DSN not set")
+	}
+
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	cp, err := pg.NewCheckpointer(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	threadID := "thread-compaction-" + uuid.New().String()
+
+	// Steps 1 to 3: append messages
+	msgs := []string{"msg1"}
+	s1 := MessagesState{Messages: msgs}
+	ch1, _ := graph.DecomposeState(s1)
+	loc1 := graph.Location{ThreadID: threadID, CheckpointID: uuid.Must(uuid.NewV7()).String()}
+	if err := cp.Record(ctx, graph.Checkpoint{
+		Location:      loc1,
+		State:         ch1,
+		ChannelWrites: graph.DiffState(nil, ch1),
+		Next:          []string{"next"},
+		Timestamp:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	msgs = []string{"msg1", "msg2"}
+	s2 := MessagesState{Messages: msgs}
+	ch2, _ := graph.DecomposeState(s2)
+	loc2 := graph.Location{ThreadID: threadID, CheckpointID: uuid.Must(uuid.NewV7()).String()}
+	if err := cp.Record(ctx, graph.Checkpoint{
+		Location:      loc2,
+		Parent:        &loc1,
+		State:         ch2,
+		ChannelWrites: graph.DiffState(ch1, ch2),
+		Next:          []string{"next"},
+		Timestamp:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	msgs = []string{"msg1", "msg2", "msg3"}
+	s3 := MessagesState{Messages: msgs}
+	ch3, _ := graph.DecomposeState(s3)
+	loc3 := graph.Location{ThreadID: threadID, CheckpointID: uuid.Must(uuid.NewV7()).String()}
+	if err := cp.Record(ctx, graph.Checkpoint{
+		Location:      loc3,
+		Parent:        &loc2,
+		State:         ch3,
+		ChannelWrites: graph.DiffState(ch2, ch3),
+		Next:          []string{"next"},
+		Timestamp:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Step 4: Compaction / replacement with summary
+	msgs = []string{"summary_of_1_to_3"}
+	s4 := MessagesState{Messages: msgs}
+	ch4, _ := graph.DecomposeState(s4)
+	diff4 := graph.DiffState(ch3, ch4)
+	if diff4["messages"].Op != graph.WriteOpSet {
+		t.Fatalf("expected step 4 to record WriteOpSet for compacted messages, got %s", diff4["messages"].Op)
+	}
+
+	loc4 := graph.Location{ThreadID: threadID, CheckpointID: uuid.Must(uuid.NewV7()).String()}
+	if err := cp.Record(ctx, graph.Checkpoint{
+		Location:      loc4,
+		Parent:        &loc3,
+		State:         ch4,
+		ChannelWrites: diff4,
+		Next:          []string{"next"},
+		Timestamp:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var op4 string
+	if err := db.QueryRow("SELECT op FROM checkpoint_writes WHERE thread_id = $1 AND checkpoint_id = $2", threadID, loc4.CheckpointID).Scan(&op4); err != nil {
+		t.Fatal(err)
+	}
+	if op4 != "set" {
+		t.Fatalf("expected step 4 op in database to be 'set', got %q", op4)
+	}
+
+	// Step 5: Append new message after compaction
+	msgs = []string{"summary_of_1_to_3", "msg5"}
+	s5 := MessagesState{Messages: msgs}
+	ch5, _ := graph.DecomposeState(s5)
+	diff5 := graph.DiffState(ch4, ch5)
+	if diff5["messages"].Op != graph.WriteOpAppend {
+		t.Fatalf("expected step 5 to record WriteOpAppend, got %s", diff5["messages"].Op)
+	}
+
+	loc5 := graph.Location{ThreadID: threadID, CheckpointID: uuid.Must(uuid.NewV7()).String()}
+	if err := cp.Record(ctx, graph.Checkpoint{
+		Location:      loc5,
+		Parent:        &loc4,
+		State:         ch5,
+		ChannelWrites: diff5,
+		Next:          []string{"next"},
+		Timestamp:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var op5 string
+	if err := db.QueryRow("SELECT op FROM checkpoint_writes WHERE thread_id = $1 AND checkpoint_id = $2", threadID, loc5.CheckpointID).Scan(&op5); err != nil {
+		t.Fatal(err)
+	}
+	if op5 != "append" {
+		t.Fatalf("expected step 5 op in database to be 'append', got %q", op5)
+	}
+
+	// Load step 5: should reconstruct [summary_of_1_to_3, msg5] without reading steps 1..3
+	loaded5, err := cp.Load(ctx, loc5)
+	if err != nil {
+		t.Fatalf("failed to load step 5: %v", err)
+	}
+	stateBytes5, err := marshalStateMap(loaded5.State)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var loadedState5 MessagesState
+	if err := json.Unmarshal(stateBytes5, &loadedState5); err != nil {
+		t.Fatal(err)
+	}
+
+	expected5 := []string{"summary_of_1_to_3", "msg5"}
+	if !reflect.DeepEqual(loadedState5.Messages, expected5) {
+		t.Fatalf("step 5 mismatch: got %v, want %v", loadedState5.Messages, expected5)
+	}
+
+	// Time travel to step 2: should reconstruct [msg1, msg2]
+	loaded2, err := cp.Load(ctx, loc2)
+	if err != nil {
+		t.Fatalf("failed to load step 2: %v", err)
+	}
+	stateBytes2, err := marshalStateMap(loaded2.State)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var loadedState2 MessagesState
+	if err := json.Unmarshal(stateBytes2, &loadedState2); err != nil {
+		t.Fatal(err)
+	}
+
+	expected2 := []string{"msg1", "msg2"}
+	if !reflect.DeepEqual(loadedState2.Messages, expected2) {
+		t.Fatalf("step 2 mismatch: got %v, want %v", loadedState2.Messages, expected2)
+	}
+}

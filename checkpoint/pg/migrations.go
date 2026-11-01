@@ -1,6 +1,9 @@
 package pg
 
-import "database/sql"
+import (
+	"database/sql"
+	"strings"
+)
 
 var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS checkpoint_migrations (
@@ -32,6 +35,7 @@ var migrations = []string{
 		blob_id TEXT NOT NULL,
 		PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, channel)
 	);`,
+	`ALTER TABLE checkpoint_writes ADD COLUMN op TEXT NOT NULL DEFAULT 'set';`,
 }
 
 // Migrate applies all pending schema migrations to db.
@@ -54,7 +58,10 @@ func Migrate(db *sql.DB) error {
 
 	for i := version + 1; i < len(migrations); i++ {
 		if _, err := db.Exec(migrations[i]); err != nil {
-			return err
+			if !strings.Contains(strings.ToLower(err.Error()), "duplicate column") &&
+				!strings.Contains(strings.ToLower(err.Error()), "already exists") {
+				return err
+			}
 		}
 
 		if _, err := db.Exec(`INSERT INTO checkpoint_migrations (version) VALUES ($1)`, i); err != nil {

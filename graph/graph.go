@@ -280,7 +280,7 @@ func (g *Graph[State]) Execute(ctx context.Context, input Command[State], loc *L
 		}
 
 		var beforeState State
-		if isFirstLoop && currentStep == 0 {
+		if isFirstLoop {
 			beforeState = initialBeforeState
 		} else {
 			beforeState = snapshot.State.Copy()
@@ -496,16 +496,21 @@ func (g *Graph[State]) recordCheckpoint(ctx context.Context, snapshot *Snapshot[
 		return fmt.Errorf("failed to decompose after state: %w", err)
 	}
 
+	var channelWrites map[string]ChannelWrite
+	if snapshot.Parent == nil || snapshot.Parent.CheckpointID == "" {
+		channelWrites = DiffState(nil, afterChannels)
+	} else {
+		channelWrites = DiffState(beforeChannels, afterChannels)
+	}
+
+	diffForMeta := DiffState(beforeChannels, afterChannels)
 	writes := make(map[string]any)
-	for name, afterData := range afterChannels {
-		beforeData, exists := beforeChannels[name]
-		if !exists || string(beforeData) != string(afterData) {
-			var val any
-			if err := json.Unmarshal(afterData, &val); err != nil {
-				return err
-			}
-			writes[name] = val
+	for name, cw := range diffForMeta {
+		var val any
+		if err := json.Unmarshal(cw.Value, &val); err != nil {
+			return err
 		}
+		writes[name] = val
 	}
 
 	meta := CheckpointMetadata{
@@ -523,12 +528,13 @@ func (g *Graph[State]) recordCheckpoint(ctx context.Context, snapshot *Snapshot[
 	snapshot.Metadata = metaBytes
 
 	checkpoint := Checkpoint{
-		Location:  snapshot.Location,
-		Parent:    snapshot.Parent,
-		State:     afterChannels,
-		Next:      snapshot.Next,
-		Timestamp: snapshot.CreateTime,
-		Metadata:  metaBytes,
+		Location:      snapshot.Location,
+		Parent:        snapshot.Parent,
+		State:         afterChannels,
+		ChannelWrites: channelWrites,
+		Next:          snapshot.Next,
+		Timestamp:     snapshot.CreateTime,
+		Metadata:      metaBytes,
 	}
 
 	if err := g.checkpointer.Record(ctx, checkpoint); err != nil {

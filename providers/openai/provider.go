@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -108,6 +109,64 @@ func modelPrefersResponsesAPI(modelName string, hasTools bool) bool {
 	return false
 }
 
+func modelSupportsToolSearch(modelName string) bool {
+	lower := strings.ToLower(strings.TrimSpace(modelName))
+	if !strings.HasPrefix(lower, "gpt-") {
+		return false
+	}
+	rest := strings.TrimPrefix(lower, "gpt-")
+	versionPart, _, _ := strings.Cut(rest, "-")
+	parts := strings.Split(versionPart, ".")
+	if len(parts) == 0 {
+		return false
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return false
+	}
+	var minor int
+	if len(parts) > 1 {
+		minor, err = strconv.Atoi(parts[1])
+		if err != nil {
+			return false
+		}
+	}
+	if major > 5 {
+		return true
+	}
+	if major == 5 && minor >= 4 {
+		return true
+	}
+	return false
+}
+
+func hasDeferredTools(req *llm.Request) bool {
+	for _, t := range req.Tools {
+		if t.DeferLoading {
+			return true
+		}
+	}
+	return false
+}
+
+func hasToolReferenceBlock(req *llm.Request) bool {
+	for _, msg := range req.Messages {
+		for _, block := range msg.GetContent() {
+			if _, ok := block.(*message.ToolReferenceBlock); ok {
+				return true
+			}
+			if str, ok := block.(*message.ServerToolResult); ok {
+				for _, b := range str.Content {
+					if _, ok := b.(*message.ToolReferenceBlock); ok {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
 func (p *Provider) shouldUseResponsesAPI(req *llm.Request) (bool, ResponsesOptions) {
 	var opts ResponsesOptions
 	if ext, ok := req.Extensions[ResponsesExtensionID]; ok {
@@ -122,8 +181,13 @@ func (p *Provider) shouldUseResponsesAPI(req *llm.Request) (bool, ResponsesOptio
 	}
 
 	// 2. Feature-based triggers (built-in tools, state continuation)
-	if opts.WebSearch || opts.FileSearch != nil || opts.CodeInterpreter ||
+	if opts.WebSearch || opts.FileSearch != nil || opts.CodeInterpreter || opts.ToolSearch ||
 		opts.UsePreviousResponseID || opts.PreviousResponseID != "" {
+		return true, opts
+	}
+
+	// Feature-based trigger: deferred tools or tool reference blocks require Responses API
+	if p.defaultAPIMode != APIModeChatCompletions && (hasDeferredTools(req) || hasToolReferenceBlock(req)) {
 		return true, opts
 	}
 

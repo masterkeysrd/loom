@@ -70,6 +70,9 @@ type ResponsesOptions struct {
 	// CodeInterpreter enables OpenAI's built-in code interpreter tool.
 	CodeInterpreter bool `json:"code_interpreter,omitempty"`
 
+	// ToolSearch enables OpenAI's built-in server-side tool_search tool (requires gpt-5.4 or later).
+	ToolSearch bool `json:"tool_search,omitempty"`
+
 	// StrictTools enables strict parameter validation (Structured Outputs) for function tools.
 	// When false (default), standard schema rules apply, allowing optional parameters.
 	// When true, all properties must be marked as required and additionalProperties must be false.
@@ -93,6 +96,11 @@ func WithFileSearch(vectorStoreIDs ...string) ResponsesOptions {
 			VectorStoreIDs: vectorStoreIDs,
 		},
 	}
+}
+
+// WithToolSearch returns a ResponsesOptions extension enabling built-in server-side tool search.
+func WithToolSearch() ResponsesOptions {
+	return ResponsesOptions{ToolSearch: true}
 }
 
 // WithPreviousResponse returns a ResponsesOptions extension with an explicit previous response ID.

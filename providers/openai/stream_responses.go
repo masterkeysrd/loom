@@ -11,6 +11,7 @@ import (
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
 	"github.com/masterkeysrd/loom/stream"
+	"github.com/masterkeysrd/loom/tool"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/openai/openai-go/v3/shared"
@@ -172,6 +173,74 @@ func (p *Provider) streamResponses(ctx context.Context, request *llm.Request, op
 					if !yield(chunk, nil) {
 						return
 					}
+				} else if event.Item.Type == "tool_search_call" {
+					tsc := event.Item.AsToolSearchCall()
+					callID := tsc.CallID
+					if callID == "" {
+						callID = tsc.ID
+					}
+					var args map[string]any
+					switch a := tsc.Arguments.(type) {
+					case map[string]any:
+						args = a
+					case string:
+						_ = json.Unmarshal([]byte(a), &args)
+					}
+					if args == nil {
+						args = make(map[string]any)
+					}
+					chunk := message.AssistantChunk{
+						BaseChunk: message.BaseChunk{ID: currentResponseID},
+						Content: []message.Block{
+							&message.ServerToolCall{
+								ID:   callID,
+								Name: "tool_search",
+								Args: args,
+								Extras: map[string]any{
+									ResponseIDKey: currentResponseID,
+								},
+							},
+						},
+						Metadata: map[string]any{
+							ResponseIDKey: currentResponseID,
+						},
+					}
+					if !yield(chunk, nil) {
+						return
+					}
+				} else if event.Item.Type == "tool_search_output" {
+					tso := event.Item.AsToolSearchOutput()
+					callID := tso.CallID
+					if callID == "" {
+						callID = tso.ID
+					}
+					var refs []message.Block
+					for _, t := range tso.Tools {
+						if t.Name != "" {
+							refs = append(refs, &message.ToolReferenceBlock{
+								ToolName: t.Name,
+							})
+						}
+					}
+					chunk := message.AssistantChunk{
+						BaseChunk: message.BaseChunk{ID: currentResponseID},
+						Content: []message.Block{
+							&message.ServerToolResult{
+								ToolCallID: callID,
+								Name:       "tool_search",
+								Content:    refs,
+								Extras: map[string]any{
+									ResponseIDKey: currentResponseID,
+								},
+							},
+						},
+						Metadata: map[string]any{
+							ResponseIDKey: currentResponseID,
+						},
+					}
+					if !yield(chunk, nil) {
+						return
+					}
 				}
 
 			case "response.completed":
@@ -212,6 +281,20 @@ func (p *Provider) streamResponses(ctx context.Context, request *llm.Request, op
 }
 
 func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses.ResponseNewParams, error) {
+	if !modelSupportsToolSearch(request.Model) {
+		if opts.ToolSearch {
+			return responses.ResponseNewParams{}, fmt.Errorf("model %q does not support tool_search; tool search requires gpt-5.4 or later", request.Model)
+		}
+		for _, t := range request.Tools {
+			if t.DeferLoading {
+				return responses.ResponseNewParams{}, fmt.Errorf("model %q does not support deferred tool loading (tool %q); deferred tools require gpt-5.4 or later", request.Model, t.Name)
+			}
+		}
+		if hasToolReferenceBlock(request) {
+			return responses.ResponseNewParams{}, fmt.Errorf("model %q does not support tool reference blocks; tool reference blocks require gpt-5.4 or later", request.Model)
+		}
+	}
+
 	params := responses.ResponseNewParams{
 		Model: shared.ResponsesModel(request.Model),
 	}
@@ -274,12 +357,19 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 	// 1. Separate instructions (System messages) and conversation messages
 	var instructions []string
 	var convMessages []message.Message
+	seenNonSystem := false
 	for _, msg := range request.Messages {
 		if sys, ok := msg.(*message.System); ok {
-			if text := sys.Content.Text(); text != "" {
-				instructions = append(instructions, text)
+			refNames := extractToolReferences(sys.Content)
+			if !seenNonSystem && len(refNames) == 0 {
+				if text := sys.Content.Text(); text != "" {
+					instructions = append(instructions, text)
+				}
+			} else {
+				convMessages = append(convMessages, msg)
 			}
 		} else {
+			seenNonSystem = true
 			convMessages = append(convMessages, msg)
 		}
 	}
@@ -313,12 +403,45 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 	var inputItems []responses.ResponseInputItemUnionParam
 	for _, msg := range convMessages {
 		switch m := msg.(type) {
-		case *message.User:
-			userItem, err := toResponseUserInputItem(m)
-			if err != nil {
-				return responses.ResponseNewParams{}, err
+		case *message.System:
+			if text := m.Content.Text(); text != "" {
+				inputItems = append(inputItems, responses.ResponseInputItemParamOfMessage(
+					text,
+					responses.EasyInputMessageRoleSystem,
+				))
 			}
-			inputItems = append(inputItems, userItem)
+			refNames := extractToolReferences(m.Content)
+			if len(refNames) > 0 {
+				var refTools []responses.ToolUnionParam
+				for _, name := range refNames {
+					refTools = append(refTools, resolveToolParam(name, request.Tools, opts.StrictTools))
+				}
+				inputItems = append(inputItems, responses.ResponseInputItemParamOfAdditionalTools(refTools))
+			}
+
+		case *message.User:
+			refNames := extractToolReferences(m.Content)
+			hasUserContent := false
+			for _, b := range m.Content {
+				switch b.(type) {
+				case *message.TextBlock, *message.ImageBlock, *message.DocumentBlock:
+					hasUserContent = true
+				}
+			}
+			if hasUserContent || len(refNames) == 0 {
+				userItem, err := toResponseUserInputItem(m)
+				if err != nil {
+					return responses.ResponseNewParams{}, err
+				}
+				inputItems = append(inputItems, userItem)
+			}
+			if len(refNames) > 0 {
+				var refTools []responses.ToolUnionParam
+				for _, name := range refNames {
+					refTools = append(refTools, resolveToolParam(name, request.Tools, opts.StrictTools))
+				}
+				inputItems = append(inputItems, responses.ResponseInputItemParamOfAdditionalTools(refTools))
+			}
 
 		case *message.Assistant:
 			// Include reasoning encrypted_content if present (critical when store: false)
@@ -346,7 +469,7 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 				))
 			}
 
-			// Include tool calls
+			// Include tool calls / server tool calls / server tool results
 			for _, block := range m.Content {
 				if tc, ok := block.(*message.ToolCall); ok {
 					argsBytes, _ := json.Marshal(tc.Args)
@@ -355,6 +478,45 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 						tc.ID,
 						tc.Name,
 					))
+				} else if stc, ok := block.(*message.ServerToolCall); ok {
+					args := stc.Args
+					if args == nil {
+						args = make(map[string]any)
+					}
+					stcParam := responses.ResponseInputItemToolSearchCallParam{
+						Arguments: args,
+						Status:    "completed",
+						Execution: "server",
+					}
+					if stc.ID != "" {
+						stcParam.CallID = openai.String(stc.ID)
+					}
+					inputItems = append(inputItems, responses.ResponseInputItemUnionParam{
+						OfToolSearchCall: &stcParam,
+					})
+				} else if str, ok := block.(*message.ServerToolResult); ok {
+					tsoTools := make([]responses.ResponseToolSearchOutputItemParamToolUnion, 0)
+					for _, b := range str.Content {
+						if ref, ok := b.(*message.ToolReferenceBlock); ok {
+							resolved := resolveToolParam(ref.ToolName, request.Tools, opts.StrictTools)
+							if resolved.OfFunction != nil {
+								tsoTools = append(tsoTools, responses.ResponseToolSearchOutputItemParamToolUnion{
+									OfFunction: resolved.OfFunction,
+								})
+							}
+						}
+					}
+					tsoParam := responses.ResponseToolSearchOutputItemParam{
+						Tools:     tsoTools,
+						Status:    responses.ResponseToolSearchOutputItemParamStatusCompleted,
+						Execution: responses.ResponseToolSearchOutputItemParamExecutionServer,
+					}
+					if str.ToolCallID != "" {
+						tsoParam.CallID = openai.String(str.ToolCallID)
+					}
+					inputItems = append(inputItems, responses.ResponseInputItemUnionParam{
+						OfToolSearchOutput: &tsoParam,
+					})
 				}
 			}
 
@@ -368,6 +530,14 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 					},
 				},
 			})
+			refNames := extractToolReferences(m.Content)
+			if len(refNames) > 0 {
+				var refTools []responses.ToolUnionParam
+				for _, name := range refNames {
+					refTools = append(refTools, resolveToolParam(name, request.Tools, opts.StrictTools))
+				}
+				inputItems = append(inputItems, responses.ResponseInputItemParamOfAdditionalTools(refTools))
+			}
 		}
 	}
 
@@ -387,6 +557,13 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 	}
 	if opts.CodeInterpreter {
 		tools = append(tools, responses.ToolParamOfCodeInterpreter("auto"))
+	}
+	if opts.ToolSearch {
+		tools = append(tools, responses.ToolUnionParam{
+			OfToolSearch: &responses.ToolSearchToolParam{
+				Execution: responses.ToolSearchToolExecutionServer,
+			},
+		})
 	}
 
 	for _, t := range request.Tools {
@@ -410,6 +587,9 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 		if t.Description != "" {
 			funcTool.OfFunction.Description = openai.String(t.Description)
 		}
+		if t.DeferLoading {
+			funcTool.OfFunction.DeferLoading = openai.Bool(true)
+		}
 		tools = append(tools, funcTool)
 	}
 
@@ -418,6 +598,55 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 	}
 
 	return params, nil
+}
+
+func extractToolReferences(content []message.Block) []string {
+	var names []string
+	for _, block := range content {
+		if ref, ok := block.(*message.ToolReferenceBlock); ok {
+			names = append(names, ref.ToolName)
+		} else if str, ok := block.(*message.ServerToolResult); ok {
+			for _, b := range str.Content {
+				if ref, ok := b.(*message.ToolReferenceBlock); ok {
+					names = append(names, ref.ToolName)
+				}
+			}
+		}
+	}
+	return names
+}
+
+func resolveToolParam(name string, tools []tool.Definition, strict bool) responses.ToolUnionParam {
+	for _, t := range tools {
+		if t.Name == name {
+			var paramsMap map[string]any
+			if t.InputSchema != nil {
+				data, _ := json.Marshal(t.InputSchema)
+				_ = json.Unmarshal(data, &paramsMap)
+			}
+			if paramsMap == nil {
+				paramsMap = make(map[string]any)
+			}
+			if paramsMap["type"] == "object" {
+				if paramsMap["properties"] == nil {
+					paramsMap["properties"] = make(map[string]any)
+				}
+				if paramsMap["additionalProperties"] == nil {
+					paramsMap["additionalProperties"] = false
+				}
+			}
+			funcTool := responses.ToolParamOfFunction(t.Name, paramsMap, strict)
+			if t.Description != "" {
+				funcTool.OfFunction.Description = openai.String(t.Description)
+			}
+			return funcTool
+		}
+	}
+	return responses.ToolParamOfFunction(name, map[string]any{
+		"type":                 "object",
+		"properties":           map[string]any{},
+		"additionalProperties": false,
+	}, strict)
 }
 
 func extractResponseID(msg message.Message) string {

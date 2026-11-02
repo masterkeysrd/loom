@@ -117,6 +117,51 @@ func TestShouldUseResponsesAPI(t *testing.T) {
 	if use {
 		t.Errorf("expected APIModeChatCompletions to override model preference")
 	}
+
+	// 10. Auto-routing: WithToolSearch()
+	reqToolSearch := &llm.Request{
+		Model: "gpt-4o",
+		Extensions: map[string]llm.Extension{
+			ResponsesExtensionID: WithToolSearch(),
+		},
+	}
+	use, opts = defaultProv.shouldUseResponsesAPI(reqToolSearch)
+	if !use || !opts.ToolSearch {
+		t.Errorf("expected auto-routing to responses API when WithToolSearch() is used")
+	}
+
+	// 11. Feature-based trigger: DeferLoading: true
+	reqDeferred := &llm.Request{
+		Model: "gpt-4o",
+		Tools: []tool.Definition{
+			{Name: "search_docs", DeferLoading: true},
+		},
+	}
+	use, _ = defaultProv.shouldUseResponsesAPI(reqDeferred)
+	if !use {
+		t.Errorf("expected auto-routing to responses API when tool has DeferLoading: true")
+	}
+	// But if defaultAPIMode is APIModeChatCompletions, it should not route to responses
+	use, _ = chatOnlyProv.shouldUseResponsesAPI(reqDeferred)
+	if use {
+		t.Errorf("expected APIModeChatCompletions to not route to responses even with DeferLoading: true")
+	}
+
+	// 12. Feature-based trigger: ToolReferenceBlock
+	reqToolRef := &llm.Request{
+		Model: "gpt-4o",
+		Messages: []message.Message{
+			message.NewUser(&message.ToolReferenceBlock{ToolName: "search_docs"}),
+		},
+	}
+	use, _ = defaultProv.shouldUseResponsesAPI(reqToolRef)
+	if !use {
+		t.Errorf("expected auto-routing to responses API when message has ToolReferenceBlock")
+	}
+	use, _ = chatOnlyProv.shouldUseResponsesAPI(reqToolRef)
+	if use {
+		t.Errorf("expected APIModeChatCompletions to not route to responses even with ToolReferenceBlock")
+	}
 }
 
 func TestToResponseNewParamsBasic(t *testing.T) {
@@ -446,5 +491,313 @@ func TestToResponseNewParamsStrictTools(t *testing.T) {
 	}
 	if paramsStrict.Tools[0].OfFunction.Strict.Value != true {
 		t.Errorf("expected strict true when enabled, got %v", paramsStrict.Tools[0].OfFunction.Strict.Value)
+	}
+}
+
+func TestModelSupportsToolSearch(t *testing.T) {
+	supported := []string{
+		"gpt-5.4",
+		"gpt-5.4-mini",
+		"gpt-5.4-pro",
+		"gpt-5.5",
+		"gpt-5.6-sol",
+		"gpt-6-sol",
+		"gpt-6.1-terra",
+	}
+	for _, m := range supported {
+		if !modelSupportsToolSearch(m) {
+			t.Errorf("expected modelSupportsToolSearch(%q) to be true, got false", m)
+		}
+	}
+
+	unsupported := []string{
+		"gpt-5",
+		"gpt-5-pro",
+		"gpt-5.1",
+		"gpt-5.2-pro",
+		"gpt-5.3-codex",
+		"gpt-4o",
+		"o3",
+		"claude-opus-4-6",
+	}
+	for _, m := range unsupported {
+		if modelSupportsToolSearch(m) {
+			t.Errorf("expected modelSupportsToolSearch(%q) to be false, got true", m)
+		}
+	}
+}
+
+func TestToChatCompletionNewParams_FailFastValidation(t *testing.T) {
+	// 1. DeferLoading: true
+	reqDeferred := &llm.Request{
+		Model: "gpt-4o",
+		Tools: []tool.Definition{
+			{Name: "fetch_data", DeferLoading: true},
+		},
+	}
+	_, err := toChatCompletionNewParams(reqDeferred)
+	if err == nil {
+		t.Errorf("expected error in toChatCompletionNewParams with DeferLoading: true, got nil")
+	}
+
+	// 2. ToolReferenceBlock
+	reqToolRef := &llm.Request{
+		Model: "gpt-4o",
+		Messages: []message.Message{
+			message.NewUser(&message.ToolReferenceBlock{ToolName: "fetch_data"}),
+		},
+	}
+	_, err = toChatCompletionNewParams(reqToolRef)
+	if err == nil {
+		t.Errorf("expected error in toChatCompletionNewParams with ToolReferenceBlock, got nil")
+	}
+}
+
+func TestToResponseNewParams_UnsupportedModelValidation(t *testing.T) {
+	// 1. ToolSearch on unsupported model
+	reqToolSearch := &llm.Request{
+		Model: "gpt-4o",
+	}
+	_, err := toResponseNewParams(reqToolSearch, WithToolSearch())
+	if err == nil {
+		t.Errorf("expected error with WithToolSearch() on gpt-4o, got nil")
+	}
+
+	// 2. DeferLoading on unsupported model
+	reqDeferred := &llm.Request{
+		Model: "gpt-5.2-pro",
+		Tools: []tool.Definition{
+			{Name: "fetch_data", DeferLoading: true},
+		},
+	}
+	_, err = toResponseNewParams(reqDeferred, ResponsesOptions{})
+	if err == nil {
+		t.Errorf("expected error with DeferLoading on gpt-5.2-pro, got nil")
+	}
+
+	// 3. ToolReferenceBlock on unsupported model
+	reqToolRef := &llm.Request{
+		Model: "gpt-4o",
+		Messages: []message.Message{
+			message.NewUser(&message.ToolReferenceBlock{ToolName: "fetch_data"}),
+		},
+	}
+	_, err = toResponseNewParams(reqToolRef, ResponsesOptions{})
+	if err == nil {
+		t.Errorf("expected error with ToolReferenceBlock on gpt-4o, got nil")
+	}
+}
+
+func TestToResponseNewParams_ToolSearchAndDeferredTools(t *testing.T) {
+	req := &llm.Request{
+		Model: "gpt-5.4",
+		Tools: []tool.Definition{
+			{
+				Name:         "query_db",
+				Description:  "Execute database query",
+				DeferLoading: true,
+				InputSchema: &jsonschema.Schema{
+					Type: "object",
+					Properties: map[string]*jsonschema.Schema{
+						"sql": {Type: "string"},
+					},
+					Required: []string{"sql"},
+				},
+			},
+			{
+				Name:        "another_tool",
+				Description: "Another tool definition",
+			},
+		},
+		Messages: []message.Message{
+			message.NewSystemText("Initial instructions"),
+			message.NewUser(
+				&message.TextBlock{Text: "Find users"},
+				&message.ToolReferenceBlock{ToolName: "query_db"},
+			),
+			&message.Assistant{
+				Content: message.Content{
+					&message.TextBlock{Text: "Searching..."},
+					&message.ServerToolCall{
+						ID:   "call_tsc_1",
+						Name: "tool_search",
+						Args: map[string]any{"query": "database"},
+					},
+					&message.ServerToolResult{
+						ToolCallID: "call_tsc_1",
+						Name:       "tool_search",
+						Content: []message.Block{
+							&message.ToolReferenceBlock{ToolName: "query_db"},
+						},
+					},
+				},
+			},
+			&message.Tool{
+				ToolCallID: "call_db_1",
+				Content: []message.Block{
+					&message.TextBlock{Text: "DB result"},
+					&message.ToolReferenceBlock{ToolName: "another_tool"},
+				},
+			},
+			message.NewSystem(
+				&message.TextBlock{Text: "Mid conversation system update"},
+				&message.ToolReferenceBlock{ToolName: "query_db"},
+			),
+		},
+	}
+
+	opts := WithToolSearch()
+
+	params, err := toResponseNewParams(req, opts)
+	if err != nil {
+		t.Fatalf("toResponseNewParams failed: %v", err)
+	}
+
+	// 1. Verify instructions
+	if params.Instructions.Value != "Initial instructions" {
+		t.Errorf("expected instructions 'Initial instructions', got %v", params.Instructions.Value)
+	}
+
+	// 2. Verify tools: tool_search + query_db (deferred) + another_tool
+	if len(params.Tools) != 3 {
+		t.Fatalf("expected 3 tools, got %d", len(params.Tools))
+	}
+	if params.Tools[0].OfToolSearch == nil {
+		t.Fatalf("expected tool[0] to be OfToolSearch")
+	}
+	if params.Tools[0].OfToolSearch.Execution != "server" {
+		t.Errorf("expected tool_search execution 'server', got %v", params.Tools[0].OfToolSearch.Execution)
+	}
+	if params.Tools[1].OfFunction == nil {
+		t.Fatalf("expected tool[1] to be OfFunction")
+	}
+	if params.Tools[1].OfFunction.Name != "query_db" {
+		t.Errorf("expected tool[1] name 'query_db', got %s", params.Tools[1].OfFunction.Name)
+	}
+	if params.Tools[1].OfFunction.DeferLoading.Value != true {
+		t.Errorf("expected tool[1] DeferLoading true, got %v", params.Tools[1].OfFunction.DeferLoading.Value)
+	}
+	if params.Tools[2].OfFunction == nil {
+		t.Fatalf("expected tool[2] to be OfFunction")
+	}
+	if params.Tools[2].OfFunction.Name != "another_tool" {
+		t.Errorf("expected tool[2] name 'another_tool', got %s", params.Tools[2].OfFunction.Name)
+	}
+	if params.Tools[2].OfFunction.DeferLoading.Value != false {
+		t.Errorf("expected tool[2] DeferLoading false, got %v", params.Tools[2].OfFunction.DeferLoading.Value)
+	}
+
+	// 3. Verify input items:
+	// Item 0: User message "Find users"
+	// Item 1: additional_tools with query_db
+	// Item 2: Assistant message "Searching..."
+	// Item 3: tool_search_call (ServerToolCall)
+	// Item 4: tool_search_output (ServerToolResult)
+	// Item 5: function_call_output for call_db_1
+	// Item 6: additional_tools with another_tool
+	// Item 7: System message "Mid conversation system update"
+	// Item 8: additional_tools with query_db
+	inputList := params.Input.OfInputItemList
+	if len(inputList) != 9 {
+		t.Fatalf("expected 9 input items, got %d", len(inputList))
+	}
+
+	// Item 0: User message
+	if inputList[0].OfMessage == nil {
+		t.Fatalf("expected item 0 to be OfMessage, got %+v", inputList[0])
+	}
+	if inputList[0].OfMessage.Content.OfString.Value != "Find users" {
+		t.Errorf("expected item 0 text 'Find users', got %v", inputList[0].OfMessage.Content.OfString.Value)
+	}
+
+	// Item 1: additional_tools (query_db)
+	if inputList[1].OfAdditionalTools == nil {
+		t.Fatalf("expected item 1 to be OfAdditionalTools, got %+v", inputList[1])
+	}
+	if len(inputList[1].OfAdditionalTools.Tools) != 1 {
+		t.Fatalf("expected 1 tool in additional_tools, got %d", len(inputList[1].OfAdditionalTools.Tools))
+	}
+	if inputList[1].OfAdditionalTools.Tools[0].OfFunction == nil || inputList[1].OfAdditionalTools.Tools[0].OfFunction.Name != "query_db" {
+		t.Errorf("expected additional_tools to contain query_db")
+	}
+
+	// Item 2: Assistant text
+	if inputList[2].OfMessage == nil {
+		t.Fatalf("expected item 2 to be OfMessage, got %+v", inputList[2])
+	}
+	if inputList[2].OfMessage.Content.OfString.Value != "Searching..." {
+		t.Errorf("expected item 2 text 'Searching...', got %v", inputList[2].OfMessage.Content.OfString.Value)
+	}
+
+	// Item 3: tool_search_call
+	if inputList[3].OfToolSearchCall == nil {
+		t.Fatalf("expected item 3 to be OfToolSearchCall, got %+v", inputList[3])
+	}
+	if inputList[3].OfToolSearchCall.CallID.Value != "call_tsc_1" {
+		t.Errorf("expected CallID 'call_tsc_1', got %v", inputList[3].OfToolSearchCall.CallID.Value)
+	}
+	if inputList[3].OfToolSearchCall.Execution != "server" {
+		t.Errorf("expected Execution 'server', got %v", inputList[3].OfToolSearchCall.Execution)
+	}
+
+	// Item 4: tool_search_output
+	if inputList[4].OfToolSearchOutput == nil {
+		t.Fatalf("expected item 4 to be OfToolSearchOutput, got %+v", inputList[4])
+	}
+	if inputList[4].OfToolSearchOutput.CallID.Value != "call_tsc_1" {
+		t.Errorf("expected CallID 'call_tsc_1', got %v", inputList[4].OfToolSearchOutput.CallID.Value)
+	}
+	if inputList[4].OfToolSearchOutput.Execution != "server" {
+		t.Errorf("expected Execution 'server', got %v", inputList[4].OfToolSearchOutput.Execution)
+	}
+	if len(inputList[4].OfToolSearchOutput.Tools) != 1 {
+		t.Fatalf("expected 1 tool in tool_search_output, got %d", len(inputList[4].OfToolSearchOutput.Tools))
+	}
+	if inputList[4].OfToolSearchOutput.Tools[0].OfFunction == nil || inputList[4].OfToolSearchOutput.Tools[0].OfFunction.Name != "query_db" {
+		t.Errorf("expected tool_search_output to contain query_db")
+	}
+
+	// Item 5: function_call_output
+	if inputList[5].OfFunctionCallOutput == nil {
+		t.Fatalf("expected item 5 to be OfFunctionCallOutput, got %+v", inputList[5])
+	}
+	if inputList[5].OfFunctionCallOutput.CallID.Value != "call_db_1" {
+		t.Errorf("expected CallID 'call_db_1', got %v", inputList[5].OfFunctionCallOutput.CallID.Value)
+	}
+	if inputList[5].OfFunctionCallOutput.Output.OfString.Value != "DB result" {
+		t.Errorf("expected Output 'DB result', got %v", inputList[5].OfFunctionCallOutput.Output.OfString.Value)
+	}
+
+	// Item 6: additional_tools (another_tool)
+	if inputList[6].OfAdditionalTools == nil {
+		t.Fatalf("expected item 6 to be OfAdditionalTools, got %+v", inputList[6])
+	}
+	if len(inputList[6].OfAdditionalTools.Tools) != 1 {
+		t.Fatalf("expected 1 tool in additional_tools, got %d", len(inputList[6].OfAdditionalTools.Tools))
+	}
+	if inputList[6].OfAdditionalTools.Tools[0].OfFunction == nil || inputList[6].OfAdditionalTools.Tools[0].OfFunction.Name != "another_tool" {
+		t.Errorf("expected additional_tools to contain another_tool")
+	}
+
+	// Item 7: System message
+	if inputList[7].OfMessage == nil {
+		t.Fatalf("expected item 7 to be OfMessage, got %+v", inputList[7])
+	}
+	if inputList[7].OfMessage.Content.OfString.Value != "Mid conversation system update" {
+		t.Errorf("expected item 7 text 'Mid conversation system update', got %v", inputList[7].OfMessage.Content.OfString.Value)
+	}
+	if inputList[7].OfMessage.Role != "system" {
+		t.Errorf("expected item 7 role 'system', got %v", inputList[7].OfMessage.Role)
+	}
+
+	// Item 8: additional_tools (query_db)
+	if inputList[8].OfAdditionalTools == nil {
+		t.Fatalf("expected item 8 to be OfAdditionalTools, got %+v", inputList[8])
+	}
+	if len(inputList[8].OfAdditionalTools.Tools) != 1 {
+		t.Fatalf("expected 1 tool in additional_tools, got %d", len(inputList[8].OfAdditionalTools.Tools))
+	}
+	if inputList[8].OfAdditionalTools.Tools[0].OfFunction == nil || inputList[8].OfAdditionalTools.Tools[0].OfFunction.Name != "query_db" {
+		t.Errorf("expected additional_tools to contain query_db")
 	}
 }

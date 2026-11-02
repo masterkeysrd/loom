@@ -73,6 +73,15 @@ func toUserMessageParam(m *message.User) (openai.ChatCompletionMessageParamUnion
 }
 
 func toChatCompletionNewParams(request *llm.Request) (openai.ChatCompletionNewParams, error) {
+	for _, t := range request.Tools {
+		if t.DeferLoading {
+			return openai.ChatCompletionNewParams{}, fmt.Errorf("openai chat completions API does not support deferred tool loading (tool %q); use the Responses API with gpt-5.4 or later", t.Name)
+		}
+	}
+	if hasToolReferenceBlock(request) {
+		return openai.ChatCompletionNewParams{}, fmt.Errorf("openai chat completions API does not support tool reference blocks; use the Responses API with gpt-5.4 or later")
+	}
+
 	params := openai.ChatCompletionNewParams{
 		Model: openai.ChatModel(request.Model),
 	}

@@ -17,6 +17,15 @@ import (
 // api.ChatRequest, mapping each message and setting sensible inference defaults
 // (zero temperature, 32 k context window, streaming enabled).
 func toChatRequest(request *llm.Request) (*api.ChatRequest, error) {
+	for _, t := range request.Tools {
+		if t.DeferLoading {
+			return nil, fmt.Errorf("ollama provider does not support deferred tool loading (tool %q)", t.Name)
+		}
+	}
+	if slices.ContainsFunc(request.Messages, hasToolReferenceBlock) {
+		return nil, fmt.Errorf("ollama provider does not support tool reference blocks")
+	}
+
 	options := map[string]any{
 		"stream": true,
 	}
@@ -250,6 +259,10 @@ func toModelContent(msg api.Message) (message.Content, error) {
 // format by encoding the InputSchema as JSON and decoding it into
 // api.ToolFunctionParameters.
 func toAPITool(t tool.Definition) (api.Tool, error) {
+	if t.DeferLoading {
+		return api.Tool{}, fmt.Errorf("ollama provider does not support deferred tool loading (tool %q)", t.Name)
+	}
+
 	schemaBytes, err := json.Marshal(t.InputSchema)
 	if err != nil {
 		return api.Tool{}, fmt.Errorf("tool %q: marshal input schema: %w", t.Name, err)
@@ -276,4 +289,23 @@ func toToolCallBlock(index int, tc api.ToolCall) *message.ToolCall {
 		Index: index,
 		Args:  tc.Function.Arguments.ToMap(),
 	}
+}
+
+func hasToolReferenceBlock(msg message.Message) bool {
+	if msg == nil {
+		return false
+	}
+	return slices.ContainsFunc(msg.GetContent(), blockHasToolReference)
+}
+
+func blockHasToolReference(b message.Block) bool {
+	switch v := b.(type) {
+	case *message.ToolReferenceBlock:
+		return true
+	case *message.ServerToolResult:
+		if slices.ContainsFunc(v.Content, blockHasToolReference) {
+			return true
+		}
+	}
+	return false
 }

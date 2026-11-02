@@ -134,6 +134,44 @@ model = model.WithExtension(loomopenai.ResponsesOptions{
 })
 ```
 
+### Native Tool Search & Deferred Tools (gpt-5.4+)
+
+Starting with `gpt-5.4`, OpenAI's Responses API natively supports **Tool Search** and **Deferred Tools** (`defer_loading: true`). This allows you to provide extensive tool catalogs without paying upfront token costs:
+
+```go
+// 1. Define deferred tools
+calcTool, _ := tool.New("calculate_mortgage", "...", "...", handler, tool.WithDeferLoading())
+
+// 2. Enable Responses API Tool Search
+model = llm.NewModel(provider, "gpt-5.4").
+    BindTools(calcTool).
+    WithExtension(loomopenai.WithToolSearch())
+```
+
+#### Client Search Output (`tool_search_output`)
+When a tool search tool (like `tool.NewBM25Search`) is executed, it returns `[]message.ToolReferenceBlock`. Loom automatically maps these results into OpenAI's `tool_search_output` response input items:
+
+```go
+searchResult := &message.ServerToolResult{
+    ToolCallID: "call_search_1",
+    Name:       "tool_search",
+    Content: message.Content{
+        &message.ToolReferenceBlock{ToolName: "calculate_mortgage"},
+    },
+}
+```
+
+#### Mid-Conversation Dynamic Tool Addition (`additional_tools`)
+You can also dynamically activate deferred tools mid-conversation without executing a tool search by injecting a `ToolReferenceBlock` into a system or user message. Loom maps these directly to OpenAI's `additional_tools` input items:
+
+```go
+// Injects the tool schema into the active turn
+msg := message.NewSystem(&message.ToolReferenceBlock{ToolName: "convert_currency"})
+```
+
+> [!NOTE]
+> For models prior to `gpt-5.4` (e.g. `gpt-4o`, `o3-mini`) or when using standard Chat Completions, use `llm.DeferredToolsMiddleware(nil)` to gain deferred tool benefits via client-side transformation.
+
 ## 6. Model Catalog
 
 The provider includes a static catalog of common OpenAI models with their context limits and capabilities. You can search or list them at runtime:

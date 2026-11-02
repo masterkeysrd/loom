@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -22,6 +23,15 @@ const (
 // expected by the Google GenAI GenerateContentStream call: a content slice and a
 // config struct. System messages are extracted and placed in SystemInstruction.
 func toGenerateContentArgs(req *llm.Request) ([]*genai.Content, *genai.GenerateContentConfig, error) {
+	for _, d := range req.Tools {
+		if d.DeferLoading {
+			return nil, nil, fmt.Errorf("genai provider does not support deferred tool loading (tool %q)", d.Name)
+		}
+	}
+	if slices.ContainsFunc(req.Messages, hasToolReferenceBlock) {
+		return nil, nil, fmt.Errorf("genai provider does not support tool reference blocks")
+	}
+
 	config := &genai.GenerateContentConfig{}
 
 	if ext, ok := req.Extensions[ContextCache{}.ExtensionID()]; ok {
@@ -405,6 +415,9 @@ func toFunctionResponsePart(msg *message.Tool) (*genai.Part, error) {
 func toGenaiTools(defs []tool.Definition) (*genai.Tool, error) {
 	decls := make([]*genai.FunctionDeclaration, 0, len(defs))
 	for _, d := range defs {
+		if d.DeferLoading {
+			return nil, fmt.Errorf("genai provider does not support deferred tool loading (tool %q)", d.Name)
+		}
 		schema, err := toGenaiSchema(d.InputSchema)
 		if err != nil {
 			return nil, fmt.Errorf("tool %q: convert schema: %w", d.Name, err)
@@ -532,4 +545,23 @@ func decodeThoughtSignature(encoded string) ([]byte, error) {
 		return nil, fmt.Errorf("decode thought signature: %w", err)
 	}
 	return decodedBytes, nil
+}
+
+func hasToolReferenceBlock(msg message.Message) bool {
+	if msg == nil {
+		return false
+	}
+	return slices.ContainsFunc(msg.GetContent(), blockHasToolReference)
+}
+
+func blockHasToolReference(b message.Block) bool {
+	switch v := b.(type) {
+	case *message.ToolReferenceBlock:
+		return true
+	case *message.ServerToolResult:
+		if slices.ContainsFunc(v.Content, blockHasToolReference) {
+			return true
+		}
+	}
+	return false
 }

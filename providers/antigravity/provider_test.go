@@ -870,3 +870,57 @@ func TestToGenerateContentRequest_GroupsConsecutiveToolResults(t *testing.T) {
 		t.Errorf("expected second part to be FunctionResponse for tool_2, got %#v", toolTurn.Parts[1])
 	}
 }
+
+func TestToGenerateContentRequest_DeferredToolsFailFast(t *testing.T) {
+	// 1. Tool with DeferLoading: true
+	reqDeferred := &llm.Request{
+		Model: "gemini-2.5-flash",
+		Tools: []tool.Definition{
+			{Name: "search_tool", DeferLoading: true},
+		},
+	}
+	_, err := toGenerateContentRequest(reqDeferred)
+	if err == nil {
+		t.Errorf("expected error for deferred tool, got nil")
+	}
+
+	// 2. Message with ToolReferenceBlock
+	reqRef := &llm.Request{
+		Model: "gemini-2.5-flash",
+		Messages: []message.Message{
+			message.NewUser(&message.ToolReferenceBlock{ToolName: "search_tool"}),
+		},
+	}
+	_, err = toGenerateContentRequest(reqRef)
+	if err == nil {
+		t.Errorf("expected error for ToolReferenceBlock, got nil")
+	}
+
+	// 3. Message with nested ToolReferenceBlock in ServerToolResult
+	reqNested := &llm.Request{
+		Model: "gemini-2.5-flash",
+		Messages: []message.Message{
+			&message.Assistant{
+				Content: message.Content{
+					&message.ServerToolResult{
+						ToolCallID: "srv-1",
+						Content: message.Content{
+							&message.ToolReferenceBlock{ToolName: "search_tool"},
+						},
+					},
+				},
+			},
+		},
+	}
+	_, err = toGenerateContentRequest(reqNested)
+	if err == nil {
+		t.Errorf("expected error for nested ToolReferenceBlock, got nil")
+	}
+}
+
+func TestToTools_DeferredToolFailFast(t *testing.T) {
+	_, err := toTools([]tool.Definition{{Name: "deferred_tool", DeferLoading: true}})
+	if err == nil {
+		t.Errorf("expected error for deferred tool in toTools, got nil")
+	}
+}

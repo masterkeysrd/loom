@@ -2,11 +2,13 @@ package llm_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
 	"github.com/masterkeysrd/loom/profile"
+	"github.com/masterkeysrd/loom/tool"
 )
 
 type middlewareMockProvider struct {
@@ -117,5 +119,480 @@ func TestModel_MiddlewareMutation(t *testing.T) {
 
 	if provider.lastRequest.Extensions["injected"].(mockExtension).val != "true" {
 		t.Error("middleware failed to inject extension")
+	}
+}
+
+type deferredMockProvider struct {
+	llm.Provider
+	supportsDeferred bool
+	lastRequest      *llm.Request
+	cannedChunks     []message.AssistantChunk
+}
+
+func (d *deferredMockProvider) Name() string { return "deferred-mock" }
+func (d *deferredMockProvider) Stream(ctx context.Context, req *llm.Request) (llm.StreamResponse, error) {
+	d.lastRequest = req
+	return func(yield func(message.AssistantChunk, error) bool) {
+		for _, c := range d.cannedChunks {
+			if !yield(c, nil) {
+				return
+			}
+		}
+	}, nil
+}
+func (d *deferredMockProvider) GetProfile(id string) (profile.Profile, bool) {
+	return profile.Profile{}, false
+}
+func (d *deferredMockProvider) SupportsDeferredTools(model string) bool {
+	return d.supportsDeferred
+}
+
+func TestDeferredToolsMiddleware_NativeSupport(t *testing.T) {
+	provider := &deferredMockProvider{supportsDeferred: true}
+	model, err := llm.NewModel(provider, "test-model", nil)
+	if err != nil {
+		t.Fatalf("NewModel failed: %v", err)
+	}
+	model = model.WithMiddleware(llm.DeferredToolsMiddleware(nil))
+
+	origTools := []tool.Definition{
+		{Name: "active_tool", DeferLoading: false},
+		{Name: "deferred_tool", DeferLoading: true},
+	}
+	model = model.BindToolDefs(origTools...)
+
+	origMsgs := []message.Message{
+		message.NewUser(
+			&message.TextBlock{Text: "Please run tool"},
+			&message.ToolReferenceBlock{ToolName: "deferred_tool"},
+		),
+	}
+
+	_, err = model.Stream(context.Background(), origMsgs)
+	if err != nil {
+		t.Fatalf("Stream failed: %v", err)
+	}
+
+	req := provider.lastRequest
+	if len(req.Tools) != 2 {
+		t.Fatalf("expected 2 tools on native provider, got %d", len(req.Tools))
+	}
+	if req.Tools[1].Name != "deferred_tool" || !req.Tools[1].DeferLoading {
+		t.Errorf("expected deferred_tool to pass through untouched")
+	}
+
+	if len(req.Messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(req.Messages))
+	}
+	content := req.Messages[0].GetContent()
+	if len(content) != 2 {
+		t.Fatalf("expected 2 content blocks, got %d", len(content))
+	}
+	if _, ok := content[1].(*message.ToolReferenceBlock); !ok {
+		t.Errorf("expected ToolReferenceBlock untouched on native provider, got %T", content[1])
+	}
+}
+
+func TestDeferredToolsMiddleware_Fallback(t *testing.T) {
+	provider := &deferredMockProvider{supportsDeferred: false}
+	model, err := llm.NewModel(provider, "test-model", nil)
+	if err != nil {
+		t.Fatalf("NewModel failed: %v", err)
+	}
+	model = model.WithMiddleware(llm.DeferredToolsMiddleware(nil))
+
+	origTools := []tool.Definition{
+		{Name: "active_tool", DeferLoading: false},
+		{Name: "deferred_tool", Description: "A deferred tool", DeferLoading: true},
+	}
+	model = model.BindToolDefs(origTools...)
+
+	origUserMsg := message.NewUser(
+		&message.TextBlock{Text: "Please run tool"},
+		&message.ToolReferenceBlock{ToolName: "deferred_tool"},
+	)
+	origAsstMsg := &message.Assistant{
+		Content: message.Content{
+			&message.ServerToolResult{
+				ToolCallID: "srv-1",
+				Name:       "tool_search",
+				Content: message.Content{
+					&message.ToolReferenceBlock{ToolName: "deferred_tool"},
+				},
+			},
+		},
+	}
+	origMsgs := []message.Message{origUserMsg, origAsstMsg}
+
+	_, err = model.Stream(context.Background(), origMsgs)
+	if err != nil {
+		t.Fatalf("Stream failed: %v", err)
+	}
+
+	req := provider.lastRequest
+	// 1. DeferLoading: true tools must be filtered out
+	if len(req.Tools) != 1 {
+		t.Fatalf("expected 1 active tool on fallback provider, got %d", len(req.Tools))
+	}
+	if req.Tools[0].Name != "active_tool" {
+		t.Errorf("expected only active_tool, got %s", req.Tools[0].Name)
+	}
+
+	// 2. ToolReferenceBlocks must be transformed into schema TextBlocks
+	if len(req.Messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(req.Messages))
+	}
+	userBlocks := req.Messages[0].GetContent()
+	refBlock, ok := userBlocks[1].(*message.TextBlock)
+	if !ok {
+		t.Fatalf("expected ToolReferenceBlock to be transformed to *message.TextBlock, got %T", userBlocks[1])
+	}
+	if refBlock.Text == "" || !strings.Contains(refBlock.Text, "tool_definition") || !strings.Contains(refBlock.Text, "deferred_tool") {
+		t.Errorf("expected expanded JSON schema text block, got %s", refBlock.Text)
+	}
+
+	// 3. Nested ToolReferenceBlocks in ServerToolResult must also be transformed
+	asstBlocks := req.Messages[1].GetContent()
+	str, ok := asstBlocks[0].(*message.ServerToolResult)
+	if !ok {
+		t.Fatalf("expected ServerToolResult, got %T", asstBlocks[0])
+	}
+	nestedRefBlock, ok := str.Content[0].(*message.TextBlock)
+	if !ok {
+		t.Fatalf("expected nested ToolReferenceBlock to be transformed to *message.TextBlock, got %T", str.Content[0])
+	}
+	if !strings.Contains(nestedRefBlock.Text, "deferred_tool") {
+		t.Errorf("expected nested expanded schema text block, got %s", nestedRefBlock.Text)
+	}
+
+	// 4. Caller's original messages must NOT be mutated
+	origUserBlocks := origUserMsg.GetContent()
+	if _, ok := origUserBlocks[1].(*message.ToolReferenceBlock); !ok {
+		t.Errorf("expected original caller's message to remain a ToolReferenceBlock, got %T", origUserBlocks[1])
+	}
+	origAsstBlocks := origAsstMsg.GetContent()
+	origStr := origAsstBlocks[0].(*message.ServerToolResult)
+	if _, ok := origStr.Content[0].(*message.ToolReferenceBlock); !ok {
+		t.Errorf("expected original caller's ServerToolResult content to remain a ToolReferenceBlock, got %T", origStr.Content[0])
+	}
+}
+
+func TestDeferredToolsMiddleware_CustomMatch(t *testing.T) {
+	// Provider does not natively support deferred tools, but custom Match returns false (do not transform)
+	provider := &deferredMockProvider{supportsDeferred: false}
+	opts := &llm.DeferredToolsOptions{
+		Match: func(ctx context.Context, req *llm.Request) bool {
+			return false
+		},
+	}
+	model, err := llm.NewModel(provider, "test-model", nil)
+	if err != nil {
+		t.Fatalf("NewModel failed: %v", err)
+	}
+	model = model.WithMiddleware(llm.DeferredToolsMiddleware(opts))
+	model = model.BindToolDefs(tool.Definition{Name: "deferred_tool", DeferLoading: true})
+
+	_, err = model.Stream(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Stream failed: %v", err)
+	}
+
+	if len(provider.lastRequest.Tools) != 1 {
+		t.Fatalf("expected Match=false to preserve deferred tools, got %d", len(provider.lastRequest.Tools))
+	}
+
+	// Conversely, provider supports deferred tools, but custom Match returns true (force transform)
+	providerNative := &deferredMockProvider{supportsDeferred: true}
+	optsTransform := &llm.DeferredToolsOptions{
+		Match: func(ctx context.Context, req *llm.Request) bool {
+			return true
+		},
+	}
+	modelNative, err := llm.NewModel(providerNative, "test-model", nil)
+	if err != nil {
+		t.Fatalf("NewModel failed: %v", err)
+	}
+	modelNative = modelNative.WithMiddleware(llm.DeferredToolsMiddleware(optsTransform))
+	modelNative = modelNative.BindToolDefs(tool.Definition{Name: "deferred_tool", DeferLoading: true})
+
+	_, err = modelNative.Stream(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Stream failed: %v", err)
+	}
+
+	if len(providerNative.lastRequest.Tools) != 0 {
+		t.Fatalf("expected Match=true to filter deferred tools, got %d", len(providerNative.lastRequest.Tools))
+	}
+}
+
+func TestDeferredToolsMiddleware_CustomFormatReference(t *testing.T) {
+	provider := &deferredMockProvider{supportsDeferred: false}
+	opts := &llm.DeferredToolsOptions{
+		FormatReference: func(def tool.Definition) message.Block {
+			return &message.TextBlock{Text: "CUSTOM_SCHEMA:" + def.Name}
+		},
+	}
+	model, err := llm.NewModel(provider, "test-model", nil)
+	if err != nil {
+		t.Fatalf("NewModel failed: %v", err)
+	}
+	model = model.WithMiddleware(llm.DeferredToolsMiddleware(opts))
+	model = model.BindToolDefs(tool.Definition{Name: "fetch_info", DeferLoading: true})
+
+	msgs := []message.Message{
+		message.NewUser(&message.ToolReferenceBlock{ToolName: "fetch_info"}),
+	}
+
+	_, err = model.Stream(context.Background(), msgs)
+	if err != nil {
+		t.Fatalf("Stream failed: %v", err)
+	}
+
+	userBlocks := provider.lastRequest.Messages[0].GetContent()
+	txtBlock, ok := userBlocks[0].(*message.TextBlock)
+	if !ok {
+		t.Fatalf("expected *message.TextBlock, got %T", userBlocks[0])
+	}
+	if txtBlock.Text != "CUSTOM_SCHEMA:fetch_info" {
+		t.Errorf("expected custom formatted block 'CUSTOM_SCHEMA:fetch_info', got %q", txtBlock.Text)
+	}
+}
+
+func TestDeferredToolsMiddleware_Coercion(t *testing.T) {
+	type subObj struct {
+		Key string `json:"key"`
+	}
+	type testInput struct {
+		NumVal  float64 `json:"num_val"`
+		IntVal  int     `json:"int_val"`
+		BoolVal bool    `json:"bool_val"`
+		ArrVal  []int   `json:"arr_val"`
+		ObjVal  subObj  `json:"obj_val"`
+		StrVal  string  `json:"str_val"`
+	}
+
+	deferredTool, err := tool.New("deferred_calc", "Deferred Calc", "A deferred calculator", func(ctx context.Context, in testInput) (string, error) {
+		return "deferred ok", nil
+	}, tool.WithDeferLoading())
+	if err != nil {
+		t.Fatalf("tool.New failed: %v", err)
+	}
+
+	activeTool, err := tool.New("active_calc", "Active Calc", "An active calculator", func(ctx context.Context, in testInput) (string, error) {
+		return "active ok", nil
+	})
+	if err != nil {
+		t.Fatalf("tool.New failed: %v", err)
+	}
+
+	cannedChunks := []message.AssistantChunk{
+		{
+			Content: message.Content{
+				&message.ToolCall{
+					ID:   "call_def",
+					Name: "deferred_calc",
+					Args: map[string]any{
+						"num_val":  "42.5",
+						"int_val":  "10",
+						"bool_val": "true",
+						"arr_val":  "[1, 2, 3]",
+						"obj_val":  `{"key":"hello"}`,
+						"str_val":  "world",
+					},
+				},
+				&message.ToolCall{
+					ID:   "call_act",
+					Name: "active_calc",
+					Args: map[string]any{
+						"num_val":  "42.5",
+						"int_val":  "10",
+						"bool_val": "true",
+						"arr_val":  "[1, 2, 3]",
+						"obj_val":  `{"key":"hello"}`,
+						"str_val":  "world",
+					},
+				},
+			},
+		},
+	}
+
+	provider := &deferredMockProvider{
+		supportsDeferred: false,
+		cannedChunks:     cannedChunks,
+	}
+
+	model, err := llm.NewModel(provider, "test-model", nil)
+	if err != nil {
+		t.Fatalf("NewModel failed: %v", err)
+	}
+	model = model.WithMiddleware(llm.DeferredToolsMiddleware(nil))
+	model = model.BindTools(deferredTool, activeTool)
+
+	stream, err := model.Stream(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Stream failed: %v", err)
+	}
+
+	var chunks []message.AssistantChunk
+	for chunk, err := range stream {
+		if err != nil {
+			t.Fatalf("stream chunk error: %v", err)
+		}
+		chunks = append(chunks, chunk)
+	}
+
+	if len(chunks) != 1 {
+		t.Fatalf("expected 1 chunk, got %d", len(chunks))
+	}
+
+	var defCall, actCall *message.ToolCall
+	for _, b := range chunks[0].Content {
+		if tc, ok := b.(*message.ToolCall); ok {
+			switch tc.Name {
+			case "deferred_calc":
+				defCall = tc
+			case "active_calc":
+				actCall = tc
+			}
+		}
+	}
+
+	if defCall == nil {
+		t.Fatal("missing deferred_calc tool call")
+	}
+	if actCall == nil {
+		t.Fatal("missing active_calc tool call")
+	}
+
+	// 1. Verify deferred_calc tool call arguments were coerced
+	if v, ok := defCall.Args["num_val"].(float64); !ok || v != 42.5 {
+		t.Errorf("expected num_val to be float64(42.5), got %T (%v)", defCall.Args["num_val"], defCall.Args["num_val"])
+	}
+	if v, ok := defCall.Args["int_val"].(int64); !ok || v != 10 {
+		t.Errorf("expected int_val to be int64(10), got %T (%v)", defCall.Args["int_val"], defCall.Args["int_val"])
+	}
+	if v, ok := defCall.Args["bool_val"].(bool); !ok || !v {
+		t.Errorf("expected bool_val to be bool(true), got %T (%v)", defCall.Args["bool_val"], defCall.Args["bool_val"])
+	}
+	if arr, ok := defCall.Args["arr_val"].([]any); !ok || len(arr) != 3 {
+		t.Errorf("expected arr_val to be []any of len 3, got %T (%v)", defCall.Args["arr_val"], defCall.Args["arr_val"])
+	}
+	if obj, ok := defCall.Args["obj_val"].(map[string]any); !ok || obj["key"] != "hello" {
+		t.Errorf("expected obj_val to be map[string]any with key='hello', got %T (%v)", defCall.Args["obj_val"], defCall.Args["obj_val"])
+	}
+	if v, ok := defCall.Args["str_val"].(string); !ok || v != "world" {
+		t.Errorf("expected str_val to be string('world'), got %T (%v)", defCall.Args["str_val"], defCall.Args["str_val"])
+	}
+
+	// 2. Verify schema.Validate and tool.Container.Call succeed on coerced tool call
+	if err := deferredTool.Validate(defCall.Args); err != nil {
+		t.Errorf("deferredTool.Validate failed on coerced args: %v", err)
+	}
+	container := tool.NewContainer(deferredTool, activeTool)
+	res, err := container.Call(context.Background(), defCall)
+	if err != nil {
+		t.Fatalf("container.Call failed on coerced deferred tool call: %v", err)
+	}
+	if res.StructuredContent != "deferred ok" {
+		t.Errorf("expected 'deferred ok', got %v", res.StructuredContent)
+	}
+
+	// 3. Verify active_calc tool call arguments were NOT coerced (remain strings)
+	for k, expected := range map[string]string{
+		"num_val":  "42.5",
+		"int_val":  "10",
+		"bool_val": "true",
+		"arr_val":  "[1, 2, 3]",
+		"obj_val":  `{"key":"hello"}`,
+		"str_val":  "world",
+	} {
+		if v, ok := actCall.Args[k].(string); !ok || v != expected {
+			t.Errorf("expected active_calc %s to remain string %q, got %T (%v)", k, expected, actCall.Args[k], actCall.Args[k])
+		}
+	}
+
+	// And active_calc fails validation when called directly because its args are uncoerced strings
+	if err := activeTool.Validate(actCall.Args); err == nil {
+		t.Errorf("expected activeTool.Validate to fail on uncoerced string args, but got nil")
+	}
+}
+
+func TestDeferredToolsMiddleware_DisableCoercion(t *testing.T) {
+	type testInput struct {
+		NumVal  float64 `json:"num_val"`
+		IntVal  int     `json:"int_val"`
+		BoolVal bool    `json:"bool_val"`
+	}
+
+	deferredTool, err := tool.New("deferred_calc", "Deferred Calc", "A deferred calculator", func(ctx context.Context, in testInput) (string, error) {
+		return "deferred ok", nil
+	}, tool.WithDeferLoading())
+	if err != nil {
+		t.Fatalf("tool.New failed: %v", err)
+	}
+
+	cannedChunks := []message.AssistantChunk{
+		{
+			Content: message.Content{
+				&message.ToolCall{
+					ID:   "call_def",
+					Name: "deferred_calc",
+					Args: map[string]any{
+						"num_val":  "42.5",
+						"int_val":  "10",
+						"bool_val": "true",
+					},
+				},
+			},
+		},
+	}
+
+	provider := &deferredMockProvider{
+		supportsDeferred: false,
+		cannedChunks:     cannedChunks,
+	}
+
+	opts := &llm.DeferredToolsOptions{
+		DisableCoercion: true,
+	}
+
+	model, err := llm.NewModel(provider, "test-model", nil)
+	if err != nil {
+		t.Fatalf("NewModel failed: %v", err)
+	}
+	model = model.WithMiddleware(llm.DeferredToolsMiddleware(opts))
+	model = model.BindTools(deferredTool)
+
+	stream, err := model.Stream(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Stream failed: %v", err)
+	}
+
+	var chunks []message.AssistantChunk
+	for chunk, err := range stream {
+		if err != nil {
+			t.Fatalf("stream chunk error: %v", err)
+		}
+		chunks = append(chunks, chunk)
+	}
+
+	if len(chunks) != 1 {
+		t.Fatalf("expected 1 chunk, got %d", len(chunks))
+	}
+
+	tc, ok := chunks[0].Content[0].(*message.ToolCall)
+	if !ok {
+		t.Fatalf("expected *message.ToolCall, got %T", chunks[0].Content[0])
+	}
+
+	// Verify all arguments remain untouched strings
+	if v, ok := tc.Args["num_val"].(string); !ok || v != "42.5" {
+		t.Errorf("expected num_val to remain string '42.5', got %T (%v)", tc.Args["num_val"], tc.Args["num_val"])
+	}
+	if v, ok := tc.Args["int_val"].(string); !ok || v != "10" {
+		t.Errorf("expected int_val to remain string '10', got %T (%v)", tc.Args["int_val"], tc.Args["int_val"])
+	}
+	if v, ok := tc.Args["bool_val"].(string); !ok || v != "true" {
+		t.Errorf("expected bool_val to remain string 'true', got %T (%v)", tc.Args["bool_val"], tc.Args["bool_val"])
 	}
 }

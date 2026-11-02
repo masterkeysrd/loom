@@ -90,6 +90,31 @@ model = model.WithMiddleware(func(next llm.Streamer) llm.Streamer {
 })
 ```
 
+### Built-in Middleware: Deferred Tools (`llm.DeferredToolsMiddleware`)
+
+Loom includes `DeferredToolsMiddleware`, a universal middleware that brings deferred tool loading and dynamic tool activation to any provider:
+
+```go
+// Default configuration: automatically detects provider capability
+model = model.WithMiddleware(llm.DeferredToolsMiddleware(nil))
+
+// Or with custom options:
+model = model.WithMiddleware(llm.DeferredToolsMiddleware(&llm.DeferredToolsOptions{
+    // Override capability detection:
+    Match: func(ctx context.Context, req *llm.Request) bool {
+        return true // force fallback transformation
+    },
+    // Customize text schema formatting for activated tools:
+    FormatReference: func(def tool.Definition) message.Block {
+        return &message.TextBlock{Text: fmt.Sprintf("Tool %s is active", def.Name)}
+    },
+    // Disable automatic coercion of stringified tool call arguments:
+    DisableCoercion: false,
+}))
+```
+
+When used with providers that don't natively support deferred tools (e.g. Ollama or Gemini), this middleware strips `DeferLoading: true` tools from initial requests, expands mid-conversation `ToolReferenceBlock` references into full schemas, and coerces stringified arguments returned by models into typed JSON schema values. See the [Tools Guide](./tools.md#6-deferred-tools-tool-search--dynamic-tool-injection) for more details.
+
 ## 4. Cache Management
 For providers that support explicit resource management (like Google Gemini's Context Caching), Loom provides a `CacheManager` API.
 

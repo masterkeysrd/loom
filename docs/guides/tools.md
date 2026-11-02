@@ -115,9 +115,96 @@ for event, err := range events {
 }
 ```
 
+## 6. Deferred Tools, Tool Search & Dynamic Tool Injection
+
+When working with large tool catalogs (e.g. hundreds of tools across multiple MCP servers or enterprise APIs), sending every tool schema in the initial request consumes excessive context window tokens and degrades LLM reasoning. Loom supports **Deferred Tools** and **Tool Search**, allowing you to keep tools deferred and dynamically discover or activate them mid-conversation.
+
+### Marking Tools as Deferred
+
+To mark a tool as deferred during creation, pass `tool.WithDeferLoading()`:
+
+```go
+weatherTool, _ := tool.New(
+    "get_weather",
+    "Get Weather",
+    "Fetches real-time weather for a city",
+    weatherHandler,
+    tool.WithDeferLoading(),
+)
+```
+
+For existing tools (such as MCP tools returned by `mcpClient.Tools(ctx)`), use `WithDeferLoading(true)`:
+
+```go
+mcpTools, _ := mcpClient.Tools(ctx)
+for _, t := range mcpTools {
+    t.WithDeferLoading(true)
+}
+```
+
+Deferred tools have `Definition.DeferLoading = true`.
+
+### Built-in Client Search Tools
+
+Loom provides built-in search tools that index a catalog of deferred tools and allow the LLM to search for tools by keyword or relevance:
+
+```go
+// BM25 full-text ranker (recommended for natural language queries)
+searchTool, err := tool.NewBM25Search(allTools, 5) // top 5 results
+
+// Or exact regex matcher
+regexSearchTool, err := tool.NewRegexSearch(allTools, 5)
+```
+
+When invoked by the model, these search tools return `[]message.ToolReferenceBlock` elements containing the matching tool names.
+
+### Direct Mid-Conversation Tool Injection
+
+You can also inject a deferred tool directly into an active conversation without waiting for a search tool call. Simply append a `message.ToolReferenceBlock` to a system or user message:
+
+```go
+// Dynamically activate a tool mid-conversation
+msg := message.NewSystem(&message.ToolReferenceBlock{ToolName: "convert_currency"})
+// or: message.NewUser(&message.ToolReferenceBlock{ToolName: "convert_currency"})
+```
+
+Anthropic (via `tool_addition` / `inline-tools-2026-09-15`), OpenAI Responses API (via `additional_tools`), and Loom's fallback middleware handle mid-conversation tool reference blocks seamlessly.
+
+### Cross-Provider Middleware (`llm.DeferredToolsMiddleware`)
+
+To ensure seamless deferred tool execution across all providers—even those without native server-side deferred tool loading (such as Ollama, Gemini, or older OpenAI/Anthropic models)—Loom provides `llm.DeferredToolsMiddleware`:
+
+```go
+model = model.WithMiddleware(llm.DeferredToolsMiddleware(nil))
+```
+
+#### How it Works:
+1. **Capability Detection**: Checks if the underlying provider implements `llm.DeferredToolsSupport` and returns `true` for the current model via `SupportsDeferredTools(model)`.
+2. **Native Providers**: On models with native deferred tool support (Claude 4.5+/5+, OpenAI `/v1/responses` with `gpt-5.4+`), the middleware acts as a transparent no-op so native server-side handling is preserved.
+3. **Fallback Transformation**: On non-native providers (Ollama, Gemini, older models):
+   - **Filters Deferred Tools**: Strips `DeferLoading: true` tools out of `req.Tools` on every turn, keeping the system prompt invariant to preserve prompt cache prefixes.
+   - **Transforms Tool References**: Replaces `*message.ToolReferenceBlock` instances (found in user/system messages or `ServerToolResult` blocks) with full `<tools>` JSON schemas in cloned messages, leaving original conversation state untouched.
+   - **Coerces Tool Arguments**: In the streaming response, intercepts tool calls for deferred tools and automatically coerces stringified arguments (commonly emitted by XML tool parsers like Ollama) to their typed equivalents (`float64`, `int64`, `bool`, `[]any`, `map[string]any`) according to the tool's `InputSchema`.
+
+#### Configuration Options:
+```go
+opts := &llm.DeferredToolsOptions{
+    // Match overrides provider capability detection when non-nil
+    Match: func(ctx context.Context, req *llm.Request) bool { ... },
+    // FormatReference customizes how activated tool schemas are formatted into text
+    FormatReference: func(def tool.Definition) message.Block { ... },
+    // DisableCoercion disables automatic type coercion of tool call arguments
+    DisableCoercion: false,
+}
+model = model.WithMiddleware(llm.DeferredToolsMiddleware(opts))
+```
+
 ## Summary
 
 - **`tool.New`**: For standard request-response tools.
 - **`tool.NewStreaming`**: For tools that need to report progress or stream multi-part results.
 - **`tool.Container`**: For managing and executing multiple tools.
+- **`tool.WithDeferLoading`**: Marks tools as deferred to reduce token consumption.
+- **`tool.NewBM25Search` / `tool.NewRegexSearch`**: Built-in search tools returning `ToolReferenceBlock`s.
+- **`llm.DeferredToolsMiddleware`**: Universal middleware bringing deferred tools and argument coercion to all models.
 - **`g.Stream`**: For real-time event monitoring.

@@ -13,6 +13,18 @@ type Runtime struct {
 	Provider string
 	Profile  *profile.Profile
 	Config   *ModelConfig
+	provider Provider
+}
+
+// SupportsDeferredTools reports whether the underlying provider supports deferred tool loading for model.
+func (r *Runtime) SupportsDeferredTools(model string) bool {
+	if r == nil || r.provider == nil {
+		return false
+	}
+	if dts, ok := r.provider.(DeferredToolsSupport); ok {
+		return dts.SupportsDeferredTools(model)
+	}
+	return false
 }
 
 type runtimeKey struct{}

@@ -50,6 +50,35 @@ Some models (like Claude 3.5 or Gemini 2.0) can return their internal reasoning.
 thinking := assistantMsg.Content.Thought()
 ```
 
+### Tool Reference Blocks
+Used to represent deferred tools that have been discovered or dynamically injected into the conversation. A `ToolReferenceBlock` signals to the LLM and provider mappings that the referenced tool is active and callable.
+
+```go
+refBlock := &message.ToolReferenceBlock{ToolName: "convert_currency"}
+
+// Injecting mid-conversation via a system or user message:
+msg := message.NewSystem(refBlock)
+```
+
+### Server Tool Calls & Results
+Represents provider-managed server-side tool calls (such as Anthropic or OpenAI `tool_search`, `web_search`, or `file_search`) and their outputs. Unlike standard `*message.ToolCall` blocks (which require local client execution via `tool.Container`), `*message.ServerToolCall` blocks are executed directly by the provider's server and do not block local graph execution.
+
+```go
+// Access server-side tool calls emitted by the assistant
+for _, stc := range assistantMsg.ServerToolCalls() {
+    fmt.Printf("Server tool: %s (ID: %s)\n", stc.Name, stc.ID)
+}
+
+// Server tool results returned by the provider or client tool search
+resultBlock := &message.ServerToolResult{
+    ToolCallID: "srv-call-1",
+    Name:       "tool_search",
+    Content: message.Content{
+        &message.ToolReferenceBlock{ToolName: "calculate_mortgage"},
+    },
+}
+```
+
 ## 3. Managing History (MessageList)
 
 A `MessageList` is a specialized slice of messages that provides critical functionality for state management and persistence. **Always use `MessageList` instead of a raw `[]message.Message` when storing history in your Graph State.**

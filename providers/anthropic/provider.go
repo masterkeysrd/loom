@@ -17,8 +17,9 @@ import (
 )
 
 var (
-	_ llm.Provider     = (*Provider)(nil)
-	_ profile.Provider = (*Provider)(nil)
+	_ llm.Provider             = (*Provider)(nil)
+	_ profile.Provider         = (*Provider)(nil)
+	_ llm.DeferredToolsSupport = (*Provider)(nil)
 )
 
 const (
@@ -107,6 +108,11 @@ func NewProvider(client *anthropic.Client) *Provider {
 // Name returns "anthropic", uniquely identifying this provider in a [llm.Registry].
 func (p *Provider) Name() string {
 	return "anthropic"
+}
+
+// SupportsDeferredTools reports whether the Anthropic provider supports deferred tools for the model.
+func (p *Provider) SupportsDeferredTools(model string) bool {
+	return modelSupportsToolSearch(model)
 }
 
 // Stream converts request into an Anthropic chat request, initiates the streaming

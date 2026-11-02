@@ -148,6 +148,12 @@ type QuotaProvider interface {
 	ListQuotas(ctx context.Context) (map[string]QuotaInfo, error)
 }
 
+// DeferredToolsSupport is an optional interface that providers can implement
+// if they natively support deferred tool loading for specific models.
+type DeferredToolsSupport interface {
+	SupportsDeferredTools(model string) bool
+}
+
 // StreamResponse is an iterator over streaming chunks from an LLM provider.
 // It follows the standard Go iter.Seq2 convention: iteration stops when the
 // yield function returns false or when the provider signals completion.

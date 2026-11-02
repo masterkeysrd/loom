@@ -25,6 +25,17 @@ type CacheManager interface {
 }
 ```
 
+### Optional: Deferred Tools Support
+If your provider or backend model natively supports deferred tool definitions (server-side deferred tools or native tool search), implement the `llm.DeferredToolsSupport` interface:
+
+```go
+type DeferredToolsSupport interface {
+    SupportsDeferredTools(model string) bool
+}
+```
+
+When implemented, `llm.DeferredToolsMiddleware` checks this method to avoid applying unnecessary client-side tool transformations on models that natively support deferred tools.
+
 ### Optional: Extensions
 If your provider has specialized features, you should define your own extension structs.
 

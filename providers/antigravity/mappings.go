@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/masterkeysrd/loom/llm"
@@ -25,6 +26,15 @@ const (
 // GenerateContentRequest expected by Cloud Code / Antigravity.
 func toGenerateContentRequest(req *llm.Request) (GenerateContentRequest, error) {
 	out := GenerateContentRequest{}
+
+	for _, d := range req.Tools {
+		if d.DeferLoading {
+			return out, fmt.Errorf("antigravity provider does not support deferred tool loading (tool %q)", d.Name)
+		}
+	}
+	if slices.ContainsFunc(req.Messages, hasToolReferenceBlock) {
+		return out, fmt.Errorf("antigravity provider does not support tool reference blocks")
+	}
 
 	// 1. Generation Config
 	cfg := &GenerationConfig{}
@@ -312,6 +322,9 @@ func toFunctionResponsePart(msg *message.Tool) (Part, error) {
 func toTools(defs []tool.Definition) (Tool, error) {
 	decls := make([]FunctionDeclaration, 0, len(defs))
 	for _, d := range defs {
+		if d.DeferLoading {
+			return Tool{}, fmt.Errorf("antigravity provider does not support deferred tool loading (tool %q)", d.Name)
+		}
 		var params any
 		if d.InputSchema != nil {
 			sanitized, err := sanitizeSchema(d.InputSchema)
@@ -580,4 +593,23 @@ func toGoogleType(t string) string {
 	default:
 		return strings.ToUpper(t)
 	}
+}
+
+func hasToolReferenceBlock(msg message.Message) bool {
+	if msg == nil {
+		return false
+	}
+	return slices.ContainsFunc(msg.GetContent(), blockHasToolReference)
+}
+
+func blockHasToolReference(b message.Block) bool {
+	switch v := b.(type) {
+	case *message.ToolReferenceBlock:
+		return true
+	case *message.ServerToolResult:
+		if slices.ContainsFunc(v.Content, blockHasToolReference) {
+			return true
+		}
+	}
+	return false
 }

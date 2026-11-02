@@ -7,6 +7,7 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/tool"
 )
 
 func TestToChatRequestStructuredOutput(t *testing.T) {
@@ -132,5 +133,59 @@ func TestToAPIToolCall_DeterministicArgumentOrder(t *testing.T) {
 		if string(firstBytes) != string(iterBytes) {
 			t.Fatalf("expected deterministic argument ordering across iterations, but iteration %d differed:\nFirst: %s\nIter:  %s", i, string(firstBytes), string(iterBytes))
 		}
+	}
+}
+
+func TestToChatRequest_DeferredToolsFailFast(t *testing.T) {
+	// 1. Tool with DeferLoading: true
+	reqDeferred := &llm.Request{
+		Model: "llama3",
+		Tools: []tool.Definition{
+			{Name: "search_tool", DeferLoading: true},
+		},
+	}
+	_, err := toChatRequest(reqDeferred)
+	if err == nil {
+		t.Errorf("expected error for deferred tool, got nil")
+	}
+
+	// 2. Message with ToolReferenceBlock
+	reqRef := &llm.Request{
+		Model: "llama3",
+		Messages: []message.Message{
+			message.NewUser(&message.ToolReferenceBlock{ToolName: "search_tool"}),
+		},
+	}
+	_, err = toChatRequest(reqRef)
+	if err == nil {
+		t.Errorf("expected error for ToolReferenceBlock, got nil")
+	}
+
+	// 3. Message with nested ToolReferenceBlock in ServerToolResult
+	reqNested := &llm.Request{
+		Model: "llama3",
+		Messages: []message.Message{
+			&message.Assistant{
+				Content: message.Content{
+					&message.ServerToolResult{
+						ToolCallID: "srv-1",
+						Content: message.Content{
+							&message.ToolReferenceBlock{ToolName: "search_tool"},
+						},
+					},
+				},
+			},
+		},
+	}
+	_, err = toChatRequest(reqNested)
+	if err == nil {
+		t.Errorf("expected error for nested ToolReferenceBlock in ServerToolResult, got nil")
+	}
+}
+
+func TestToAPITool_DeferredToolFailFast(t *testing.T) {
+	_, err := toAPITool(tool.Definition{Name: "deferred_tool", DeferLoading: true})
+	if err == nil {
+		t.Errorf("expected error for deferred tool in toAPITool, got nil")
 	}
 }

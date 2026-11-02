@@ -421,6 +421,7 @@ func (m *Model) Stream(ctx context.Context, messages []message.Message, opts ...
 		Provider: m.provider.Name(),
 		Profile:  m.profile,
 		Config:   m.config,
+		provider: m.provider,
 	}
 	ctx = WithRuntime(ctx, rt)
 

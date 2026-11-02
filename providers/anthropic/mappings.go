@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -84,10 +85,8 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 				return anthropic.MessageNewParams{}, fmt.Errorf("model %q does not support deferred tool loading (tool %q)", request.Model, tool.Name)
 			}
 		}
-		for _, msg := range request.Messages {
-			if hasToolReferenceBlock(msg) {
-				return anthropic.MessageNewParams{}, fmt.Errorf("model %q does not support tool reference blocks", request.Model)
-			}
+		if slices.ContainsFunc(request.Messages, hasToolReferenceBlock) {
+			return anthropic.MessageNewParams{}, fmt.Errorf("model %q does not support tool reference blocks", request.Model)
 		}
 	}
 
@@ -192,8 +191,8 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 
 	lastNonDeferredIdx := -1
 	if toolSearch == nil && cacheHeader {
-		for i := len(request.Tools) - 1; i >= 0; i-- {
-			if !request.Tools[i].DeferLoading {
+		for i, v := range slices.Backward(request.Tools) {
+			if !v.DeferLoading {
 				lastNonDeferredIdx = i
 				break
 			}

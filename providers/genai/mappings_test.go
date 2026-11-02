@@ -7,6 +7,7 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/tool"
 	"google.golang.org/genai"
 )
 
@@ -303,5 +304,56 @@ func TestToGenerateContentArgs_GroupsConsecutiveToolResults(t *testing.T) {
 	}
 	if toolTurn.Parts[1].FunctionResponse == nil || toolTurn.Parts[1].FunctionResponse.ID != "call_2" {
 		t.Errorf("expected second part to be FunctionResponse for call_2, got %#v", toolTurn.Parts[1])
+	}
+}
+
+func TestToGenerateContentArgs_DeferredToolsFailFast(t *testing.T) {
+	// 1. Tool with DeferLoading: true
+	reqDeferred := &llm.Request{
+		Tools: []tool.Definition{
+			{Name: "search_tool", DeferLoading: true},
+		},
+	}
+	_, _, err := toGenerateContentArgs(reqDeferred)
+	if err == nil {
+		t.Errorf("expected error for deferred tool, got nil")
+	}
+
+	// 2. Message with ToolReferenceBlock
+	reqRef := &llm.Request{
+		Messages: []message.Message{
+			message.NewUser(&message.ToolReferenceBlock{ToolName: "search_tool"}),
+		},
+	}
+	_, _, err = toGenerateContentArgs(reqRef)
+	if err == nil {
+		t.Errorf("expected error for ToolReferenceBlock, got nil")
+	}
+
+	// 3. Message with nested ToolReferenceBlock in ServerToolResult
+	reqNested := &llm.Request{
+		Messages: []message.Message{
+			&message.Assistant{
+				Content: message.Content{
+					&message.ServerToolResult{
+						ToolCallID: "srv-1",
+						Content: message.Content{
+							&message.ToolReferenceBlock{ToolName: "search_tool"},
+						},
+					},
+				},
+			},
+		},
+	}
+	_, _, err = toGenerateContentArgs(reqNested)
+	if err == nil {
+		t.Errorf("expected error for nested ToolReferenceBlock, got nil")
+	}
+}
+
+func TestToGenaiTools_DeferredToolFailFast(t *testing.T) {
+	_, err := toGenaiTools([]tool.Definition{{Name: "deferred_tool", DeferLoading: true}})
+	if err == nil {
+		t.Errorf("expected error for deferred tool in toGenaiTools, got nil")
 	}
 }

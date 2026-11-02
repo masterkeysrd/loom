@@ -20,8 +20,9 @@ import (
 )
 
 var (
-	_ llm.Provider     = (*Provider)(nil)
-	_ profile.Provider = (*Provider)(nil)
+	_ llm.Provider             = (*Provider)(nil)
+	_ profile.Provider         = (*Provider)(nil)
+	_ llm.DeferredToolsSupport = (*Provider)(nil)
 )
 
 // PromptCache is an extension that configures OpenAI's prompt caching behavior.
@@ -79,6 +80,11 @@ func NewProvider(client *openai.Client, opts ...Option) *Provider {
 // Name returns "openai", uniquely identifying this provider in a [llm.Registry].
 func (p *Provider) Name() string {
 	return "openai"
+}
+
+// SupportsDeferredTools reports whether the OpenAI provider supports deferred tools for the model.
+func (p *Provider) SupportsDeferredTools(model string) bool {
+	return p.defaultAPIMode != APIModeChatCompletions && modelSupportsToolSearch(model)
 }
 
 var responsesAPIOnlyPrefixes = []string{

@@ -58,6 +58,23 @@ func (p PromptCaching) ExtensionID() string {
 	return "anthropic.prompt_caching"
 }
 
+// ToolSearchStrategy defines the algorithm used by Anthropic's server-side tool search.
+type ToolSearchStrategy string
+
+const (
+	ToolSearchRegex ToolSearchStrategy = "regex"
+	ToolSearchBM25  ToolSearchStrategy = "bm25"
+)
+
+// ToolSearch is a request extension that enables Anthropic's built-in server-side tool search.
+type ToolSearch struct {
+	Strategy ToolSearchStrategy
+}
+
+func (t ToolSearch) ExtensionID() string {
+	return "anthropic.tool_search"
+}
+
 // Provider represents the Anthropic backend client for
 // handling chat requests for the Loom application.
 //
@@ -101,6 +118,8 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 		return nil, fmt.Errorf("failed to convert chat request: %w", err)
 	}
 
+	reqOpts := requestOptions(request)
+
 	if sw, ok := stream.WriterFromContext(ctx); ok {
 		_ = sw.Write(ctx, stream.Event{
 			Name: "on_llm_request",
@@ -115,57 +134,19 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 	_ = trace.SpanFromContext(ctx)
 
 	return func(yield func(message.AssistantChunk, error) bool) {
+		serverToolIndices := make(map[int]bool)
+
 		// Create the streaming request
-		stream := p.client.Messages.NewStreaming(ctx, body)
+		stream := p.client.Messages.NewStreaming(ctx, body, reqOpts...)
 
 		for stream.Next() {
 			event := stream.Current()
-
-			switch e := event.AsAny().(type) {
-			case anthropic.ContentBlockStartEvent:
-				// Emit the tool call identity chunk so the aggregator can open a pending entry.
-				if cb, ok := e.ContentBlock.AsAny().(anthropic.ToolUseBlock); ok {
-					chunk := message.AssistantChunk{
-						Content: []message.Block{&message.ToolCallChunk{
-							Index: int(e.Index),
-							ID:    cb.ID,
-							Name:  cb.Name,
-						}},
-					}
-					if !yield(chunk, nil) {
-						return
-					}
-				}
-
-			case anthropic.ContentBlockDeltaEvent:
-				if delta, ok := e.Delta.AsAny().(anthropic.InputJSONDelta); ok {
-					// Emit a partial-args chunk; the aggregator appends it to the right tool call.
-					chunk := message.AssistantChunk{
-						Content: []message.Block{&message.ToolCallChunk{
-							Index:     int(e.Index),
-							ArgsChunk: delta.PartialJSON,
-						}},
-					}
-					if !yield(chunk, nil) {
-						return
-					}
-				} else {
-					chunk, err := toAssistantChunk(event)
-					if err != nil {
-						yield(message.AssistantChunk{}, fmt.Errorf("failed to convert event to chunk: %w", err))
-						return
-					}
-					if !yield(chunk, nil) {
-						return
-					}
-				}
-
-			default:
-				chunk, err := toAssistantChunk(event)
-				if err != nil {
-					yield(message.AssistantChunk{}, fmt.Errorf("failed to convert event to chunk: %w", err))
-					return
-				}
+			chunk, shouldYield, err := handleStreamEvent(event, serverToolIndices)
+			if err != nil {
+				yield(message.AssistantChunk{}, err)
+				return
+			}
+			if shouldYield {
 				if !yield(chunk, nil) {
 					return
 				}
@@ -178,6 +159,70 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 		}
 
 	}, nil
+}
+
+func handleStreamEvent(
+	event anthropic.MessageStreamEventUnion,
+	serverToolIndices map[int]bool,
+) (message.AssistantChunk, bool, error) {
+	switch e := event.AsAny().(type) {
+	case anthropic.ContentBlockStartEvent:
+		// Emit the tool call identity chunk so the aggregator can open a pending entry.
+		if cb, ok := e.ContentBlock.AsAny().(anthropic.ToolUseBlock); ok {
+			return message.AssistantChunk{
+				Content: []message.Block{&message.ToolCallChunk{
+					Index: int(e.Index),
+					ID:    cb.ID,
+					Name:  cb.Name,
+				}},
+			}, true, nil
+		} else if cb, ok := e.ContentBlock.AsAny().(anthropic.ServerToolUseBlock); ok {
+			serverToolIndices[int(e.Index)] = true
+			return message.AssistantChunk{
+				Content: []message.Block{&message.ServerToolCallChunk{
+					Index: int(e.Index),
+					ID:    cb.ID,
+					Name:  string(cb.Name),
+				}},
+			}, true, nil
+		} else if cb, ok := e.ContentBlock.AsAny().(anthropic.ToolSearchToolResultBlock); ok {
+			res := fromToolSearchToolResultBlock(cb)
+			return message.AssistantChunk{
+				Content: []message.Block{res},
+			}, true, nil
+		}
+		return message.AssistantChunk{}, false, nil
+
+	case anthropic.ContentBlockDeltaEvent:
+		if delta, ok := e.Delta.AsAny().(anthropic.InputJSONDelta); ok {
+			if serverToolIndices[int(e.Index)] {
+				return message.AssistantChunk{
+					Content: []message.Block{&message.ServerToolCallChunk{
+						Index:     int(e.Index),
+						ArgsChunk: delta.PartialJSON,
+					}},
+				}, true, nil
+			}
+			return message.AssistantChunk{
+				Content: []message.Block{&message.ToolCallChunk{
+					Index:     int(e.Index),
+					ArgsChunk: delta.PartialJSON,
+				}},
+			}, true, nil
+		}
+		chunk, err := toAssistantChunk(event)
+		if err != nil {
+			return message.AssistantChunk{}, false, fmt.Errorf("failed to convert event to chunk: %w", err)
+		}
+		return chunk, true, nil
+
+	default:
+		chunk, err := toAssistantChunk(event)
+		if err != nil {
+			return message.AssistantChunk{}, false, fmt.Errorf("failed to convert event to chunk: %w", err)
+		}
+		return chunk, true, nil
+	}
 }
 
 // ListProfiles returns all known Anthropic model profiles, with runtime

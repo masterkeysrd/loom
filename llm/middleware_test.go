@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
 	"github.com/masterkeysrd/loom/profile"
@@ -125,6 +126,7 @@ func TestModel_MiddlewareMutation(t *testing.T) {
 type deferredMockProvider struct {
 	llm.Provider
 	supportsDeferred bool
+	supportsInline   bool
 	lastRequest      *llm.Request
 	cannedChunks     []message.AssistantChunk
 }
@@ -145,6 +147,9 @@ func (d *deferredMockProvider) GetProfile(id string) (profile.Profile, bool) {
 }
 func (d *deferredMockProvider) SupportsDeferredTools(model string) bool {
 	return d.supportsDeferred
+}
+func (d *deferredMockProvider) SupportsInlineTools(model string) bool {
+	return d.supportsInline
 }
 
 func TestDeferredToolsMiddleware_NativeSupport(t *testing.T) {
@@ -594,5 +599,245 @@ func TestDeferredToolsMiddleware_DisableCoercion(t *testing.T) {
 	}
 	if v, ok := tc.Args["bool_val"].(string); !ok || v != "true" {
 		t.Errorf("expected bool_val to remain string 'true', got %T (%v)", tc.Args["bool_val"], tc.Args["bool_val"])
+	}
+}
+
+func TestInlineToolsMiddleware_NativeSupport(t *testing.T) {
+	provider := &deferredMockProvider{supportsInline: true}
+	model, err := llm.NewModel(provider, "test-model", nil)
+	if err != nil {
+		t.Fatalf("NewModel failed: %v", err)
+	}
+	model = model.WithMiddleware(llm.InlineToolsMiddleware(nil))
+
+	origTools := []tool.Definition{
+		{Name: "inline_tool", Description: "Initial definition"},
+	}
+	model = model.BindToolDefs(origTools...)
+
+	origMsgs := []message.Message{
+		message.NewUser(
+			&message.TextBlock{Text: "Please run tool"},
+			&message.ToolDefinitionBlock{Name: "inline_tool", Description: "Inline definition"},
+		),
+	}
+
+	_, err = model.Stream(context.Background(), origMsgs)
+	if err != nil {
+		t.Fatalf("Stream failed: %v", err)
+	}
+
+	req := provider.lastRequest
+	if len(req.Tools) != 1 {
+		t.Fatalf("expected 1 tool on native provider, got %d", len(req.Tools))
+	}
+
+	if len(req.Messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(req.Messages))
+	}
+	content := req.Messages[0].GetContent()
+	if len(content) != 2 {
+		t.Fatalf("expected 2 content blocks, got %d", len(content))
+	}
+	if _, ok := content[1].(*message.ToolDefinitionBlock); !ok {
+		t.Errorf("expected ToolDefinitionBlock untouched on native provider, got %T", content[1])
+	}
+}
+
+func TestInlineToolsMiddleware_FallbackAndCoercion(t *testing.T) {
+	type testInput struct {
+		NumVal  float64 `json:"num_val"`
+		IntVal  int     `json:"int_val"`
+		BoolVal bool    `json:"bool_val"`
+	}
+
+	myTool, err := tool.New("calc_tool", "Calculator", "A calculator tool", func(ctx context.Context, in testInput) (string, error) {
+		return "calc ok", nil
+	})
+	if err != nil {
+		t.Fatalf("tool.New failed: %v", err)
+	}
+
+	cannedChunks := []message.AssistantChunk{
+		{
+			Content: message.Content{
+				&message.ToolCall{
+					ID:   "call_inline",
+					Name: "calc_tool",
+					Args: map[string]any{
+						"num_val":  "99.5",
+						"int_val":  "42",
+						"bool_val": "true",
+					},
+				},
+			},
+		},
+	}
+
+	provider := &deferredMockProvider{
+		supportsInline: false,
+		cannedChunks:   cannedChunks,
+	}
+
+	model, err := llm.NewModel(provider, "test-model", nil)
+	if err != nil {
+		t.Fatalf("NewModel failed: %v", err)
+	}
+	model = model.WithMiddleware(llm.InlineToolsMiddleware(nil))
+	// Also bind calc_tool in initial tools to verify it is filtered out from req.Tools
+	model = model.BindTools(myTool)
+
+	origUserMsg := message.NewUser(
+		&message.TextBlock{Text: "Activate calc:"},
+		myTool.ToBlock(),
+	)
+	origMsgs := []message.Message{origUserMsg}
+
+	stream, err := model.Stream(context.Background(), origMsgs)
+	if err != nil {
+		t.Fatalf("Stream failed: %v", err)
+	}
+
+	req := provider.lastRequest
+	// 1. Tool should be filtered out from req.Tools because it was injected inline
+	if len(req.Tools) != 0 {
+		t.Fatalf("expected 0 tools in req.Tools (filtered out), got %d", len(req.Tools))
+	}
+
+	// 2. ToolDefinitionBlock should be expanded into TextBlock with <tools> schema
+	if len(req.Messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(req.Messages))
+	}
+	blocks := req.Messages[0].GetContent()
+	if len(blocks) != 2 {
+		t.Fatalf("expected 2 blocks, got %d", len(blocks))
+	}
+	txtBlock, ok := blocks[1].(*message.TextBlock)
+	if !ok {
+		t.Fatalf("expected expanded *message.TextBlock, got %T", blocks[1])
+	}
+	if !strings.Contains(txtBlock.Text, "calc_tool") || !strings.Contains(txtBlock.Text, "<tools>") {
+		t.Errorf("expected expanded schema text block, got %s", txtBlock.Text)
+	}
+
+	// 3. Original user message was NOT mutated
+	if _, ok := origUserMsg.GetContent()[1].(*message.ToolDefinitionBlock); !ok {
+		t.Errorf("expected original message to remain *message.ToolDefinitionBlock, got %T", origUserMsg.GetContent()[1])
+	}
+
+	// 4. Verify stream argument coercion
+	var chunks []message.AssistantChunk
+	for chunk, err := range stream {
+		if err != nil {
+			t.Fatalf("chunk error: %v", err)
+		}
+		chunks = append(chunks, chunk)
+	}
+	if len(chunks) != 1 {
+		t.Fatalf("expected 1 chunk, got %d", len(chunks))
+	}
+	tc := chunks[0].Content[0].(*message.ToolCall)
+	if v, ok := tc.Args["num_val"].(float64); !ok || v != 99.5 {
+		t.Errorf("expected num_val to be float64(99.5), got %T (%v)", tc.Args["num_val"], tc.Args["num_val"])
+	}
+	if v, ok := tc.Args["int_val"].(int64); !ok || v != 42 {
+		t.Errorf("expected int_val to be int64(42), got %T (%v)", tc.Args["int_val"], tc.Args["int_val"])
+	}
+	if v, ok := tc.Args["bool_val"].(bool); !ok || !v {
+		t.Errorf("expected bool_val to be true, got %T (%v)", tc.Args["bool_val"], tc.Args["bool_val"])
+	}
+
+	// 5. Verify tool execution via container
+	c := tool.NewContainer(myTool)
+	res, err := c.Call(context.Background(), tc)
+	if err != nil {
+		t.Fatalf("container.Call failed on coerced inline tool: %v", err)
+	}
+	if res.StructuredContent != "calc ok" {
+		t.Errorf("expected 'calc ok', got %v", res.StructuredContent)
+	}
+}
+
+func TestInlineToolsMiddleware_CustomOptions(t *testing.T) {
+	// Test Match override: provider reports supportsInline: false, but Match returns false (no transform)
+	provider := &deferredMockProvider{supportsInline: false}
+	opts := &llm.InlineToolsOptions{
+		Match: func(ctx context.Context, req *llm.Request) bool {
+			return false
+		},
+	}
+	model, err := llm.NewModel(provider, "test-model", nil)
+	if err != nil {
+		t.Fatalf("NewModel failed: %v", err)
+	}
+	model = model.WithMiddleware(llm.InlineToolsMiddleware(opts))
+	msgs := []message.Message{
+		message.NewUser(&message.ToolDefinitionBlock{Name: "unmodified"}),
+	}
+	_, err = model.Stream(context.Background(), msgs)
+	if err != nil {
+		t.Fatalf("Stream failed: %v", err)
+	}
+	if _, ok := provider.lastRequest.Messages[0].GetContent()[0].(*message.ToolDefinitionBlock); !ok {
+		t.Errorf("expected ToolDefinitionBlock to remain untouched when Match=false")
+	}
+
+	// Test FormatDefinition and DisableCoercion
+	canned := []message.AssistantChunk{
+		{
+			Content: message.Content{
+				&message.ToolCall{
+					ID:   "call-1",
+					Name: "format_test",
+					Args: map[string]any{"count": "123"},
+				},
+			},
+		},
+	}
+	providerCustom := &deferredMockProvider{
+		supportsInline: false,
+		cannedChunks:   canned,
+	}
+	optsCustom := &llm.InlineToolsOptions{
+		FormatDefinition: func(def tool.Definition) message.Block {
+			return &message.TextBlock{Text: "CUSTOM_INLINE:" + def.Name}
+		},
+		DisableCoercion: true,
+	}
+	modelCustom, err := llm.NewModel(providerCustom, "test-model", nil)
+	if err != nil {
+		t.Fatalf("NewModel failed: %v", err)
+	}
+	modelCustom = modelCustom.WithMiddleware(llm.InlineToolsMiddleware(optsCustom))
+
+	tdb := &message.ToolDefinitionBlock{
+		Name: "format_test",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"count": {Type: "integer"},
+			},
+		},
+	}
+	stream, err := modelCustom.Stream(context.Background(), []message.Message{message.NewUser(tdb)})
+	if err != nil {
+		t.Fatalf("Stream failed: %v", err)
+	}
+
+	sentBlock := providerCustom.lastRequest.Messages[0].GetContent()[0].(*message.TextBlock)
+	if sentBlock.Text != "CUSTOM_INLINE:format_test" {
+		t.Errorf("expected custom format 'CUSTOM_INLINE:format_test', got %q", sentBlock.Text)
+	}
+
+	var chunks []message.AssistantChunk
+	for chunk, err := range stream {
+		if err != nil {
+			t.Fatalf("chunk err: %v", err)
+		}
+		chunks = append(chunks, chunk)
+	}
+	tc := chunks[0].Content[0].(*message.ToolCall)
+	if v, ok := tc.Args["count"].(string); !ok || v != "123" {
+		t.Errorf("expected count to remain string '123' when DisableCoercion=true, got %T (%v)", tc.Args["count"], tc.Args["count"])
 	}
 }

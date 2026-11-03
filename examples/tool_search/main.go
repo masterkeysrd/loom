@@ -425,8 +425,8 @@ Most tools are not listed in your initial <tools> header to keep the prompt comp
 
 		if strings.HasPrefix(input, "activate:") || strings.HasPrefix(input, "activate ") {
 			var toolName string
-			if strings.HasPrefix(input, "activate:") {
-				toolName = strings.TrimSpace(strings.TrimPrefix(input, "activate:"))
+			if after, ok := strings.CutPrefix(input, "activate:"); ok {
+				toolName = strings.TrimSpace(after)
 			} else {
 				toolName = strings.TrimSpace(strings.TrimPrefix(input, "activate "))
 			}

@@ -181,6 +181,18 @@ func TestToChatRequest_DeferredToolsFailFast(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected error for nested ToolReferenceBlock in ServerToolResult, got nil")
 	}
+
+	// 4. Message with ToolDefinitionBlock
+	reqDef := &llm.Request{
+		Model: "llama3",
+		Messages: []message.Message{
+			message.NewUser(&message.ToolDefinitionBlock{Name: "custom_tool"}),
+		},
+	}
+	_, err = toChatRequest(reqDef)
+	if err == nil {
+		t.Errorf("expected error for ToolDefinitionBlock, got nil")
+	}
 }
 
 func TestToAPITool_DeferredToolFailFast(t *testing.T) {

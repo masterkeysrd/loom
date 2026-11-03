@@ -81,6 +81,9 @@ func toChatCompletionNewParams(request *llm.Request) (openai.ChatCompletionNewPa
 	if hasToolReferenceBlock(request) {
 		return openai.ChatCompletionNewParams{}, fmt.Errorf("openai chat completions API does not support tool reference blocks; use the Responses API with gpt-5.4 or later")
 	}
+	if hasToolDefinitionBlock(request) {
+		return openai.ChatCompletionNewParams{}, fmt.Errorf("openai chat completions API does not support inline tool definition blocks; use the Responses API with gpt-5.4 or later")
+	}
 
 	params := openai.ChatCompletionNewParams{
 		Model: openai.ChatModel(request.Model),

@@ -117,6 +117,13 @@ func CloneBlock(block Block) Block {
 			ToolName: current.ToolName,
 			Extras:   maps.Clone(current.Extras),
 		}
+	case *ToolDefinitionBlock:
+		return &ToolDefinitionBlock{
+			Name:        current.Name,
+			Description: current.Description,
+			InputSchema: current.InputSchema,
+			Extras:      maps.Clone(current.Extras),
+		}
 	default:
 		return block
 	}

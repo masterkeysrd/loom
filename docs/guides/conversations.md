@@ -60,6 +60,25 @@ refBlock := &message.ToolReferenceBlock{ToolName: "convert_currency"}
 msg := message.NewSystem(refBlock)
 ```
 
+### Tool Definition Blocks
+Used to inject a complete tool definition inline mid-conversation by value (for tools that were not pre-registered in the initial `request.Tools` catalog). Can be produced directly from a `*tool.Tool` or `tool.Definition` using `.ToBlock()`.
+
+```go
+defBlock := &message.ToolDefinitionBlock{
+    Name:        "calculate_mortgage",
+    Description: "Calculates monthly mortgage payments",
+    InputSchema: schema,
+}
+// Or conveniently from an existing *tool.Tool:
+defBlock = myTool.ToBlock()
+
+// Injecting mid-conversation via a user or system message:
+msg := message.NewUser(
+    &message.TextBlock{Text: "Please calculate with this tool:"},
+    defBlock,
+)
+```
+
 ### Server Tool Calls & Results
 Represents provider-managed server-side tool calls (such as Anthropic or OpenAI `tool_search`, `web_search`, or `file_search`) and their outputs. Unlike standard `*message.ToolCall` blocks (which require local client execution via `tool.Container`), `*message.ServerToolCall` blocks are executed directly by the provider's server and do not block local graph execution.
 

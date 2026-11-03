@@ -11,6 +11,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
 	"github.com/masterkeysrd/loom/tool"
@@ -544,7 +545,7 @@ func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func TestToMessageNewParams_MidConversationToolAddition(t *testing.T) {
 	req := &llm.Request{
-		Model: "claude-sonnet-4-6",
+		Model: "claude-opus-4-8",
 		Messages: []message.Message{
 			&message.User{
 				Content: message.Content{&message.TextBlock{Text: "Please calculate 2+2"}},
@@ -996,5 +997,116 @@ func TestToMessageNewParams_UnsupportedModelValidation(t *testing.T) {
 				t.Errorf("got error %q, want %q", err.Error(), expectedMsg)
 			}
 		})
+	}
+}
+
+func TestModelSupportsInlineTools(t *testing.T) {
+	supported := []string{
+		"claude-fable-5",
+		"claude-mythos-5",
+		"claude-opus-5",
+		"claude-opus-4-8",
+		"claude-opus-4.8",
+		"claude-sonnet-5-5",
+		"claude-sonnet-5.5",
+		"claude-haiku-5-5",
+		"claude-haiku-5.5",
+		" CLAUDE-OPUS-4.8 ",
+	}
+
+	for _, m := range supported {
+		if !modelSupportsInlineTools(m) {
+			t.Errorf("expected %q to support inline tools", m)
+		}
+	}
+
+	unsupported := []string{
+		"claude-sonnet-4-6",
+		"claude-opus-4-6",
+		"claude-3-5-sonnet-latest",
+		"claude-haiku-4-5",
+		"gpt-5.4",
+	}
+
+	for _, m := range unsupported {
+		if modelSupportsInlineTools(m) {
+			t.Errorf("expected %q to NOT support inline tools", m)
+		}
+	}
+}
+
+func TestToMessageNewParams_InlineTools_UnsupportedModel(t *testing.T) {
+	unsupportedModels := []string{"claude-sonnet-4-6", "claude-3-5-sonnet-latest"}
+
+	for _, model := range unsupportedModels {
+		t.Run("ToolDefinitionBlock with "+model, func(t *testing.T) {
+			req := &llm.Request{
+				Model: model,
+				Messages: []message.Message{
+					message.NewUser(&message.ToolDefinitionBlock{Name: "my_tool"}),
+				},
+			}
+			_, err := toMessageNewParams(req)
+			if err == nil {
+				t.Fatalf("expected error for unsupported model %q", model)
+			}
+			expectedMsg := fmt.Sprintf("model %q does not support mid-conversation inline tool additions", model)
+			if err.Error() != expectedMsg {
+				t.Errorf("got error %q, want %q", err.Error(), expectedMsg)
+			}
+		})
+	}
+}
+
+func TestToMessageNewParams_InlineTools_Success(t *testing.T) {
+	req := &llm.Request{
+		Model: "claude-opus-4-8",
+		Tools: []tool.Definition{
+			{Name: "static_tool", Description: "Static tool"},
+			{Name: "inline_tool", Description: "Top-level definition that will be overridden"},
+		},
+		Messages: []message.Message{
+			message.NewUser(
+				&message.TextBlock{Text: "Please use this tool:"},
+				&message.ToolDefinitionBlock{
+					Name:        "inline_tool",
+					Description: "Dynamically added inline",
+					InputSchema: &jsonschema.Schema{
+						Type: "object",
+						Properties: map[string]*jsonschema.Schema{
+							"query": {Type: "string"},
+						},
+					},
+				},
+			),
+		},
+	}
+
+	params, err := toMessageNewParams(req)
+	if err != nil {
+		t.Fatalf("toMessageNewParams failed: %v", err)
+	}
+
+	// 1. Top-level tools should omit "inline_tool" because it is injected inline
+	if len(params.Tools) != 1 {
+		t.Fatalf("expected 1 top-level tool, got %d", len(params.Tools))
+	}
+	if params.Tools[0].OfTool.Name != "static_tool" {
+		t.Errorf("expected remaining tool to be 'static_tool', got %q", params.Tools[0].OfTool.Name)
+	}
+
+	// 2. Message should contain tool addition block
+	if len(params.Messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(params.Messages))
+	}
+	content := params.Messages[0].Content
+	if len(content) != 2 {
+		t.Fatalf("expected 2 content blocks, got %d", len(content))
+	}
+
+	// 3. requestOptions should add inline-tools-2026-09-15 beta header
+	opts := requestOptions(req)
+	if len(opts) != 1 {
+		t.Fatalf("expected 1 request option, got %d", len(opts))
 	}
 }

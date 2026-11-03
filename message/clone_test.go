@@ -299,3 +299,22 @@ func TestCloneMessage_AssistantWithServerTools(t *testing.T) {
 		t.Error("Assistant ServerToolResult Extras was not deep copied")
 	}
 }
+
+func TestCloneToolDefinitionBlock(t *testing.T) {
+	orig := &ToolDefinitionBlock{
+		Name:        "custom_tool",
+		Description: "A custom tool",
+		Extras:      map[string]any{"source": "user"},
+	}
+	cloned := CloneBlock(orig).(*ToolDefinitionBlock)
+	if cloned == orig {
+		t.Fatal("expected new pointer")
+	}
+	if cloned.Name != orig.Name || cloned.Description != orig.Description {
+		t.Fatalf("mismatch: got %#v, want %#v", cloned, orig)
+	}
+	cloned.Extras["source"] = "system"
+	if orig.Extras["source"] != "user" {
+		t.Error("extras map was not cloned")
+	}
+}

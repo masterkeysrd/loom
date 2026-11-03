@@ -25,6 +25,9 @@ func toChatRequest(request *llm.Request) (*api.ChatRequest, error) {
 	if slices.ContainsFunc(request.Messages, hasToolReferenceBlock) {
 		return nil, fmt.Errorf("ollama provider does not support tool reference blocks")
 	}
+	if slices.ContainsFunc(request.Messages, hasToolDefinitionBlock) {
+		return nil, fmt.Errorf("ollama provider does not support inline tool definition blocks")
+	}
 
 	options := map[string]any{
 		"stream": true,
@@ -304,6 +307,25 @@ func blockHasToolReference(b message.Block) bool {
 		return true
 	case *message.ServerToolResult:
 		if slices.ContainsFunc(v.Content, blockHasToolReference) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasToolDefinitionBlock(msg message.Message) bool {
+	if msg == nil {
+		return false
+	}
+	return slices.ContainsFunc(msg.GetContent(), blockHasToolDefinition)
+}
+
+func blockHasToolDefinition(b message.Block) bool {
+	switch v := b.(type) {
+	case *message.ToolDefinitionBlock:
+		return true
+	case *message.ServerToolResult:
+		if slices.ContainsFunc(v.Content, blockHasToolDefinition) {
 			return true
 		}
 	}

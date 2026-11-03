@@ -152,3 +152,31 @@ func TestToolRuntimeMetadata(t *testing.T) {
 		t.Errorf("expected meta[\"score\"] to be 95, got %v", meta["score"])
 	}
 }
+
+func TestTool_ToBlock(t *testing.T) {
+	myTool, err := New("calc", "Calculator", "Performs math", func(ctx context.Context, in map[string]any) (string, error) {
+		return "ok", nil
+	})
+	if err != nil {
+		t.Fatalf("failed to create tool: %v", err)
+	}
+
+	b1 := myTool.ToBlock()
+	if b1 == nil {
+		t.Fatal("expected non-nil ToolDefinitionBlock from tool")
+	}
+	if b1.Name != "calc" || b1.Description != "Performs math" {
+		t.Errorf("unexpected name/desc on block: %s, %s", b1.Name, b1.Description)
+	}
+	if b1.InputSchema == nil {
+		t.Error("expected non-nil InputSchema on block")
+	}
+	if b1.Kind() != message.BlockKindToolDefinition {
+		t.Errorf("expected Kind %q, got %q", message.BlockKindToolDefinition, b1.Kind())
+	}
+
+	b2 := myTool.Definition.ToBlock()
+	if b2 == nil || b2.Name != "calc" {
+		t.Errorf("unexpected definition ToBlock: %#v", b2)
+	}
+}

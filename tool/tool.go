@@ -55,6 +55,15 @@ type Definition struct {
 	DeferLoading bool
 }
 
+// ToBlock returns a [*message.ToolDefinitionBlock] for injecting this tool definition inline mid-conversation.
+func (d Definition) ToBlock() *message.ToolDefinitionBlock {
+	return &message.ToolDefinitionBlock{
+		Name:        d.Name,
+		Description: d.Description,
+		InputSchema: d.InputSchema,
+	}
+}
+
 // Annotation defines the safety and execution profile of a tool.
 type Annotation struct {
 	// IsOpenWorld indicates if the tool interacts with resources outside
@@ -169,6 +178,11 @@ func (t *Tool) WithDeferLoading(deferLoading bool) *Tool {
 	clone := *t
 	clone.Definition.DeferLoading = deferLoading
 	return &clone
+}
+
+// ToBlock returns a [*message.ToolDefinitionBlock] for injecting this tool inline mid-conversation.
+func (t *Tool) ToBlock() *message.ToolDefinitionBlock {
+	return t.Definition.ToBlock()
 }
 
 // Validate manually checks the given arguments against the tool's input schema.

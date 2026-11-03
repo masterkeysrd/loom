@@ -31,6 +31,9 @@ func toGenerateContentArgs(req *llm.Request) ([]*genai.Content, *genai.GenerateC
 	if slices.ContainsFunc(req.Messages, hasToolReferenceBlock) {
 		return nil, nil, fmt.Errorf("genai provider does not support tool reference blocks")
 	}
+	if slices.ContainsFunc(req.Messages, hasToolDefinitionBlock) {
+		return nil, nil, fmt.Errorf("genai provider does not support inline tool definition blocks")
+	}
 
 	config := &genai.GenerateContentConfig{}
 
@@ -560,6 +563,25 @@ func blockHasToolReference(b message.Block) bool {
 		return true
 	case *message.ServerToolResult:
 		if slices.ContainsFunc(v.Content, blockHasToolReference) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasToolDefinitionBlock(msg message.Message) bool {
+	if msg == nil {
+		return false
+	}
+	return slices.ContainsFunc(msg.GetContent(), blockHasToolDefinition)
+}
+
+func blockHasToolDefinition(b message.Block) bool {
+	switch v := b.(type) {
+	case *message.ToolDefinitionBlock:
+		return true
+	case *message.ServerToolResult:
+		if slices.ContainsFunc(v.Content, blockHasToolDefinition) {
 			return true
 		}
 	}

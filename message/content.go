@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/google/jsonschema-go/jsonschema"
 )
 
 // Content is an ordered sequence of [Block] values that makes up the body of a message.
@@ -120,6 +122,8 @@ func (c *Content) UnmarshalJSON(data []byte) error {
 			block = &ServerToolResult{}
 		case BlockKindToolReference:
 			block = &ToolReferenceBlock{}
+		case BlockKindToolDefinition:
+			block = &ToolDefinitionBlock{}
 		default:
 			return fmt.Errorf("unknown block kind: %s", header.Kind)
 		}
@@ -159,6 +163,7 @@ const (
 	BlockKindServerToolCallChunk BlockKind = "server_tool_call_chunk"
 	BlockKindServerToolResult    BlockKind = "server_tool_result"
 	BlockKindToolReference       BlockKind = "tool_reference"
+	BlockKindToolDefinition      BlockKind = "tool_definition"
 )
 
 // TextBlock is a plain-text content block. It is the most common block type,
@@ -263,3 +268,18 @@ func (b *ToolReferenceBlock) Kind() BlockKind {
 }
 
 func (b *ToolReferenceBlock) isBlock() {}
+
+// ToolDefinitionBlock injects a tool definition inline mid-conversation by value
+// (for tools that were not pre-registered in the initial request.Tools catalog).
+type ToolDefinitionBlock struct {
+	Name        string             `json:"name"`
+	Description string             `json:"description,omitempty"`
+	InputSchema *jsonschema.Schema `json:"input_schema,omitempty"`
+	Extras      map[string]any     `json:"extras,omitempty"`
+}
+
+func (b *ToolDefinitionBlock) Kind() BlockKind {
+	return BlockKindToolDefinition
+}
+
+func (b *ToolDefinitionBlock) isBlock() {}

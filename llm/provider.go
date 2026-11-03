@@ -154,6 +154,13 @@ type DeferredToolsSupport interface {
 	SupportsDeferredTools(model string) bool
 }
 
+// InlineToolsSupport is an optional interface that a [Provider] can implement
+// to indicate whether a given model natively supports mid-conversation inline
+// tool definitions ([message.ToolDefinitionBlock]).
+type InlineToolsSupport interface {
+	SupportsInlineTools(model string) bool
+}
+
 // StreamResponse is an iterator over streaming chunks from an LLM provider.
 // It follows the standard Go iter.Seq2 convention: iteration stops when the
 // yield function returns false or when the provider signals completion.

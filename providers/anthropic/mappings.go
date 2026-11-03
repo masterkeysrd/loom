@@ -90,6 +90,10 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 		}
 	}
 
+	if hasMidConversationToolAddition(request) && !modelSupportsInlineTools(request.Model) {
+		return anthropic.MessageNewParams{}, fmt.Errorf("model %q does not support mid-conversation inline tool additions", request.Model)
+	}
+
 	var pendingToolCallIDs []string
 	flushPending := func() {
 		for _, id := range pendingToolCallIDs {
@@ -110,7 +114,7 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 
 		switch msg := msg.(type) {
 		case *message.System:
-			if len(anthropicReq.Messages) == 0 {
+			if len(anthropicReq.Messages) == 0 && !hasToolAdditionBlock(msg.Content) {
 				anthropicReq.System = append(anthropicReq.System, toTextBlocksParams(msg.Content, false)...)
 			} else {
 				flushPending()
@@ -189,9 +193,25 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 		anthropicReq.CacheControl = anthropic.NewCacheControlEphemeralParam()
 	}
 
+	inlineToolNames := make(map[string]bool)
+	for _, msg := range request.Messages {
+		for _, b := range msg.GetContent() {
+			if tdb, ok := b.(*message.ToolDefinitionBlock); ok {
+				inlineToolNames[tdb.Name] = true
+			}
+		}
+	}
+
+	var filteredTools []tool.Definition
+	for _, tool := range request.Tools {
+		if !inlineToolNames[tool.Name] {
+			filteredTools = append(filteredTools, tool)
+		}
+	}
+
 	lastNonDeferredIdx := -1
 	if toolSearch == nil && cacheHeader {
-		for i, v := range slices.Backward(request.Tools) {
+		for i, v := range slices.Backward(filteredTools) {
 			if !v.DeferLoading {
 				lastNonDeferredIdx = i
 				break
@@ -199,9 +219,9 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 		}
 	}
 
-	if len(request.Tools) > 0 {
-		anthropicReq.Tools = make([]anthropic.ToolUnionParam, 0, len(request.Tools))
-		for i, tool := range request.Tools {
+	if len(filteredTools) > 0 {
+		anthropicReq.Tools = make([]anthropic.ToolUnionParam, 0, len(filteredTools))
+		for i, tool := range filteredTools {
 			cache := i == lastNonDeferredIdx
 			toolParam, err := toToolParam(tool, cache)
 			if err != nil {
@@ -331,6 +351,31 @@ func toContentBlocksParams(content message.Content, cache bool) []anthropic.Cont
 				Tool: anthropic.BetaRequestToolAdditionBlockToolUnionParam{
 					OfToolReference: &anthropic.BetaToolChangeToolReferenceParam{
 						Name: block.ToolName,
+					},
+				},
+			}
+			if cache && i == len(content)-1 {
+				addition.CacheControl = anthropic.NewBetaCacheControlEphemeralParam()
+			}
+			b = param.Override[anthropic.ContentBlockParamUnion](addition)
+			set = true
+		case *message.ToolDefinitionBlock:
+			jsonSchema, err := json.Marshal(block.InputSchema)
+			var anthropicSchema anthropic.BetaToolInputSchemaParam
+			if err == nil {
+				_ = json.Unmarshal(jsonSchema, &anthropicSchema)
+			}
+			betaToolParam := anthropic.BetaToolParam{
+				Name:        block.Name,
+				Description: anthropic.String(block.Description),
+				InputSchema: anthropicSchema,
+			}
+			addition := anthropic.BetaRequestToolAdditionBlockParam{
+				Tool: anthropic.BetaRequestToolAdditionBlockToolUnionParam{
+					OfToolDefinition: &anthropic.BetaToolChangeToolDefinitionParam{
+						Definition: anthropic.BetaToolUnionParam{
+							OfTool: &betaToolParam,
+						},
 					},
 				},
 			}
@@ -585,8 +630,8 @@ func fromToolSearchToolResultBlock(cb anthropic.ToolSearchToolResultBlock) *mess
 }
 
 // hasMidConversationToolAddition checks if any mid-conversation message in request.Messages
-// contains a *message.ToolReferenceBlock (outside *message.Tool), which requires the
-// inline-tools-2026-09-15 beta header.
+// contains a *message.ToolDefinitionBlock or *message.ToolReferenceBlock (outside *message.Tool),
+// which requires the inline-tools-2026-09-15 beta header.
 func hasMidConversationToolAddition(request *llm.Request) bool {
 	if request == nil {
 		return false
@@ -595,8 +640,11 @@ func hasMidConversationToolAddition(request *llm.Request) bool {
 	for _, msg := range request.Messages {
 		switch m := msg.(type) {
 		case *message.System:
-			if startedMessages {
-				for _, b := range m.Content {
+			for _, b := range m.Content {
+				if _, ok := b.(*message.ToolDefinitionBlock); ok {
+					return true
+				}
+				if startedMessages {
 					if _, ok := b.(*message.ToolReferenceBlock); ok {
 						return true
 					}
@@ -608,6 +656,9 @@ func hasMidConversationToolAddition(request *llm.Request) bool {
 		case *message.User:
 			startedMessages = true
 			for _, b := range m.Content {
+				if _, ok := b.(*message.ToolDefinitionBlock); ok {
+					return true
+				}
 				if _, ok := b.(*message.ToolReferenceBlock); ok {
 					return true
 				}
@@ -615,10 +666,23 @@ func hasMidConversationToolAddition(request *llm.Request) bool {
 		case *message.Assistant:
 			startedMessages = true
 			for _, b := range m.Content {
+				if _, ok := b.(*message.ToolDefinitionBlock); ok {
+					return true
+				}
 				if _, ok := b.(*message.ToolReferenceBlock); ok {
 					return true
 				}
 			}
+		}
+	}
+	return false
+}
+
+func hasToolAdditionBlock(content message.Content) bool {
+	for _, b := range content {
+		switch b.(type) {
+		case *message.ToolReferenceBlock, *message.ToolDefinitionBlock:
+			return true
 		}
 	}
 	return false
@@ -679,6 +743,30 @@ var supportedToolSearchPrefixes = []string{
 func modelSupportsToolSearch(modelName string) bool {
 	lower := strings.ToLower(strings.TrimSpace(modelName))
 	for _, prefix := range supportedToolSearchPrefixes {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+var supportedInlineToolsPrefixes = []string{
+	"claude-fable-5",
+	"claude-mythos-5",
+	"claude-opus-5",
+	"claude-opus-4-8",
+	"claude-opus-4.8",
+	"claude-sonnet-5-5",
+	"claude-sonnet-5.5",
+	"claude-haiku-5-5",
+	"claude-haiku-5.5",
+}
+
+// modelSupportsInlineTools reports whether the model natively supports mid-conversation
+// inline tool additions.
+func modelSupportsInlineTools(modelName string) bool {
+	lower := strings.ToLower(strings.TrimSpace(modelName))
+	for _, prefix := range supportedInlineToolsPrefixes {
 		if strings.HasPrefix(lower, prefix) {
 			return true
 		}

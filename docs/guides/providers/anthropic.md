@@ -89,16 +89,27 @@ model = model.
 ```
 
 #### Mid-Conversation Tool Injection
-You can also dynamically activate a deferred tool mid-conversation without waiting for a tool search call by appending a `ToolReferenceBlock` to a system or user message:
+You can dynamically activate or define tools mid-conversation without pre-registering them:
 
+1. **By Reference (`ToolReferenceBlock`)**: Activates a pre-registered deferred tool:
 ```go
 // Claude activates the tool schema via the inline-tools-2026-09-15 beta header
 msg := message.NewSystem(&message.ToolReferenceBlock{ToolName: "convert_currency"})
 ```
 
+2. **By Value (`ToolDefinitionBlock` / `tool.ToBlock()`)**: Injects a complete tool definition inline by value:
+```go
+calcTool, _ := tool.New("calculate_mortgage", "...", "...", handler)
+msg := message.NewUser(
+    &message.TextBlock{Text: "Please run this calculation:"},
+    calcTool.ToBlock(), // *message.ToolDefinitionBlock
+)
+```
+
 #### Model Support
-- **Native Support**: Claude 4.5+ and Claude 5 families (`claude-sonnet-4-6`, `claude-opus-4-6`, `claude-haiku-4-5`, `claude-sonnet-5`, `claude-fable-5`, etc.).
-- **Fallback for Older Models**: For Claude 3.5 Sonnet, Claude 3 Opus, or other earlier models, attach `llm.DeferredToolsMiddleware(nil)` to your model. The middleware automatically handles client-side filtering, schema injection, and type coercion.
+- **Native Tool Search & Deferred Tools**: Claude 4.5+ and Claude 5 families (`claude-sonnet-4-6`, `claude-opus-4-6`, `claude-haiku-4-5`, `claude-opus-4-8`, `claude-sonnet-5`, `claude-fable-5`, etc.).
+- **Native Mid-Conversation Inline Tool Additions**: Claude 4.8 (`claude-opus-4-8`, `claude-opus-4.8`), Claude 5 (`claude-opus-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-fable-5`, `claude-mythos-5`).
+- **Fallback for Older Models**: For Claude 3.5 Sonnet, Claude 4.6, or other earlier models, attach `llm.DeferredToolsMiddleware(nil)` and/or `llm.InlineToolsMiddleware(nil)` to your model. The middlewares handle client-side filtering, schema injection, and type coercion.
 
 ## 4. Model Catalog
 

@@ -128,6 +128,229 @@ func DeferredToolsMiddleware(opts *DeferredToolsOptions) Middleware {
 	}
 }
 
+// InlineToolsOptions configures [InlineToolsMiddleware].
+type InlineToolsOptions struct {
+	// Match overrides the default provider capability check when non-nil.
+	// If Match returns true, the middleware transforms the request (filtering out
+	// tools in inlineDefs from req.Tools and expanding ToolDefinitionBlocks into schema text blocks).
+	// If nil, the middleware runs whenever the provider does not implement
+	// [InlineToolsSupport] or SupportsInlineTools(req.Model) returns false.
+	Match func(ctx context.Context, req *Request) bool
+
+	// FormatDefinition optionally customizes how an inline tool definition is
+	// rendered into a [message.Block] when replacing a [message.ToolDefinitionBlock].
+	// If nil, a default JSON block with name, description, and input_schema is used.
+	FormatDefinition func(def tool.Definition) message.Block
+
+	// DisableCoercion disables schema-based type coercion of stringified tool call
+	// arguments for inline tools. By default (false), when a provider returns a
+	// [*message.ToolCall] for an inline tool, string argument values are coerced
+	// according to the tool's InputSchema.
+	DisableCoercion bool
+}
+
+// InlineToolsMiddleware returns a [Middleware] that handles mid-conversation inline
+// tool definitions ([message.ToolDefinitionBlock]) for providers that do not natively
+// support inline tool injection.
+//
+// When active (by default on providers without native inline tool support for the requested model):
+//  1. Scans req.Messages for all ToolDefinitionBlocks and collects inline tool definitions.
+//  2. Filters out any tool from req.Tools whose Name matches an inline tool, keeping
+//     req.Tools static and cache-safe.
+//  3. Clones messages containing ToolDefinitionBlocks and replaces each block in-place
+//     with a schema text block (or a custom block formatted by opts.FormatDefinition).
+//  4. Coerces stringified arguments returned by the provider for inline tools into their
+//     typed counterparts based on the tool's InputSchema (unless opts.DisableCoercion is true).
+//  5. Leaves the caller's original *Request and Messages slice unmutated.
+func InlineToolsMiddleware(opts *InlineToolsOptions) Middleware {
+	return func(next Streamer) Streamer {
+		return func(ctx context.Context, req *Request) (StreamResponse, error) {
+			shouldTransform := true
+			if opts != nil && opts.Match != nil {
+				shouldTransform = opts.Match(ctx, req)
+			} else if rt, ok := RuntimeFromContext(ctx); ok && rt.SupportsInlineTools(req.Model) {
+				shouldTransform = false
+			}
+
+			if !shouldTransform {
+				return next(ctx, req)
+			}
+
+			// 1. Scan req.Messages for all ToolDefinitionBlocks
+			inlineDefs := make(map[string]tool.Definition)
+			for _, msg := range req.Messages {
+				collectToolDefinitions(msg, inlineDefs)
+			}
+
+			if len(inlineDefs) == 0 {
+				return next(ctx, req)
+			}
+
+			// 2. Filter req.Tools: omit tools that are provided inline
+			var filteredTools []tool.Definition
+			for _, t := range req.Tools {
+				if _, isInline := inlineDefs[t.Name]; !isInline {
+					filteredTools = append(filteredTools, t)
+				}
+			}
+
+			// 3. Clone req.Messages and replace ToolDefinitionBlocks in place
+			msgs := slices.Clone(req.Messages)
+			for i, msg := range msgs {
+				if hasToolDefinition(msg) {
+					cloned := message.CloneMessage(msg)
+					switch m := cloned.(type) {
+					case *message.System:
+						m.Content = transformInlineContent(m.Content, inlineDefs, opts)
+					case *message.User:
+						m.Content = transformInlineContent(m.Content, inlineDefs, opts)
+					case *message.Assistant:
+						m.Content = transformInlineContent(m.Content, inlineDefs, opts)
+					case *message.Tool:
+						m.Content = transformInlineContent(m.Content, inlineDefs, opts)
+					}
+					msgs[i] = cloned
+				}
+			}
+
+			// 4. Pass shallow copy of req to next
+			reqCopy := *req
+			reqCopy.Tools = filteredTools
+			reqCopy.Messages = msgs
+
+			stream, err := next(ctx, &reqCopy)
+			if err != nil || (opts != nil && opts.DisableCoercion) {
+				return stream, err
+			}
+
+			return func(yield func(message.AssistantChunk, error) bool) {
+				for chunk, err := range stream {
+					if err != nil {
+						if !yield(chunk, err) {
+							return
+						}
+						continue
+					}
+					for _, b := range chunk.Content {
+						if tc, ok := b.(*message.ToolCall); ok {
+							if def, ok := inlineDefs[tc.Name]; ok && def.InputSchema != nil {
+								tc.Args = coerceMapArgs(tc.Args, def.InputSchema)
+							}
+						}
+					}
+					if !yield(chunk, nil) {
+						return
+					}
+				}
+			}, nil
+		}
+	}
+}
+
+func collectToolDefinitions(msg message.Message, defs map[string]tool.Definition) {
+	if msg == nil {
+		return
+	}
+	for _, b := range msg.GetContent() {
+		collectToolDefinitionsFromBlock(b, defs)
+	}
+}
+
+func collectToolDefinitionsFromBlock(b message.Block, defs map[string]tool.Definition) {
+	switch block := b.(type) {
+	case *message.ToolDefinitionBlock:
+		defs[block.Name] = tool.Definition{
+			Name:        block.Name,
+			Description: block.Description,
+			InputSchema: block.InputSchema,
+		}
+	case *message.ServerToolResult:
+		for _, sub := range block.Content {
+			collectToolDefinitionsFromBlock(sub, defs)
+		}
+	}
+}
+
+func hasToolDefinition(msg message.Message) bool {
+	if msg == nil {
+		return false
+	}
+	return slices.ContainsFunc(msg.GetContent(), blockHasToolDefinition)
+}
+
+func blockHasToolDefinition(b message.Block) bool {
+	switch block := b.(type) {
+	case *message.ToolDefinitionBlock:
+		return true
+	case *message.ServerToolResult:
+		if slices.ContainsFunc(block.Content, blockHasToolDefinition) {
+			return true
+		}
+	}
+	return false
+}
+
+func transformInlineContent(content message.Content, inlineDefs map[string]tool.Definition, opts *InlineToolsOptions) message.Content {
+	res := make(message.Content, len(content))
+	for i, b := range content {
+		res[i] = transformInlineBlock(b, inlineDefs, opts)
+	}
+	return res
+}
+
+func transformInlineBlock(b message.Block, inlineDefs map[string]tool.Definition, opts *InlineToolsOptions) message.Block {
+	switch block := b.(type) {
+	case *message.ToolDefinitionBlock:
+		def, ok := inlineDefs[block.Name]
+		if !ok {
+			def = tool.Definition{
+				Name:        block.Name,
+				Description: block.Description,
+				InputSchema: block.InputSchema,
+			}
+		}
+		return formatToolDefinition(def, opts)
+	case *message.ServerToolResult:
+		var newNested []message.Block
+		modified := false
+		for _, sub := range block.Content {
+			transformed := transformInlineBlock(sub, inlineDefs, opts)
+			if transformed != sub {
+				modified = true
+			}
+			newNested = append(newNested, transformed)
+		}
+		if modified {
+			block.Content = newNested
+		}
+		return block
+	default:
+		return b
+	}
+}
+
+func formatToolDefinition(def tool.Definition, opts *InlineToolsOptions) message.Block {
+	if opts != nil && opts.FormatDefinition != nil {
+		return opts.FormatDefinition(def)
+	}
+	data, _ := json.Marshal(map[string]any{
+		"type":         "tool_definition",
+		"name":         def.Name,
+		"description":  def.Description,
+		"input_schema": def.InputSchema,
+		"function": map[string]any{
+			"name":        def.Name,
+			"description": def.Description,
+			"parameters":  def.InputSchema,
+		},
+	})
+	text := fmt.Sprintf(
+		"Tool %q is now loaded, active, and callable in this session. You CAN and SHOULD invoke %q directly as a tool call right now using the following schema (even though %q is not listed in the initial <tools> header — do NOT search for %q again):\n<tools>\n%s\n</tools>\n",
+		def.Name, def.Name, def.Name, def.Name, string(data),
+	)
+	return &message.TextBlock{Text: text}
+}
+
 func hasToolReference(msg message.Message) bool {
 	if msg == nil {
 		return false

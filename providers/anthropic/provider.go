@@ -115,6 +115,11 @@ func (p *Provider) SupportsDeferredTools(model string) bool {
 	return modelSupportsToolSearch(model)
 }
 
+// SupportsInlineTools reports whether the Anthropic provider natively supports mid-conversation inline tool definitions for the model.
+func (p *Provider) SupportsInlineTools(model string) bool {
+	return modelSupportsInlineTools(model)
+}
+
 // Stream converts request into an Anthropic chat request, initiates the streaming
 // call, and returns an iterator that yields [message.AssistantChunk] values as
 // tokens arrive from the Anthropic server.

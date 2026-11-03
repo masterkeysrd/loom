@@ -35,6 +35,9 @@ func toGenerateContentRequest(req *llm.Request) (GenerateContentRequest, error) 
 	if slices.ContainsFunc(req.Messages, hasToolReferenceBlock) {
 		return out, fmt.Errorf("antigravity provider does not support tool reference blocks")
 	}
+	if slices.ContainsFunc(req.Messages, hasToolDefinitionBlock) {
+		return out, fmt.Errorf("antigravity provider does not support inline tool definition blocks")
+	}
 
 	// 1. Generation Config
 	cfg := &GenerationConfig{}
@@ -608,6 +611,25 @@ func blockHasToolReference(b message.Block) bool {
 		return true
 	case *message.ServerToolResult:
 		if slices.ContainsFunc(v.Content, blockHasToolReference) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasToolDefinitionBlock(msg message.Message) bool {
+	if msg == nil {
+		return false
+	}
+	return slices.ContainsFunc(msg.GetContent(), blockHasToolDefinition)
+}
+
+func blockHasToolDefinition(b message.Block) bool {
+	switch v := b.(type) {
+	case *message.ToolDefinitionBlock:
+		return true
+	case *message.ServerToolResult:
+		if slices.ContainsFunc(v.Content, blockHasToolDefinition) {
 			return true
 		}
 	}

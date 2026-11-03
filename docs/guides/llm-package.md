@@ -90,30 +90,45 @@ model = model.WithMiddleware(func(next llm.Streamer) llm.Streamer {
 })
 ```
 
-### Built-in Middleware: Deferred Tools (`llm.DeferredToolsMiddleware`)
+### Built-in Middleware: Deferred Tools & Inline Tools
 
-Loom includes `DeferredToolsMiddleware`, a universal middleware that brings deferred tool loading and dynamic tool activation to any provider:
+Loom includes built-in middlewares that bring deferred tool loading and mid-conversation inline tool injection to any provider:
 
+#### 1. Deferred Tools (`llm.DeferredToolsMiddleware`)
 ```go
-// Default configuration: automatically detects provider capability
+// Default configuration: automatically detects provider capability via llm.DeferredToolsSupport
 model = model.WithMiddleware(llm.DeferredToolsMiddleware(nil))
 
 // Or with custom options:
 model = model.WithMiddleware(llm.DeferredToolsMiddleware(&llm.DeferredToolsOptions{
-    // Override capability detection:
     Match: func(ctx context.Context, req *llm.Request) bool {
         return true // force fallback transformation
     },
-    // Customize text schema formatting for activated tools:
     FormatReference: func(def tool.Definition) message.Block {
         return &message.TextBlock{Text: fmt.Sprintf("Tool %s is active", def.Name)}
     },
-    // Disable automatic coercion of stringified tool call arguments:
     DisableCoercion: false,
 }))
 ```
 
-When used with providers that don't natively support deferred tools (e.g. Ollama or Gemini), this middleware strips `DeferLoading: true` tools from initial requests, expands mid-conversation `ToolReferenceBlock` references into full schemas, and coerces stringified arguments returned by models into typed JSON schema values. See the [Tools Guide](./tools.md#6-deferred-tools-tool-search--dynamic-tool-injection) for more details.
+#### 2. Inline Tools (`llm.InlineToolsMiddleware`)
+```go
+// Default configuration: automatically detects provider capability via llm.InlineToolsSupport
+model = model.WithMiddleware(llm.InlineToolsMiddleware(nil))
+
+// Or with custom options:
+model = model.WithMiddleware(llm.InlineToolsMiddleware(&llm.InlineToolsOptions{
+    Match: func(ctx context.Context, req *llm.Request) bool {
+        return true // force fallback transformation
+    },
+    FormatDefinition: func(def tool.Definition) message.Block {
+        return &message.TextBlock{Text: fmt.Sprintf("Inline tool %s loaded", def.Name)}
+    },
+    DisableCoercion: false,
+}))
+```
+
+When used with providers that don't natively support deferred or inline tools (e.g. Ollama or Gemini), these middlewares strip matching tools from initial `req.Tools`, expand `ToolReferenceBlock` and `ToolDefinitionBlock` references into full schemas, and coerce stringified arguments returned by models into typed JSON schema values. See the [Tools Guide](./tools.md#6-deferred-tools-tool-search--dynamic-tool-injection) for more details.
 
 ## 4. Cache Management
 For providers that support explicit resource management (like Google Gemini's Context Caching), Loom provides a `CacheManager` API.

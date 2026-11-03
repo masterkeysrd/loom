@@ -293,6 +293,9 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 		if hasToolReferenceBlock(request) {
 			return responses.ResponseNewParams{}, fmt.Errorf("model %q does not support tool reference blocks; tool reference blocks require gpt-5.4 or later", request.Model)
 		}
+		if hasToolDefinitionBlock(request) {
+			return responses.ResponseNewParams{}, fmt.Errorf("model %q does not support inline tool definition blocks; inline tool definitions require gpt-5.4 or later", request.Model)
+		}
 	}
 
 	params := responses.ResponseNewParams{
@@ -361,7 +364,8 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 	for _, msg := range request.Messages {
 		if sys, ok := msg.(*message.System); ok {
 			refNames := extractToolReferences(sys.Content)
-			if !seenNonSystem && len(refNames) == 0 {
+			inlineDefs := extractToolDefinitions(sys.Content)
+			if !seenNonSystem && len(refNames) == 0 && len(inlineDefs) == 0 {
 				if text := sys.Content.Text(); text != "" {
 					instructions = append(instructions, text)
 				}
@@ -411,16 +415,21 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 				))
 			}
 			refNames := extractToolReferences(m.Content)
-			if len(refNames) > 0 {
-				var refTools []responses.ToolUnionParam
+			inlineDefs := extractToolDefinitions(m.Content)
+			if len(refNames) > 0 || len(inlineDefs) > 0 {
+				var additionTools []responses.ToolUnionParam
 				for _, name := range refNames {
-					refTools = append(refTools, resolveToolParam(name, request.Tools, opts.StrictTools))
+					additionTools = append(additionTools, resolveToolParam(name, request.Tools, opts.StrictTools))
 				}
-				inputItems = append(inputItems, responses.ResponseInputItemParamOfAdditionalTools(refTools))
+				for _, def := range inlineDefs {
+					additionTools = append(additionTools, toolDefinitionToParam(def, opts.StrictTools))
+				}
+				inputItems = append(inputItems, responses.ResponseInputItemParamOfAdditionalTools(additionTools))
 			}
 
 		case *message.User:
 			refNames := extractToolReferences(m.Content)
+			inlineDefs := extractToolDefinitions(m.Content)
 			hasUserContent := false
 			for _, b := range m.Content {
 				switch b.(type) {
@@ -428,19 +437,22 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 					hasUserContent = true
 				}
 			}
-			if hasUserContent || len(refNames) == 0 {
+			if hasUserContent || (len(refNames) == 0 && len(inlineDefs) == 0) {
 				userItem, err := toResponseUserInputItem(m)
 				if err != nil {
 					return responses.ResponseNewParams{}, err
 				}
 				inputItems = append(inputItems, userItem)
 			}
-			if len(refNames) > 0 {
-				var refTools []responses.ToolUnionParam
+			if len(refNames) > 0 || len(inlineDefs) > 0 {
+				var additionTools []responses.ToolUnionParam
 				for _, name := range refNames {
-					refTools = append(refTools, resolveToolParam(name, request.Tools, opts.StrictTools))
+					additionTools = append(additionTools, resolveToolParam(name, request.Tools, opts.StrictTools))
 				}
-				inputItems = append(inputItems, responses.ResponseInputItemParamOfAdditionalTools(refTools))
+				for _, def := range inlineDefs {
+					additionTools = append(additionTools, toolDefinitionToParam(def, opts.StrictTools))
+				}
+				inputItems = append(inputItems, responses.ResponseInputItemParamOfAdditionalTools(additionTools))
 			}
 
 		case *message.Assistant:
@@ -504,6 +516,13 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 									OfFunction: resolved.OfFunction,
 								})
 							}
+						} else if tdb, ok := b.(*message.ToolDefinitionBlock); ok {
+							funcParam := toolDefinitionToParam(tdb, opts.StrictTools)
+							if funcParam.OfFunction != nil {
+								tsoTools = append(tsoTools, responses.ResponseToolSearchOutputItemParamToolUnion{
+									OfFunction: funcParam.OfFunction,
+								})
+							}
 						}
 					}
 					tsoParam := responses.ResponseToolSearchOutputItemParam{
@@ -531,12 +550,16 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 				},
 			})
 			refNames := extractToolReferences(m.Content)
-			if len(refNames) > 0 {
-				var refTools []responses.ToolUnionParam
+			inlineDefs := extractToolDefinitions(m.Content)
+			if len(refNames) > 0 || len(inlineDefs) > 0 {
+				var additionTools []responses.ToolUnionParam
 				for _, name := range refNames {
-					refTools = append(refTools, resolveToolParam(name, request.Tools, opts.StrictTools))
+					additionTools = append(additionTools, resolveToolParam(name, request.Tools, opts.StrictTools))
 				}
-				inputItems = append(inputItems, responses.ResponseInputItemParamOfAdditionalTools(refTools))
+				for _, def := range inlineDefs {
+					additionTools = append(additionTools, toolDefinitionToParam(def, opts.StrictTools))
+				}
+				inputItems = append(inputItems, responses.ResponseInputItemParamOfAdditionalTools(additionTools))
 			}
 		}
 	}
@@ -566,7 +589,19 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 		})
 	}
 
+	inlineToolNames := make(map[string]bool)
+	for _, msg := range request.Messages {
+		for _, b := range msg.GetContent() {
+			if tdb, ok := b.(*message.ToolDefinitionBlock); ok {
+				inlineToolNames[tdb.Name] = true
+			}
+		}
+	}
+
 	for _, t := range request.Tools {
+		if inlineToolNames[t.Name] {
+			continue
+		}
 		var paramsMap map[string]any
 		if t.InputSchema != nil {
 			data, _ := json.Marshal(t.InputSchema)
@@ -647,6 +682,46 @@ func resolveToolParam(name string, tools []tool.Definition, strict bool) respons
 		"properties":           map[string]any{},
 		"additionalProperties": false,
 	}, strict)
+}
+
+func extractToolDefinitions(content []message.Block) []*message.ToolDefinitionBlock {
+	var defs []*message.ToolDefinitionBlock
+	for _, block := range content {
+		if tdb, ok := block.(*message.ToolDefinitionBlock); ok {
+			defs = append(defs, tdb)
+		} else if str, ok := block.(*message.ServerToolResult); ok {
+			for _, b := range str.Content {
+				if tdb, ok := b.(*message.ToolDefinitionBlock); ok {
+					defs = append(defs, tdb)
+				}
+			}
+		}
+	}
+	return defs
+}
+
+func toolDefinitionToParam(b *message.ToolDefinitionBlock, strict bool) responses.ToolUnionParam {
+	var paramsMap map[string]any
+	if b.InputSchema != nil {
+		data, _ := json.Marshal(b.InputSchema)
+		_ = json.Unmarshal(data, &paramsMap)
+	}
+	if paramsMap == nil {
+		paramsMap = make(map[string]any)
+	}
+	if paramsMap["type"] == "object" {
+		if paramsMap["properties"] == nil {
+			paramsMap["properties"] = make(map[string]any)
+		}
+		if paramsMap["additionalProperties"] == nil {
+			paramsMap["additionalProperties"] = false
+		}
+	}
+	funcTool := responses.ToolParamOfFunction(b.Name, paramsMap, strict)
+	if b.Description != "" {
+		funcTool.OfFunction.Description = openai.String(b.Description)
+	}
+	return funcTool
 }
 
 func extractResponseID(msg message.Message) string {

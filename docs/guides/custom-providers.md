@@ -36,6 +36,17 @@ type DeferredToolsSupport interface {
 
 When implemented, `llm.DeferredToolsMiddleware` checks this method to avoid applying unnecessary client-side tool transformations on models that natively support deferred tools.
 
+### Optional: Inline Tools Support
+If your provider or backend model natively supports mid-conversation inline tool definitions (`*message.ToolDefinitionBlock`), implement the `llm.InlineToolsSupport` interface:
+
+```go
+type InlineToolsSupport interface {
+    SupportsInlineTools(model string) bool
+}
+```
+
+When implemented, `llm.InlineToolsMiddleware` checks this method to avoid applying unnecessary client-side tool transformations on models that natively support inline tool injection.
+
 ### Optional: Extensions
 If your provider has specialized features, you should define your own extension structs.
 

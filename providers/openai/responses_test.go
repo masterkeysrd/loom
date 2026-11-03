@@ -158,6 +158,22 @@ func TestShouldUseResponsesAPI(t *testing.T) {
 	if !use {
 		t.Errorf("expected auto-routing to responses API when message has ToolReferenceBlock")
 	}
+
+	// 13. Feature-based trigger: ToolDefinitionBlock
+	reqToolDef := &llm.Request{
+		Model: "gpt-4o",
+		Messages: []message.Message{
+			message.NewUser(&message.ToolDefinitionBlock{Name: "search_docs"}),
+		},
+	}
+	use, _ = defaultProv.shouldUseResponsesAPI(reqToolDef)
+	if !use {
+		t.Errorf("expected auto-routing to responses API when message has ToolDefinitionBlock")
+	}
+	use, _ = chatOnlyProv.shouldUseResponsesAPI(reqToolDef)
+	if use {
+		t.Errorf("expected APIModeChatCompletions to not route to responses even with ToolDefinitionBlock")
+	}
 	use, _ = chatOnlyProv.shouldUseResponsesAPI(reqToolRef)
 	if use {
 		t.Errorf("expected APIModeChatCompletions to not route to responses even with ToolReferenceBlock")
@@ -551,6 +567,18 @@ func TestToChatCompletionNewParams_FailFastValidation(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected error in toChatCompletionNewParams with ToolReferenceBlock, got nil")
 	}
+
+	// 3. ToolDefinitionBlock
+	reqToolDef := &llm.Request{
+		Model: "gpt-4o",
+		Messages: []message.Message{
+			message.NewUser(&message.ToolDefinitionBlock{Name: "fetch_data"}),
+		},
+	}
+	_, err = toChatCompletionNewParams(reqToolDef)
+	if err == nil {
+		t.Errorf("expected error in toChatCompletionNewParams with ToolDefinitionBlock, got nil")
+	}
 }
 
 func TestToResponseNewParams_UnsupportedModelValidation(t *testing.T) {
@@ -585,6 +613,18 @@ func TestToResponseNewParams_UnsupportedModelValidation(t *testing.T) {
 	_, err = toResponseNewParams(reqToolRef, ResponsesOptions{})
 	if err == nil {
 		t.Errorf("expected error with ToolReferenceBlock on gpt-4o, got nil")
+	}
+
+	// 4. ToolDefinitionBlock on unsupported model
+	reqToolDef := &llm.Request{
+		Model: "gpt-4o",
+		Messages: []message.Message{
+			message.NewUser(&message.ToolDefinitionBlock{Name: "fetch_data"}),
+		},
+	}
+	_, err = toResponseNewParams(reqToolDef, ResponsesOptions{})
+	if err == nil {
+		t.Errorf("expected error with ToolDefinitionBlock on gpt-4o, got nil")
 	}
 }
 
@@ -799,5 +839,65 @@ func TestToResponseNewParams_ToolSearchAndDeferredTools(t *testing.T) {
 	}
 	if inputList[8].OfAdditionalTools.Tools[0].OfFunction == nil || inputList[8].OfAdditionalTools.Tools[0].OfFunction.Name != "query_db" {
 		t.Errorf("expected additional_tools to contain query_db")
+	}
+}
+
+func TestToResponseNewParams_ToolDefinitionBlock(t *testing.T) {
+	req := &llm.Request{
+		Model: "gpt-5.4",
+		Tools: []tool.Definition{
+			{Name: "static_tool", Description: "Static tool"},
+			{Name: "inline_calc", Description: "Top-level version to be omitted"},
+		},
+		Messages: []message.Message{
+			message.NewUser(
+				&message.TextBlock{Text: "Run this:"},
+				&message.ToolDefinitionBlock{
+					Name:        "inline_calc",
+					Description: "Injected inline",
+					InputSchema: &jsonschema.Schema{
+						Type: "object",
+						Properties: map[string]*jsonschema.Schema{
+							"x": {Type: "integer"},
+						},
+					},
+				},
+			),
+		},
+	}
+
+	params, err := toResponseNewParams(req, ResponsesOptions{})
+	if err != nil {
+		t.Fatalf("toResponseNewParams failed: %v", err)
+	}
+
+	// 1. Top-level tools should omit inline_calc
+	if len(params.Tools) != 1 {
+		t.Fatalf("expected 1 top-level tool, got %d", len(params.Tools))
+	}
+	if params.Tools[0].OfFunction == nil || params.Tools[0].OfFunction.Name != "static_tool" {
+		t.Errorf("expected remaining tool to be 'static_tool', got %+v", params.Tools[0])
+	}
+
+	// 2. Input items should contain additional_tools with inline_calc
+	inputList := params.Input.OfInputItemList
+	if len(inputList) < 2 {
+		t.Fatalf("expected at least 2 input items, got %d", len(inputList))
+	}
+	found := false
+	for _, item := range inputList {
+		if item.OfAdditionalTools != nil {
+			for _, tParam := range item.OfAdditionalTools.Tools {
+				if tParam.OfFunction != nil && tParam.OfFunction.Name == "inline_calc" {
+					found = true
+					if tParam.OfFunction.Description.Value != "Injected inline" {
+						t.Errorf("expected description 'Injected inline', got %q", tParam.OfFunction.Description.Value)
+					}
+				}
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected inline_calc in additional_tools input items")
 	}
 }

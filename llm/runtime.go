@@ -27,6 +27,17 @@ func (r *Runtime) SupportsDeferredTools(model string) bool {
 	return false
 }
 
+// SupportsInlineTools reports whether the underlying provider natively supports mid-conversation inline tool definitions for model.
+func (r *Runtime) SupportsInlineTools(model string) bool {
+	if r == nil || r.provider == nil {
+		return false
+	}
+	if its, ok := r.provider.(InlineToolsSupport); ok {
+		return its.SupportsInlineTools(model)
+	}
+	return false
+}
+
 type runtimeKey struct{}
 
 // WithRuntime injects the llm runtime into the context.

@@ -162,15 +162,27 @@ searchResult := &message.ServerToolResult{
 ```
 
 #### Mid-Conversation Dynamic Tool Addition (`additional_tools`)
-You can also dynamically activate deferred tools mid-conversation without executing a tool search by injecting a `ToolReferenceBlock` into a system or user message. Loom maps these directly to OpenAI's `additional_tools` input items:
+You can dynamically activate or define tools mid-conversation without executing a tool search. Loom maps these directly to OpenAI's `additional_tools` input items:
 
+1. **By Reference (`ToolReferenceBlock`)**: Activates a pre-registered deferred tool:
 ```go
-// Injects the tool schema into the active turn
+// Injects the pre-registered tool schema into the active turn
 msg := message.NewSystem(&message.ToolReferenceBlock{ToolName: "convert_currency"})
 ```
 
+2. **By Value (`ToolDefinitionBlock` / `tool.ToBlock()`)**: Injects a complete tool definition inline:
+```go
+calcTool, _ := tool.New("calculate_mortgage", "...", "...", handler)
+
+// Injects the complete tool definition into additional_tools
+msg := message.NewUser(
+    &message.TextBlock{Text: "Please calculate mortgage:"},
+    calcTool.ToBlock(), // *message.ToolDefinitionBlock
+)
+```
+
 > [!NOTE]
-> For models prior to `gpt-5.4` (e.g. `gpt-4o`, `o3-mini`) or when using standard Chat Completions, use `llm.DeferredToolsMiddleware(nil)` to gain deferred tool benefits via client-side transformation.
+> Native tool search and mid-conversation tool additions require `gpt-5.4` or later with the Responses API. For models prior to `gpt-5.4` (e.g. `gpt-4o`, `o3-mini`) or when using standard Chat Completions, use `llm.DeferredToolsMiddleware(nil)` and `llm.InlineToolsMiddleware(nil)` to gain deferred and inline tool benefits via client-side transformation.
 
 ## 6. Model Catalog
 

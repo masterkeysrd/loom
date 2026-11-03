@@ -87,6 +87,11 @@ func (p *Provider) SupportsDeferredTools(model string) bool {
 	return p.defaultAPIMode != APIModeChatCompletions && modelSupportsToolSearch(model)
 }
 
+// SupportsInlineTools reports whether the OpenAI provider natively supports mid-conversation inline tool definitions for the model.
+func (p *Provider) SupportsInlineTools(model string) bool {
+	return p.defaultAPIMode != APIModeChatCompletions && modelSupportsToolSearch(model)
+}
+
 var responsesAPIOnlyPrefixes = []string{
 	"gpt-5-pro",
 	"gpt-5.2-pro",
@@ -173,6 +178,27 @@ func hasToolReferenceBlock(req *llm.Request) bool {
 	return false
 }
 
+func hasToolDefinitionBlock(req *llm.Request) bool {
+	if req == nil {
+		return false
+	}
+	for _, msg := range req.Messages {
+		for _, block := range msg.GetContent() {
+			if _, ok := block.(*message.ToolDefinitionBlock); ok {
+				return true
+			}
+			if str, ok := block.(*message.ServerToolResult); ok {
+				for _, b := range str.Content {
+					if _, ok := b.(*message.ToolDefinitionBlock); ok {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
 func (p *Provider) shouldUseResponsesAPI(req *llm.Request) (bool, ResponsesOptions) {
 	var opts ResponsesOptions
 	if ext, ok := req.Extensions[ResponsesExtensionID]; ok {
@@ -192,8 +218,8 @@ func (p *Provider) shouldUseResponsesAPI(req *llm.Request) (bool, ResponsesOptio
 		return true, opts
 	}
 
-	// Feature-based trigger: deferred tools or tool reference blocks require Responses API
-	if p.defaultAPIMode != APIModeChatCompletions && (hasDeferredTools(req) || hasToolReferenceBlock(req)) {
+	// Feature-based trigger: deferred tools, tool reference blocks, or tool definition blocks require Responses API
+	if p.defaultAPIMode != APIModeChatCompletions && (hasDeferredTools(req) || hasToolReferenceBlock(req) || hasToolDefinitionBlock(req)) {
 		return true, opts
 	}
 

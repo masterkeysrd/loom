@@ -168,17 +168,33 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 				Content:   contentBlocks,
 				IsError:   anthropic.Bool(msg.IsError),
 			}
-			if cache {
+
+			var toolDefBlocks []*message.ToolDefinitionBlock
+			for _, b := range msg.Content {
+				if tdb, ok := b.(*message.ToolDefinitionBlock); ok {
+					toolDefBlocks = append(toolDefBlocks, tdb)
+				}
+			}
+
+			msgContent := []anthropic.ContentBlockParamUnion{
+				{
+					OfToolResult: trbp,
+				},
+			}
+
+			if cache && len(toolDefBlocks) == 0 {
 				trbp.CacheControl = anthropic.NewCacheControlEphemeralParam()
 			}
 
+			for j, tdb := range toolDefBlocks {
+				isLast := cache && (j == len(toolDefBlocks)-1)
+				additionBlock := toolDefinitionToAdditionParam(tdb, isLast)
+				msgContent = append(msgContent, additionBlock)
+			}
+
 			anthropicReq.Messages = append(anthropicReq.Messages, anthropic.MessageParam{
-				Role: anthropic.MessageParamRoleUser,
-				Content: []anthropic.ContentBlockParamUnion{
-					{
-						OfToolResult: trbp,
-					},
-				},
+				Role:    anthropic.MessageParamRoleUser,
+				Content: msgContent,
 			})
 		}
 	}
@@ -360,29 +376,7 @@ func toContentBlocksParams(content message.Content, cache bool) []anthropic.Cont
 			b = param.Override[anthropic.ContentBlockParamUnion](addition)
 			set = true
 		case *message.ToolDefinitionBlock:
-			jsonSchema, err := json.Marshal(block.InputSchema)
-			var anthropicSchema anthropic.BetaToolInputSchemaParam
-			if err == nil {
-				_ = json.Unmarshal(jsonSchema, &anthropicSchema)
-			}
-			betaToolParam := anthropic.BetaToolParam{
-				Name:        block.Name,
-				Description: anthropic.String(block.Description),
-				InputSchema: anthropicSchema,
-			}
-			addition := anthropic.BetaRequestToolAdditionBlockParam{
-				Tool: anthropic.BetaRequestToolAdditionBlockToolUnionParam{
-					OfToolDefinition: &anthropic.BetaToolChangeToolDefinitionParam{
-						Definition: anthropic.BetaToolUnionParam{
-							OfTool: &betaToolParam,
-						},
-					},
-				},
-			}
-			if cache && i == len(content)-1 {
-				addition.CacheControl = anthropic.NewBetaCacheControlEphemeralParam()
-			}
-			b = param.Override[anthropic.ContentBlockParamUnion](addition)
+			b = toolDefinitionToAdditionParam(block, cache && i == len(content)-1)
 			set = true
 		case *message.ServerToolCall:
 			args := block.Args
@@ -467,6 +461,32 @@ func toContentBlocksParams(content message.Content, cache bool) []anthropic.Cont
 	}
 
 	return blocks
+}
+
+func toolDefinitionToAdditionParam(block *message.ToolDefinitionBlock, cache bool) anthropic.ContentBlockParamUnion {
+	jsonSchema, err := json.Marshal(block.InputSchema)
+	var anthropicSchema anthropic.BetaToolInputSchemaParam
+	if err == nil {
+		_ = json.Unmarshal(jsonSchema, &anthropicSchema)
+	}
+	betaToolParam := anthropic.BetaToolParam{
+		Name:        block.Name,
+		Description: anthropic.String(block.Description),
+		InputSchema: anthropicSchema,
+	}
+	addition := anthropic.BetaRequestToolAdditionBlockParam{
+		Tool: anthropic.BetaRequestToolAdditionBlockToolUnionParam{
+			OfToolDefinition: &anthropic.BetaToolChangeToolDefinitionParam{
+				Definition: anthropic.BetaToolUnionParam{
+					OfTool: &betaToolParam,
+				},
+			},
+		},
+	}
+	if cache {
+		addition.CacheControl = anthropic.NewBetaCacheControlEphemeralParam()
+	}
+	return param.Override[anthropic.ContentBlockParamUnion](addition)
 }
 
 func toToolParam(def tool.Definition, cache bool) (anthropic.ToolParam, error) {
@@ -653,6 +673,11 @@ func hasMidConversationToolAddition(request *llm.Request) bool {
 		case *message.Tool:
 			// Tool results contain ToolReferenceBlock as result content, not tool addition.
 			startedMessages = true
+			for _, b := range m.Content {
+				if _, ok := b.(*message.ToolDefinitionBlock); ok {
+					return true
+				}
+			}
 		case *message.User:
 			startedMessages = true
 			for _, b := range m.Content {

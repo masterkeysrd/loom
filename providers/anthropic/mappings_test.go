@@ -1110,3 +1110,177 @@ func TestToMessageNewParams_InlineTools_Success(t *testing.T) {
 		t.Fatalf("expected 1 request option, got %d", len(opts))
 	}
 }
+
+func TestToMessageNewParams_ToolMessage_WithToolDefinitionBlock(t *testing.T) {
+	t.Run("success with supported model", func(t *testing.T) {
+		req := &llm.Request{
+			Model: "claude-opus-4-8",
+			Tools: []tool.Definition{
+				{Name: "static_tool", Description: "Static tool"},
+				{Name: "mcp_tool", Description: "Top-level version to be omitted"},
+			},
+			Messages: []message.Message{
+				&message.User{
+					Content: message.Content{&message.TextBlock{Text: "Execute MCP"}},
+				},
+				&message.Assistant{
+					Content: message.Content{
+						&message.ToolCall{ID: "call_mcp_1", Name: "init_mcp"},
+					},
+				},
+				&message.Tool{
+					ToolCallID: "call_mcp_1",
+					Name:       "init_mcp",
+					Content: message.Content{
+						&message.TextBlock{Text: "MCP server connected"},
+						&message.ToolDefinitionBlock{
+							Name:        "mcp_tool",
+							Description: "Dynamic MCP tool",
+							InputSchema: &jsonschema.Schema{
+								Type: "object",
+								Properties: map[string]*jsonschema.Schema{
+									"param": {Type: "string"},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		params, err := toMessageNewParams(req)
+		if err != nil {
+			t.Fatalf("toMessageNewParams failed: %v", err)
+		}
+
+		// 1. Top-level tools should omit "mcp_tool" because it is defined inline in *message.Tool
+		if len(params.Tools) != 1 {
+			t.Fatalf("expected 1 top-level tool, got %d", len(params.Tools))
+		}
+		if params.Tools[0].OfTool.Name != "static_tool" {
+			t.Errorf("expected remaining tool to be 'static_tool', got %q", params.Tools[0].OfTool.Name)
+		}
+
+		// 2. Message 2 (the Tool result message) should have role: user, with OfToolResult followed by sibling tool_addition block
+		if len(params.Messages) != 3 {
+			t.Fatalf("expected 3 messages, got %d", len(params.Messages))
+		}
+		toolMsg := params.Messages[2]
+		if toolMsg.Role != anthropic.MessageParamRoleUser {
+			t.Errorf("expected role 'user', got %q", toolMsg.Role)
+		}
+		if len(toolMsg.Content) != 2 {
+			t.Fatalf("expected 2 content blocks in tool message, got %d", len(toolMsg.Content))
+		}
+
+		// First block: OfToolResult
+		if toolMsg.Content[0].OfToolResult == nil {
+			t.Fatalf("expected block 0 to be OfToolResult, got %+v", toolMsg.Content[0])
+		}
+		if toolMsg.Content[0].OfToolResult.ToolUseID != "call_mcp_1" {
+			t.Errorf("expected ToolUseID 'call_mcp_1', got %q", toolMsg.Content[0].OfToolResult.ToolUseID)
+		}
+		if len(toolMsg.Content[0].OfToolResult.Content) != 1 || toolMsg.Content[0].OfToolResult.Content[0].OfText == nil || toolMsg.Content[0].OfToolResult.Content[0].OfText.Text != "MCP server connected" {
+			t.Errorf("unexpected tool_result content: %+v", toolMsg.Content[0].OfToolResult.Content)
+		}
+
+		// Second block: tool_addition (OfToolDefinition)
+		data, err := json.Marshal(toolMsg.Content[1])
+		if err != nil {
+			t.Fatalf("failed to marshal addition block: %v", err)
+		}
+		jsonStr := string(data)
+		if !strings.Contains(jsonStr, `"type":"tool_addition"`) || !strings.Contains(jsonStr, `"name":"mcp_tool"`) || !strings.Contains(jsonStr, `"tool_definition"`) {
+			t.Errorf("expected tool_addition with tool_definition in block 1, got JSON: %s", jsonStr)
+		}
+
+		// 3. requestOptions should include inline-tools-2026-09-15 beta header
+		opts := requestOptions(req)
+		if len(opts) != 1 {
+			t.Fatalf("expected 1 request option, got %d", len(opts))
+		}
+	})
+
+	t.Run("caching placed on last sibling block", func(t *testing.T) {
+		req := &llm.Request{
+			Model: "claude-opus-4-8",
+			Messages: []message.Message{
+				&message.User{
+					Content: message.Content{&message.TextBlock{Text: "Execute MCP"}},
+				},
+				&message.Assistant{
+					Content: message.Content{
+						&message.ToolCall{ID: "call_1", Name: "init"},
+					},
+				},
+				(&message.Tool{
+					ToolCallID: "call_1",
+					Name:       "init",
+					Content: message.Content{
+						&message.TextBlock{Text: "done"},
+						&message.ToolDefinitionBlock{
+							Name: "dyn_tool",
+						},
+					},
+				}).WithExtension(&MessageCache{Enabled: true}),
+			},
+		}
+
+		params, err := toMessageNewParams(req)
+		if err != nil {
+			t.Fatalf("toMessageNewParams failed: %v", err)
+		}
+
+		toolMsg := params.Messages[2]
+		if len(toolMsg.Content) != 2 {
+			t.Fatalf("expected 2 content blocks, got %d", len(toolMsg.Content))
+		}
+
+		// First block (OfToolResult) should NOT have cache control
+		if toolMsg.Content[0].OfToolResult.CacheControl.Type != "" {
+			t.Errorf("expected no cache control on tool_result block, got %v", toolMsg.Content[0].OfToolResult.CacheControl)
+		}
+
+		// Second block (tool_addition) should have cache control
+		data, err := json.Marshal(toolMsg.Content[1])
+		if err != nil {
+			t.Fatalf("failed to marshal addition block: %v", err)
+		}
+		if !strings.Contains(string(data), `"cache_control":{"type":"ephemeral"}`) {
+			t.Errorf("expected cache_control on tool_addition block, got %s", string(data))
+		}
+	})
+
+	t.Run("fails fast on unsupported model", func(t *testing.T) {
+		req := &llm.Request{
+			Model: "claude-sonnet-4-6",
+			Messages: []message.Message{
+				&message.User{
+					Content: message.Content{&message.TextBlock{Text: "Execute MCP"}},
+				},
+				&message.Assistant{
+					Content: message.Content{
+						&message.ToolCall{ID: "call_1", Name: "init"},
+					},
+				},
+				&message.Tool{
+					ToolCallID: "call_1",
+					Name:       "init",
+					Content: message.Content{
+						&message.TextBlock{Text: "done"},
+						&message.ToolDefinitionBlock{Name: "dyn_tool"},
+					},
+				},
+			},
+		}
+
+		_, err := toMessageNewParams(req)
+		if err == nil {
+			t.Fatalf("expected error for unsupported model claude-sonnet-4-6 with ToolDefinitionBlock in *message.Tool")
+		}
+		expectedMsg := `model "claude-sonnet-4-6" does not support mid-conversation inline tool additions`
+		if err.Error() != expectedMsg {
+			t.Errorf("got error %q, want %q", err.Error(), expectedMsg)
+		}
+	})
+}

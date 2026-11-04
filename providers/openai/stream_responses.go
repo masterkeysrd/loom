@@ -484,9 +484,14 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 			// Include tool calls / server tool calls / server tool results
 			for _, block := range m.Content {
 				if tc, ok := block.(*message.ToolCall); ok {
-					argsBytes, _ := json.Marshal(tc.Args)
+					args := "{}"
+					if len(tc.Args) > 0 {
+						if b, err := json.Marshal(tc.Args); err == nil {
+							args = string(b)
+						}
+					}
 					inputItems = append(inputItems, responses.ResponseInputItemParamOfFunctionCall(
-						string(argsBytes),
+						args,
 						tc.ID,
 						tc.Name,
 					))

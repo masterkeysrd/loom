@@ -265,13 +265,18 @@ func toAssistantMessageParam(m *message.Assistant) openai.ChatCompletionAssistan
 	var toolCalls []openai.ChatCompletionMessageToolCallUnionParam
 	for _, block := range m.Content {
 		if tc, ok := block.(*message.ToolCall); ok {
-			args, _ := json.Marshal(tc.Args)
+			args := "{}"
+			if len(tc.Args) > 0 {
+				if b, err := json.Marshal(tc.Args); err == nil {
+					args = string(b)
+				}
+			}
 			toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallUnionParam{
 				OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
 					ID: tc.ID,
 					Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
 						Name:      tc.Name,
-						Arguments: string(args),
+						Arguments: args,
 					},
 				},
 			})

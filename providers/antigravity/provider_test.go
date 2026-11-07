@@ -9,36 +9,67 @@ import (
 	"testing"
 	"time"
 
+	"github.com/masterkeysrd/loom/auth"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
 	"github.com/masterkeysrd/loom/tool"
 )
 
-func TestStaticTokenProvider(t *testing.T) {
-	tp := StaticToken("my-secret-token")
-	token, err := tp.Token(context.Background())
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+func TestNewOAuthConfig(t *testing.T) {
+	// Defaults
+	cfg := NewOAuthConfig(OAuthOptions{})
+	if cfg.ClientID != DefaultAntigravityClientID {
+		t.Errorf("expected default client ID %q, got %q", DefaultAntigravityClientID, cfg.ClientID)
 	}
-	if token != "my-secret-token" {
-		t.Fatalf("expected %q, got %q", "my-secret-token", token)
+	if cfg.ClientSecret != DefaultAntigravityClientSecret() {
+		t.Errorf("expected default secret, got %q", cfg.ClientSecret)
+	}
+	expectedRedirect := fmt.Sprintf("http://localhost:%d/callback", DefaultOAuthRedirectPort)
+	if cfg.RedirectURL != expectedRedirect {
+		t.Errorf("expected default redirect %q, got %q", expectedRedirect, cfg.RedirectURL)
+	}
+	if len(cfg.Scopes) != 2 {
+		t.Errorf("expected 2 default scopes, got %v", cfg.Scopes)
 	}
 
-	emptyTP := StaticToken("")
-	if _, err := emptyTP.Token(context.Background()); err == nil {
-		t.Fatal("expected error for empty static token, got nil")
+	// Custom options
+	customCfg := NewOAuthConfig(OAuthOptions{
+		ClientID:     "custom-client",
+		ClientSecret: "custom-secret",
+		RedirectPort: 8080,
+		Scopes:       []string{"scope-a"},
+	})
+	if customCfg.ClientID != "custom-client" {
+		t.Errorf("expected 'custom-client', got %q", customCfg.ClientID)
+	}
+	if customCfg.ClientSecret != "custom-secret" {
+		t.Errorf("expected 'custom-secret', got %q", customCfg.ClientSecret)
+	}
+	if customCfg.RedirectURL != "http://localhost:8080/callback" {
+		t.Errorf("expected 'http://localhost:8080/callback', got %q", customCfg.RedirectURL)
+	}
+	if len(customCfg.Scopes) != 1 || customCfg.Scopes[0] != "scope-a" {
+		t.Errorf("expected custom scopes, got %v", customCfg.Scopes)
+	}
+
+	// Environment variable overrides
+	t.Setenv("ANTIGRAVITY_CLIENT_ID", "env-client-id")
+	t.Setenv("ANTIGRAVITY_CLIENT_SECRET", "env-client-secret")
+	envCfg := NewOAuthConfig(OAuthOptions{})
+	if envCfg.ClientID != "env-client-id" {
+		t.Errorf("expected env client ID, got %q", envCfg.ClientID)
+	}
+	if envCfg.ClientSecret != "env-client-secret" {
+		t.Errorf("expected env client secret, got %q", envCfg.ClientSecret)
 	}
 }
 
-func TestEnvTokenProvider(t *testing.T) {
-	t.Setenv("ANTIGRAVITY_TOKEN", "env-test-token")
-	tp := NewEnvTokenProvider()
-	token, err := tp.Token(context.Background())
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+func TestNewProvider_Validation(t *testing.T) {
+	if _, err := NewProvider(nil); err == nil {
+		t.Fatal("expected error for nil config")
 	}
-	if token != "env-test-token" {
-		t.Fatalf("expected %q, got %q", "env-test-token", token)
+	if _, err := NewProvider(&Config{}); err == nil {
+		t.Fatal("expected error for missing TokenSource")
 	}
 }
 
@@ -97,8 +128,8 @@ func TestProvider_Stream(t *testing.T) {
 
 	// 2. Initialize Provider
 	p, err := NewProvider(&Config{
-		TokenProvider: StaticToken("test-bearer-token"),
-		BaseURL:       server.URL,
+		TokenSource: auth.StaticTokenSource("test-bearer-token"),
+		BaseURL:     server.URL,
 	})
 	if err != nil {
 		t.Fatalf("failed to create provider: %v", err)
@@ -218,8 +249,8 @@ func TestProfiles(t *testing.T) {
 	defer server.Close()
 
 	p, err := NewProvider(&Config{
-		TokenProvider: StaticToken("dummy"),
-		BaseURL:       server.URL,
+		TokenSource: auth.StaticTokenSource("dummy"),
+		BaseURL:     server.URL,
 	})
 	if err != nil {
 		t.Fatalf("create provider: %v", err)
@@ -281,8 +312,8 @@ func TestDynamicProfilesCache(t *testing.T) {
 	defer server.Close()
 
 	p, err := NewProvider(&Config{
-		TokenProvider: StaticToken("dummy-token"),
-		BaseURL:       server.URL,
+		TokenSource: auth.StaticTokenSource("dummy-token"),
+		BaseURL:     server.URL,
 	})
 	if err != nil {
 		t.Fatalf("failed to create provider: %v", err)
@@ -335,9 +366,9 @@ func TestRawVsCompactProfiles(t *testing.T) {
 
 	// Compact view (default)
 	pCompact, err := NewProvider(&Config{
-		TokenProvider: StaticToken("dummy"),
-		BaseURL:       server.URL,
-		RawProfiles:   false,
+		TokenSource: auth.StaticTokenSource("dummy"),
+		BaseURL:     server.URL,
+		RawProfiles: false,
 	})
 	if err != nil {
 		t.Fatalf("create compact provider: %v", err)
@@ -363,9 +394,9 @@ func TestRawVsCompactProfiles(t *testing.T) {
 
 	// Raw view
 	pRaw, err := NewProvider(&Config{
-		TokenProvider: StaticToken("dummy"),
-		BaseURL:       server.URL,
-		RawProfiles:   true,
+		TokenSource: auth.StaticTokenSource("dummy"),
+		BaseURL:     server.URL,
+		RawProfiles: true,
 	})
 	if err != nil {
 		t.Fatalf("create raw provider: %v", err)
@@ -390,7 +421,7 @@ func TestRawVsCompactProfiles(t *testing.T) {
 
 func TestCustomAliasesAndResolver(t *testing.T) {
 	// 1. Test custom Aliases map
-	c := NewClient(StaticToken("dummy"), WithAliases(map[string]string{
+	c := NewClient(auth.StaticTokenSource("dummy"), WithAliases(map[string]string{
 		"fast": "gemini-3.8-flash-low",
 	}))
 
@@ -404,7 +435,7 @@ func TestCustomAliasesAndResolver(t *testing.T) {
 
 	// 2. Test custom Resolver override
 	customResolverCalled := false
-	cCustom := NewClient(StaticToken("dummy"), WithResolver(func(model string, r GenerateContentRequest, avail map[string]bool) (string, GenerateContentRequest) {
+	cCustom := NewClient(auth.StaticTokenSource("dummy"), WithResolver(func(model string, r GenerateContentRequest, avail map[string]bool) (string, GenerateContentRequest) {
 		customResolverCalled = true
 		return "my-custom-backend-model", r
 	}))
@@ -420,8 +451,8 @@ func TestQuotas(t *testing.T) {
 	defer server.Close()
 
 	p, err := NewProvider(&Config{
-		TokenProvider: StaticToken("dummy"),
-		BaseURL:       server.URL,
+		TokenSource: auth.StaticTokenSource("dummy"),
+		BaseURL:     server.URL,
 	})
 	if err != nil {
 		t.Fatalf("create provider: %v", err)
@@ -494,7 +525,7 @@ func TestQuotaCache(t *testing.T) {
 
 	// Provider with default short TTL (cached)
 	pCached, err := NewProvider(&Config{
-		TokenProvider: StaticToken("dummy"),
+		TokenSource:   auth.StaticTokenSource("dummy"),
 		BaseURL:       server.URL,
 		QuotaCacheTTL: 10 * time.Second,
 	})
@@ -511,7 +542,7 @@ func TestQuotaCache(t *testing.T) {
 	// Provider with QuotaCacheTTL = -1 (always direct live fetch)
 	fetchCount = 0
 	pDirect, err := NewProvider(&Config{
-		TokenProvider: StaticToken("dummy"),
+		TokenSource:   auth.StaticTokenSource("dummy"),
 		BaseURL:       server.URL,
 		QuotaCacheTTL: -1,
 	})
@@ -769,8 +800,8 @@ func TestCountTokens(t *testing.T) {
 	defer server.Close()
 
 	p, err := NewProvider(&Config{
-		TokenProvider: StaticToken("token-123"),
-		BaseURL:       server.URL,
+		TokenSource: auth.StaticTokenSource("token-123"),
+		BaseURL:     server.URL,
 	})
 	if err != nil {
 		t.Fatalf("failed to create provider: %v", err)
@@ -797,8 +828,8 @@ func TestCountTokens_Fallback(t *testing.T) {
 	defer server.Close()
 
 	p, err := NewProvider(&Config{
-		TokenProvider: StaticToken("token-123"),
-		BaseURL:       server.URL,
+		TokenSource: auth.StaticTokenSource("token-123"),
+		BaseURL:     server.URL,
 	})
 	if err != nil {
 		t.Fatalf("failed to create provider: %v", err)

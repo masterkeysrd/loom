@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/oauth2"
 )
 
 var _ llm.Provider = (*Provider)(nil)
@@ -40,7 +41,7 @@ const (
 
 // Config configures an Antigravity Provider instance.
 type Config struct {
-	TokenProvider   TokenProvider
+	TokenSource     oauth2.TokenSource
 	BaseURL         string
 	ProjectID       string
 	HTTPClient      *http.Client
@@ -81,32 +82,13 @@ type Provider struct {
 	cachedQuotas     map[string]QuotaInfo
 }
 
-// NewDefaultProvider creates an Antigravity provider with default configuration.
-// It prioritizes environment variables (ANTIGRAVITY_TOKEN, GOOGLE_ACCESS_TOKEN)
-// and falls back to an OAuth2TokenProvider using the cached token file.
-func NewDefaultProvider(ctx context.Context) (*Provider, error) {
-	var tp = NewEnvTokenProvider()
-	if _, err := tp.Token(ctx); err != nil {
-		// Fallback to OAuth2 provider with default token cache file
-		oauthTP, err := NewOAuth2TokenProvider(OAuth2Config{})
-		if err != nil {
-			return nil, fmt.Errorf("antigravity: create default oauth2 provider: %w", err)
-		}
-		tp = oauthTP
-	}
-
-	return NewProvider(&Config{
-		TokenProvider: tp,
-	})
-}
-
 // NewProvider creates a Provider with custom configuration.
 func NewProvider(cfg *Config) (*Provider, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("antigravity: config cannot be nil")
 	}
-	if cfg.TokenProvider == nil {
-		return nil, fmt.Errorf("antigravity: TokenProvider is required")
+	if cfg.TokenSource == nil {
+		return nil, fmt.Errorf("antigravity: TokenSource is required")
 	}
 
 	var opts []ClientOption
@@ -143,7 +125,7 @@ func NewProvider(cfg *Config) (*Provider, error) {
 		quotaTTL = DefaultQuotaCacheTTL
 	}
 
-	client := NewClient(cfg.TokenProvider, opts...)
+	client := NewClient(cfg.TokenSource, opts...)
 	return &Provider{
 		client:       client,
 		cacheTTL:     cacheTTL,

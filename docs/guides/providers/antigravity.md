@@ -4,23 +4,42 @@ The Google Antigravity provider connects Loom to Google's internal Cloud Code / 
 
 ## 1. Setup & Authentication
 
-The provider supports three authentication methods:
+The provider integrates directly with Loom's standard `auth` package and accepts any standard `oauth2.TokenSource`:
 
-### Option A: Interactive Browser OAuth 2.0 PKCE (Recommended)
-Automatically runs a local loopback server, requests authorization from Google, securely stores credentials in `~/.config/loom/antigravity_token.json`, and handles background token refresh:
+### Option A: Persistent Token Source with Loopback Login (Recommended)
+Automatically loads tokens from developer-managed storage, handles background token refreshes, saves updated tokens, and falls back to an interactive browser PKCE loopback login if needed:
 
 ```go
-import "github.com/masterkeysrd/loom/providers/antigravity"
+import (
+    "context"
+    "fmt"
+    "log"
 
-oauthProvider, err := loomantigravity.NewOAuth2TokenProvider(loomantigravity.OAuth2Config{})
-if err != nil {
-    log.Fatal(err)
-}
+    "github.com/masterkeysrd/loom/auth"
+    loomantigravity "github.com/masterkeysrd/loom/providers/antigravity"
+    "golang.org/x/oauth2"
+)
 
-// Interactively log in if no token is saved
-if err := oauthProvider.Login(ctx); err != nil {
-    log.Fatal(err)
-}
+ctx := context.Background()
+oauthCfg := loomantigravity.NewOAuthConfig(loomantigravity.OAuthOptions{})
+tokenPath := "/path/to/token.json"
+
+tokenSource := auth.NewPersistentTokenSource(ctx, oauthCfg, auth.PersistentConfig{
+    Load: func() (*oauth2.Token, error) {
+        return auth.LoadTokenFile(tokenPath)
+    },
+    Save: func(tok *oauth2.Token) error {
+        return auth.SaveTokenFile(tokenPath, tok)
+    },
+    Login: func(ctx context.Context) (*oauth2.Token, error) {
+        return auth.LoginLoopback(ctx, oauthCfg, auth.LoopbackOptions{
+            OnAuthURL: func(url string) {
+                fmt.Printf("Please log in: %s\n", url)
+                _ = auth.OpenBrowser(url)
+            },
+        })
+    },
+})
 ```
 
 Or authenticate via the example CLI tool:
@@ -29,18 +48,21 @@ go run ./examples/antigravity --login
 ```
 
 ### Option B: Environment Variables
-Export a valid bearer token:
+Automatically resolve bearer tokens from `ANTIGRAVITY_TOKEN` or `GOOGLE_ACCESS_TOKEN`:
 ```bash
 export ANTIGRAVITY_TOKEN="<your-oauth-bearer-token>"
 # or
 export GOOGLE_ACCESS_TOKEN="<your-oauth-bearer-token>"
 ```
-The provider will automatically pick up `ANTIGRAVITY_TOKEN` or `GOOGLE_ACCESS_TOKEN`.
+
+```go
+tokenSource := auth.EnvTokenSource("ANTIGRAVITY_TOKEN", "GOOGLE_ACCESS_TOKEN")
+```
 
 ### Option C: Static Token
 Pass an existing token programmatically:
 ```go
-tokenProvider := loomantigravity.StaticToken("<your-oauth-bearer-token>")
+tokenSource := auth.StaticTokenSource("<your-oauth-bearer-token>")
 ```
 
 ---
@@ -55,6 +77,7 @@ import (
     "fmt"
     "log"
 
+    "github.com/masterkeysrd/loom/auth"
     "github.com/masterkeysrd/loom/llm"
     loomantigravity "github.com/masterkeysrd/loom/providers/antigravity"
     "github.com/masterkeysrd/loom/message"
@@ -63,8 +86,11 @@ import (
 func main() {
     ctx := context.Background()
 
-    // 1. Initialize provider
-    provider, err := loomantigravity.NewDefaultProvider()
+    // 1. Initialize token source & provider
+    tokenSource := auth.EnvTokenSource("ANTIGRAVITY_TOKEN", "GOOGLE_ACCESS_TOKEN")
+    provider, err := loomantigravity.NewProvider(&loomantigravity.Config{
+        TokenSource: tokenSource,
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -120,7 +146,7 @@ Antigravity discovers available models dynamically at runtime directly from Goog
 
 ```go
 provider, _ := loomantigravity.NewProvider(&loomantigravity.Config{
-    TokenProvider: oauthProvider,
+    TokenSource: tokenSource,
     Aliases: map[string]string{
         "fast": "gemini-3.8-flash-low",
         "smart": "gemini-2.5-pro",

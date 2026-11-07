@@ -16,6 +16,7 @@ import (
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"golang.org/x/oauth2"
 )
 
 const (
@@ -37,7 +38,7 @@ type ModelResolver func(requestedModel string, req GenerateContentRequest, avail
 type Client struct {
 	baseURL         string
 	httpClient      *http.Client
-	tokenProvider   TokenProvider
+	tokenSource     oauth2.TokenSource
 	projectID       string
 	userAgent       string
 	aliases         map[string]string
@@ -94,8 +95,8 @@ func WithResolver(resolver ModelResolver) ClientOption {
 	}
 }
 
-// NewClient creates a new Client with the given TokenProvider and optional ClientOptions.
-func NewClient(tokenProvider TokenProvider, opts ...ClientOption) *Client {
+// NewClient creates a new Client with the given TokenSource and optional ClientOptions.
+func NewClient(tokenSource oauth2.TokenSource, opts ...ClientOption) *Client {
 	baseURL := os.Getenv("ANTIGRAVITY_BASE_URL")
 	if baseURL == "" {
 		baseURL = DailyBaseURL
@@ -104,7 +105,7 @@ func NewClient(tokenProvider TokenProvider, opts ...ClientOption) *Client {
 	c := &Client{
 		baseURL:         baseURL,
 		httpClient:      &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)},
-		tokenProvider:   tokenProvider,
+		tokenSource:     tokenSource,
 		userAgent:       DefaultUserAgent,
 		availableModels: make(map[string]bool),
 		aliases:         make(map[string]string),
@@ -119,10 +120,11 @@ func NewClient(tokenProvider TokenProvider, opts ...ClientOption) *Client {
 // and returns an iterator over message.AssistantChunk.
 func (c *Client) StreamGenerateContent(ctx context.Context, model string, req GenerateContentRequest) (llm.StreamResponse, error) {
 	model, req = c.resolveModel(model, req)
-	token, err := c.tokenProvider.Token(ctx)
+	tok, err := c.tokenSource.Token()
 	if err != nil {
 		return nil, fmt.Errorf("antigravity: acquire token: %w", err)
 	}
+	token := tok.AccessToken
 
 	envelope := RequestEnvelope{
 		Project:   c.projectID,
@@ -244,10 +246,11 @@ type AvailableModel struct {
 // FetchAvailableModels queries the /v1internal:fetchAvailableModels endpoint
 // and returns the models currently exposed by the Antigravity backend.
 func (c *Client) FetchAvailableModels(ctx context.Context) ([]AvailableModel, error) {
-	token, err := c.tokenProvider.Token(ctx)
+	tok, err := c.tokenSource.Token()
 	if err != nil {
 		return nil, fmt.Errorf("antigravity: acquire token: %w", err)
 	}
+	token := tok.AccessToken
 
 	url := fmt.Sprintf("%s/v1internal:fetchAvailableModels", c.baseURL)
 	payload := "{}"
@@ -504,10 +507,11 @@ func withThinkingLevel(req GenerateContentRequest, level string) GenerateContent
 // CountTokens sends a request to the internal Cloud Code countTokens endpoint
 // and returns the total number of tokens for the given contents.
 func (c *Client) CountTokens(ctx context.Context, req CountTokensRequest) (*CountTokensResponse, error) {
-	token, err := c.tokenProvider.Token(ctx)
+	tok, err := c.tokenSource.Token()
 	if err != nil {
 		return nil, fmt.Errorf("antigravity: acquire token: %w", err)
 	}
+	token := tok.AccessToken
 
 	envelope := countTokensEnvelope{
 		Request: req,

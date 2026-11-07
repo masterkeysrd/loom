@@ -6,12 +6,15 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
+	loomauth "github.com/masterkeysrd/loom/auth"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
 	"github.com/masterkeysrd/loom/profile"
 	loomantigravity "github.com/masterkeysrd/loom/providers/antigravity"
+	"golang.org/x/oauth2"
 )
 
 func main() {
@@ -25,12 +28,14 @@ func main() {
 		rawFlag        bool
 		quotaFlag      bool
 		countFlag      string
+		tokenFileFlag  string
 	)
 
 	flag.StringVar(&modelFlag, "model", "gemini-3.8-flash", "Model to use for generation")
 	flag.StringVar(&promptFlag, "prompt", "", "Prompt to send (if omitted, interactive mode starts)")
 	flag.StringVar(&effortFlag, "effort", "", "Thinking effort level: low, medium, or high")
 	flag.StringVar(&countFlag, "count-tokens", "", "Count tokens for the given text using the Antigravity TokenCounter")
+	flag.StringVar(&tokenFileFlag, "token-file", "", "Path to token cache file (defaults to ~/.config/loom/antigravity_token.json)")
 	flag.BoolVar(&loginFlag, "login", false, "Launch interactive browser login to obtain OAuth credentials")
 	flag.BoolVar(&listModelsFlag, "list-models", false, "List available models and exit")
 	flag.BoolVar(&quotaFlag, "quota", false, "Inspect model quotas and rate-limit replenishment windows")
@@ -40,19 +45,33 @@ func main() {
 
 	ctx := context.Background()
 
-	// 1. Setup Token Provider
-	oauthProvider, err := loomantigravity.NewOAuth2TokenProvider(loomantigravity.OAuth2Config{})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating OAuth provider: %v\n", err)
-		os.Exit(1)
+	if tokenFileFlag == "" {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			tokenFileFlag = filepath.Join(home, ".config", "loom", "antigravity_token.json")
+		}
 	}
+
+	oauthCfg := loomantigravity.NewOAuthConfig(loomantigravity.OAuthOptions{})
 
 	// Handle explicit login flag
 	if loginFlag {
 		fmt.Println("Initiating OAuth login flow...")
-		if err := oauthProvider.Login(ctx); err != nil {
+		tok, err := loomauth.LoginLoopback(ctx, oauthCfg, loomauth.LoopbackOptions{
+			OnAuthURL: func(url string) {
+				fmt.Printf("\nOpening browser for Antigravity Google OAuth login...\nURL: %s\n\n", url)
+				_ = loomauth.OpenBrowser(url)
+			},
+		})
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "Login failed: %v\n", err)
 			os.Exit(1)
+		}
+		if tokenFileFlag != "" {
+			if err := loomauth.SaveTokenFile(tokenFileFlag, tok); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to save token to %q: %v\n", tokenFileFlag, err)
+				os.Exit(1)
+			}
 		}
 		fmt.Println("Login successful! Token saved to disk.")
 		if promptFlag == "" && !listModelsFlag {
@@ -60,11 +79,34 @@ func main() {
 		}
 	}
 
-	// Determine token provider: check env var first, then OAuth token file
-	var tokenProvider loomantigravity.TokenProvider = loomantigravity.NewEnvTokenProvider()
-	if _, err := tokenProvider.Token(ctx); err != nil {
-		// Env not set, check OAuth token file
-		if _, err := oauthProvider.Token(ctx); err != nil {
+	persistentSource := loomauth.NewPersistentTokenSource(ctx, oauthCfg, loomauth.PersistentConfig{
+		Load: func() (*oauth2.Token, error) {
+			if tokenFileFlag == "" {
+				return nil, os.ErrNotExist
+			}
+			return loomauth.LoadTokenFile(tokenFileFlag)
+		},
+		Save: func(tok *oauth2.Token) error {
+			if tokenFileFlag == "" {
+				return nil
+			}
+			return loomauth.SaveTokenFile(tokenFileFlag, tok)
+		},
+		Login: func(ctx context.Context) (*oauth2.Token, error) {
+			return loomauth.LoginLoopback(ctx, oauthCfg, loomauth.LoopbackOptions{
+				OnAuthURL: func(url string) {
+					fmt.Printf("\nOpening browser for Antigravity Google OAuth login...\nURL: %s\n\n", url)
+					_ = loomauth.OpenBrowser(url)
+				},
+			})
+		},
+	})
+
+	// Determine token source: check env var first, then persistent token source
+	var tokenSource oauth2.TokenSource = loomauth.EnvTokenSource("ANTIGRAVITY_TOKEN", "GOOGLE_ACCESS_TOKEN")
+	if _, err := tokenSource.Token(); err != nil {
+		tokenSource = persistentSource
+		if _, err := tokenSource.Token(); err != nil {
 			fmt.Println("No active credentials found.")
 			fmt.Println("To authenticate, run:")
 			fmt.Println("  go run ./examples/antigravity --login")
@@ -72,7 +114,6 @@ func main() {
 			fmt.Println("  export ANTIGRAVITY_TOKEN=\"<your-token>\"")
 			os.Exit(1)
 		}
-		tokenProvider = oauthProvider
 	}
 
 	// 2. Configure Antigravity Provider
@@ -85,9 +126,9 @@ func main() {
 	}
 
 	provider, err := loomantigravity.NewProvider(&loomantigravity.Config{
-		TokenProvider: tokenProvider,
-		BaseURL:       baseURL,
-		RawProfiles:   rawFlag,
+		TokenSource: tokenSource,
+		BaseURL:     baseURL,
+		RawProfiles: rawFlag,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing provider: %v\n", err)

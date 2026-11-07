@@ -3,173 +3,154 @@ package mcp
 import (
 	"context"
 	"errors"
-	"fmt"
-	"net"
 	"net/http"
 
-	"github.com/modelcontextprotocol/go-sdk/auth"
+	loomauth "github.com/masterkeysrd/loom/auth"
+	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/auth/extauth"
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
 	"golang.org/x/oauth2"
 )
 
-// DefaultRedirectPort is the default port used for the local OAuth callback server.
-const DefaultRedirectPort = 3142
-
-// cliCodeReceiver handles the OAuth callback from the IdP's authorization endpoint.
-type cliCodeReceiver struct {
-	port     int
-	authChan chan *auth.AuthorizationResult
-	errChan  chan error
-	server   *http.Server
+// TokenSourceProvider adapts any standard [oauth2.TokenSource] directly for MCP authentication.
+type TokenSourceProvider struct {
+	TokenSource oauth2.TokenSource
 }
 
-func newCliCodeReceiver(port int) *cliCodeReceiver {
-	if port == 0 {
-		port = DefaultRedirectPort
+func (p *TokenSourceProvider) GetHandler(_ context.Context) (mcpauth.OAuthHandler, error) {
+	if p.TokenSource == nil {
+		return nil, errors.New("mcp: TokenSource is required")
 	}
-	return &cliCodeReceiver{
-		port:     port,
-		authChan: make(chan *auth.AuthorizationResult),
-		errChan:  make(chan error),
-	}
+	return &tokenSourceHandler{ts: p.TokenSource}, nil
 }
 
-func (r *cliCodeReceiver) serve() error {
-	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", r.port))
-	if err != nil {
-		return fmt.Errorf("failed to listen on port %d: %w", r.port, err)
-	}
+type tokenSourceHandler struct {
+	ts oauth2.TokenSource
+}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
-		r.authChan <- &auth.AuthorizationResult{
-			Code:  req.URL.Query().Get("code"),
-			State: req.URL.Query().Get("state"),
+func (h *tokenSourceHandler) TokenSource(_ context.Context) (oauth2.TokenSource, error) {
+	return h.ts, nil
+}
+
+func (h *tokenSourceHandler) Authorize(_ context.Context, _ *http.Request, resp *http.Response) error {
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	_, err := h.ts.Token()
+	return err
+}
+
+// CodeFetcher is an alias for the MCP SDK's AuthorizationCodeFetcher function type.
+type CodeFetcher = mcpauth.AuthorizationCodeFetcher
+
+// LoopbackCodeFetcher returns a [CodeFetcher] that starts a local loopback listener
+// at redirectURL on-demand when an authorization challenge occurs.
+func LoopbackCodeFetcher(redirectURL string, opts loomauth.LoopbackOptions) CodeFetcher {
+	return func(ctx context.Context, args *mcpauth.AuthorizationArgs) (*mcpauth.AuthorizationResult, error) {
+		res, err := loomauth.ReceiveCallback(ctx, redirectURL, args.URL, opts)
+		if err != nil {
+			return nil, err
 		}
-		fmt.Fprint(w, "Authentication successful. You can close this window.")
-	})
-
-	r.server = &http.Server{
-		Handler: mux,
-	}
-
-	go func() {
-		if err := r.server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			r.errChan <- err
-		}
-	}()
-
-	return nil
-}
-
-func (r *cliCodeReceiver) getAuthorizationCode(ctx context.Context, args *auth.AuthorizationArgs) (*auth.AuthorizationResult, error) {
-	fmt.Printf("\nPlease open the following URL in your browser to authenticate:\n%s\n\n", args.URL)
-	select {
-	case authRes := <-r.authChan:
-		return authRes, nil
-	case err := <-r.errChan:
-		return nil, err
-	case <-ctx.Done():
-		return nil, ctx.Err()
+		return &mcpauth.AuthorizationResult{
+			Code:  res.Code,
+			State: res.State,
+		}, nil
 	}
 }
 
-func (r *cliCodeReceiver) close() {
-	if r.server != nil {
-		r.server.Close()
+func clientCredentials(clientID, clientSecret string) *oauthex.ClientCredentials {
+	if clientID == "" {
+		return nil
 	}
+	creds := &oauthex.ClientCredentials{ClientID: clientID}
+	if clientSecret != "" {
+		creds.ClientSecretAuth = &oauthex.ClientSecretAuth{ClientSecret: clientSecret}
+	}
+	return creds
 }
 
 // OAuth2Provider implements AuthProvider for standard OAuth2 flows.
 type OAuth2Provider struct {
-	ClientID     string
-	ClientSecret string
-	RedirectPort int
+	ClientID            string
+	ClientSecret        string
+	RedirectURL         string
+	CodeFetcher         CodeFetcher
+	InitialTokenSource  oauth2.TokenSource
+	NewTokenSource      func(ctx context.Context, cfg *oauth2.Config, tok *oauth2.Token) (oauth2.TokenSource, error)
+	RequestRefreshToken bool
+	ScopeFilter         func(discovered []string) []string
+	HTTPClient          *http.Client
 }
 
-func (p *OAuth2Provider) GetHandler(ctx context.Context) (auth.OAuthHandler, error) {
-	receiver := newCliCodeReceiver(p.RedirectPort)
-	if err := receiver.serve(); err != nil {
-		return nil, err
+func (p *OAuth2Provider) GetHandler(_ context.Context) (mcpauth.OAuthHandler, error) {
+	if p.RedirectURL == "" {
+		return nil, errors.New("mcp: RedirectURL is required for OAuth2Provider")
+	}
+	if p.CodeFetcher == nil {
+		return nil, errors.New("mcp: CodeFetcher is required for OAuth2Provider")
 	}
 
-	config := &auth.AuthorizationCodeHandlerConfig{
-		RedirectURL:              fmt.Sprintf("http://localhost:%d", receiver.port),
-		AuthorizationCodeFetcher: receiver.getAuthorizationCode,
-	}
-
-	if p.ClientID != "" {
-		config.PreregisteredClient = &oauthex.ClientCredentials{
-			ClientID: p.ClientID,
-		}
-		if p.ClientSecret != "" {
-			config.PreregisteredClient.ClientSecretAuth = &oauthex.ClientSecretAuth{
-				ClientSecret: p.ClientSecret,
-			}
-		}
-	}
-
-	handler, err := auth.NewAuthorizationCodeHandler(config)
-	if err != nil {
-		receiver.close()
-		return nil, err
-	}
-
-	return handler, nil
+	return mcpauth.NewAuthorizationCodeHandler(&mcpauth.AuthorizationCodeHandlerConfig{
+		PreregisteredClient:      clientCredentials(p.ClientID, p.ClientSecret),
+		RedirectURL:              p.RedirectURL,
+		AuthorizationCodeFetcher: p.CodeFetcher,
+		InitialTokenSource:       p.InitialTokenSource,
+		NewTokenSource:           p.NewTokenSource,
+		RequestRefreshToken:      p.RequestRefreshToken,
+		ScopeFilter:              p.ScopeFilter,
+		Client:                   p.HTTPClient,
+	})
 }
 
 // EnterpriseProvider implements AuthProvider for Enterprise Managed Authorization.
 type EnterpriseProvider struct {
 	ClientID         string
 	ClientSecret     string
-	RedirectPort     int
+	RedirectURL      string
+	CodeFetcher      CodeFetcher
 	IdPIssuerURL     string
 	MCPAuthServerURL string
 	MCPResourceURI   string
+	MCPScopes        []string
+	OIDCScopes       []string
 }
 
-func (p *EnterpriseProvider) GetHandler(ctx context.Context) (auth.OAuthHandler, error) {
-	receiver := newCliCodeReceiver(p.RedirectPort)
-	if err := receiver.serve(); err != nil {
-		return nil, err
+func (p *EnterpriseProvider) GetHandler(_ context.Context) (mcpauth.OAuthHandler, error) {
+	if p.RedirectURL == "" {
+		return nil, errors.New("mcp: RedirectURL is required for EnterpriseProvider")
+	}
+	if p.CodeFetcher == nil {
+		return nil, errors.New("mcp: CodeFetcher is required for EnterpriseProvider")
 	}
 
-	idpCreds := &oauthex.ClientCredentials{
-		ClientID: p.ClientID,
+	oidcScopes := p.OIDCScopes
+	if len(oidcScopes) == 0 {
+		oidcScopes = []string{"openid", "profile", "email"}
 	}
-	if p.ClientSecret != "" {
-		idpCreds.ClientSecretAuth = &oauthex.ClientSecretAuth{
-			ClientSecret: p.ClientSecret,
-		}
+	mcpScopes := p.MCPScopes
+	if len(mcpScopes) == 0 {
+		mcpScopes = []string{"read", "write"}
 	}
 
+	idpCreds := clientCredentials(p.ClientID, p.ClientSecret)
 	idTokenFetcher := func(ctx context.Context) (*oauth2.Token, error) {
-		oidcConfig := &extauth.OIDCLoginConfig{
+		return extauth.PerformOIDCLogin(ctx, &extauth.OIDCLoginConfig{
 			IssuerURL:   p.IdPIssuerURL,
 			Credentials: idpCreds,
-			RedirectURL: fmt.Sprintf("http://localhost:%d", receiver.port),
-			Scopes:      []string{"openid", "profile", "email"},
-		}
-		return extauth.PerformOIDCLogin(ctx, oidcConfig, receiver.getAuthorizationCode)
+			RedirectURL: p.RedirectURL,
+			Scopes:      oidcScopes,
+		}, p.CodeFetcher)
 	}
 
-	handler, err := extauth.NewEnterpriseHandler(&extauth.EnterpriseHandlerConfig{
-		IdPIssuerURL:   p.IdPIssuerURL,
-		IdPCredentials: idpCreds,
-
+	return extauth.NewEnterpriseHandler(&extauth.EnterpriseHandlerConfig{
+		IdPIssuerURL:     p.IdPIssuerURL,
+		IdPCredentials:   idpCreds,
 		MCPAuthServerURL: p.MCPAuthServerURL,
 		MCPResourceURI:   p.MCPResourceURI,
-		MCPScopes:        []string{"read", "write"},
-
-		IDTokenFetcher: idTokenFetcher,
+		MCPCredentials:   idpCreds,
+		MCPScopes:        mcpScopes,
+		IDTokenFetcher:   idTokenFetcher,
 	})
-	if err != nil {
-		receiver.close()
-		return nil, err
-	}
-
-	return handler, nil
 }
 
 // ClientCredentialsProvider implements AuthProvider for OAuth2 Client Credentials (M2M) flows.
@@ -179,17 +160,12 @@ type ClientCredentialsProvider struct {
 	HTTPClient   *http.Client
 }
 
-func (p *ClientCredentialsProvider) GetHandler(ctx context.Context) (auth.OAuthHandler, error) {
+func (p *ClientCredentialsProvider) GetHandler(_ context.Context) (mcpauth.OAuthHandler, error) {
 	if p.ClientID == "" || p.ClientSecret == "" {
-		return nil, fmt.Errorf("client ID and client secret are required for client credentials flow")
+		return nil, errors.New("mcp: ClientID and ClientSecret are required for client credentials flow")
 	}
 	return extauth.NewClientCredentialsHandler(&extauth.ClientCredentialsHandlerConfig{
-		Credentials: &oauthex.ClientCredentials{
-			ClientID: p.ClientID,
-			ClientSecretAuth: &oauthex.ClientSecretAuth{
-				ClientSecret: p.ClientSecret,
-			},
-		},
-		HTTPClient: p.HTTPClient,
+		Credentials: clientCredentials(p.ClientID, p.ClientSecret),
+		HTTPClient:  p.HTTPClient,
 	})
 }

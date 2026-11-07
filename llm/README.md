@@ -54,16 +54,19 @@ p, _ := loomgenai.NewDefaultProvider(ctx)
 
 ### Google Antigravity (Cloud Code)
 - **Package**: `github.com/masterkeysrd/loom/providers/antigravity`
-- **Auth**: OAuth 2.0 PKCE (with automatic token persistence and refresh), or `ANTIGRAVITY_TOKEN` / `GOOGLE_ACCESS_TOKEN`.
+- **Auth**: [oauth2.TokenSource] integration supporting `auth.PersistentTokenSource`, `auth.LoginLoopback`, or environment variables (`ANTIGRAVITY_TOKEN` / `GOOGLE_ACCESS_TOKEN`).
 - **Features**: Live model discovery, thinking effort (`low`/`medium`/`high`), dynamic alias resolution, and quota tracking (`QuotaProvider`).
 
 ```go
-import "github.com/masterkeysrd/loom/providers/antigravity"
+import (
+    "github.com/masterkeysrd/loom/auth"
+    loomantigravity "github.com/masterkeysrd/loom/providers/antigravity"
+)
 
-// OAuth 2.0 PKCE with auto-refresh and disk persistence
-oauth, _ := loomantigravity.NewOAuth2TokenProvider(loomantigravity.OAuth2Config{})
+// Environment variable token source or persistent OAuth2 loopback login
+tokenSource := auth.EnvTokenSource("ANTIGRAVITY_TOKEN", "GOOGLE_ACCESS_TOKEN")
 p, _ := loomantigravity.NewProvider(&loomantigravity.Config{
-    TokenProvider: oauth,
+    TokenSource: tokenSource,
 })
 ```
 

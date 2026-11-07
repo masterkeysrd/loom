@@ -264,8 +264,21 @@ config := mcp.Config{
 }
 ```
 
+### Standard TokenSource (`mcp.TokenSourceProvider`)
+You can pass any standard `oauth2.TokenSource` (e.g. `auth.NewPersistentTokenSource`, `auth.StaticTokenSource`, or Google Cloud / AWS credentials) directly for MCP authentication:
+
+```go
+config := mcp.Config{
+    Transport: "http",
+    URL:       "https://mcp.service.com",
+    Auth: &mcp.TokenSourceProvider{
+        TokenSource: myTokenSource,
+    },
+}
+```
+
 ### Interactive OAuth2 (`mcp.OAuth2Provider`)
-For user-facing CLI or desktop tools requiring the standard OAuth2 Authorization Code flow:
+For user-facing CLI or desktop tools requiring the standard OAuth2 Authorization Code flow with on-demand loopback listening:
 
 ```go
 config := mcp.Config{
@@ -274,11 +287,17 @@ config := mcp.Config{
     Auth: &mcp.OAuth2Provider{
         ClientID:     "my-client-id",
         ClientSecret: "my-client-secret", // Optional for public PKCE clients
-        RedirectPort: 3142,               // Local callback port (defaults to 3142)
+        RedirectURL:  "http://localhost:3142/callback",
+        CodeFetcher: mcp.LoopbackCodeFetcher("http://localhost:3142/callback", auth.LoopbackOptions{
+            OnAuthURL: func(url string) {
+                fmt.Printf("Authorize at: %s\n", url)
+                _ = auth.OpenBrowser(url)
+            },
+        }),
     },
 }
 ```
-When connecting, Loom spins up a local loopback server on the redirect port and prompts the user to complete authorization in their browser.
+Loom spins up a local loopback listener on-demand when an authorization challenge occurs, receives the authorization code, and cleanly closes the listener before completing the exchange.
 
 ### Headless M2M OAuth2 (`mcp.ClientCredentialsProvider`)
 For backend services, cron jobs, and daemons requiring machine-to-machine authentication without user intervention:
@@ -304,7 +323,8 @@ config := mcp.Config{
     Auth: &mcp.EnterpriseProvider{
         ClientID:         "my-oidc-client-id",
         ClientSecret:     os.Getenv("OIDC_CLIENT_SECRET"),
-        RedirectPort:     3142,
+        RedirectURL:      "http://localhost:3142/callback",
+        CodeFetcher:      mcp.LoopbackCodeFetcher("http://localhost:3142/callback", auth.LoopbackOptions{}),
         IdPIssuerURL:     "https://login.okta.com/oauth2/default",
         MCPAuthServerURL: "https://auth.internal.corp",
         MCPResourceURI:   "urn:mcp:enterprise:data",

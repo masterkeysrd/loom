@@ -3,8 +3,9 @@
 //
 // # Features
 //
-//   - Authentication: OAuth 2.0 PKCE flow with automated token persistence and background refresh,
-//     environment variable fallbacks (ANTIGRAVITY_TOKEN, GOOGLE_ACCESS_TOKEN), and static bearer tokens.
+//   - Authentication: [oauth2.TokenSource] integration supporting Loom's [auth.PersistentTokenSource],
+//     automated OAuth 2.0 PKCE loopback login via [auth.LoginLoopback], helper configuration with [NewOAuthConfig],
+//     and static or environment-sourced tokens.
 //   - Dynamic Model Discovery: Discovers available models directly from Google's endpoint without static catalogs.
 //   - Model Aliasing & Heuristic Resolution: Automatically maps canonical names (e.g. "gemini-3.8-flash")
 //     and effort variants (e.g. "gemini-3.8-flash-high") to gateway endpoints like "gemini-3.8-flash-tiered".

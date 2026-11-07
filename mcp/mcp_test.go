@@ -2,11 +2,18 @@ package mcp
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
+	loomauth "github.com/masterkeysrd/loom/auth"
 	"github.com/masterkeysrd/loom/message"
+	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -487,5 +494,160 @@ func TestMCPv2StatelessHTTP(t *testing.T) {
 	}
 	if hsc, ok := handlerChunk.StructuredContent.(map[string]any); !ok || hsc["response"] != "echo: from handler" {
 		t.Errorf("unexpected handler structured content: %v", handlerChunk.StructuredContent)
+	}
+}
+
+func TestTokenSourceProvider(t *testing.T) {
+	ctx := context.Background()
+
+	// Missing TokenSource
+	pNil := &TokenSourceProvider{}
+	if _, err := pNil.GetHandler(ctx); err == nil {
+		t.Fatal("expected error for nil TokenSource")
+	}
+
+	// Valid TokenSource
+	ts := loomauth.StaticTokenSource("mcp-bearer-token")
+	p := &TokenSourceProvider{TokenSource: ts}
+	handler, err := p.GetHandler(ctx)
+	if err != nil {
+		t.Fatalf("GetHandler failed: %v", err)
+	}
+
+	hTS, err := handler.TokenSource(ctx)
+	if err != nil {
+		t.Fatalf("handler.TokenSource failed: %v", err)
+	}
+	tok, err := hTS.Token()
+	if err != nil || tok.AccessToken != "mcp-bearer-token" {
+		t.Fatalf("unexpected token: tok=%v, err=%v", tok, err)
+	}
+
+	// Authorize hook closes response body and re-fetches token
+	resp := &http.Response{
+		StatusCode: http.StatusUnauthorized,
+		Body:       io.NopCloser(strings.NewReader("unauthorized")),
+	}
+	if err := handler.Authorize(ctx, nil, resp); err != nil {
+		t.Fatalf("Authorize failed: %v", err)
+	}
+}
+
+func TestLoopbackCodeFetcher(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	l, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	l.Close()
+
+	redirectURL := fmt.Sprintf("http://localhost:%d/callback", port)
+	authURL := "https://auth.example.com?state=fetch-state"
+
+	fetcher := LoopbackCodeFetcher(redirectURL, loomauth.LoopbackOptions{
+		OnAuthURL: func(_ string) {
+			go func() {
+				resp, err := http.Get(fmt.Sprintf("%s?code=fetch-code&state=fetch-state", redirectURL))
+				if err != nil {
+					t.Errorf("GET to callback failed: %v", err)
+					return
+				}
+				defer resp.Body.Close()
+			}()
+		},
+	})
+
+	res, err := fetcher(ctx, &mcpauth.AuthorizationArgs{URL: authURL})
+	if err != nil {
+		t.Fatalf("fetcher failed: %v", err)
+	}
+	if res.Code != "fetch-code" || res.State != "fetch-state" {
+		t.Errorf("unexpected fetcher result: %+v", res)
+	}
+}
+
+func TestOAuth2Provider_GetHandler(t *testing.T) {
+	ctx := context.Background()
+
+	// Missing RedirectURL
+	pNoURL := &OAuth2Provider{
+		CodeFetcher: func(ctx context.Context, args *mcpauth.AuthorizationArgs) (*mcpauth.AuthorizationResult, error) {
+			return nil, nil
+		},
+	}
+	if _, err := pNoURL.GetHandler(ctx); err == nil {
+		t.Fatal("expected error for missing RedirectURL")
+	}
+
+	// Missing CodeFetcher
+	pNoFetcher := &OAuth2Provider{
+		RedirectURL: "http://localhost:3142/callback",
+	}
+	if _, err := pNoFetcher.GetHandler(ctx); err == nil {
+		t.Fatal("expected error for missing CodeFetcher")
+	}
+
+	// Valid configuration
+	provider := &OAuth2Provider{
+		ClientID:     "mcp-client",
+		ClientSecret: "mcp-secret",
+		RedirectURL:  "http://localhost:3142/callback",
+		CodeFetcher: func(ctx context.Context, args *mcpauth.AuthorizationArgs) (*mcpauth.AuthorizationResult, error) {
+			return &mcpauth.AuthorizationResult{Code: "c", State: "s"}, nil
+		},
+	}
+
+	handler, err := provider.GetHandler(ctx)
+	if err != nil {
+		t.Fatalf("GetHandler failed: %v", err)
+	}
+	if handler == nil {
+		t.Fatal("expected non-nil handler")
+	}
+}
+
+func TestEnterpriseProvider_GetHandler(t *testing.T) {
+	ctx := context.Background()
+
+	// Missing RedirectURL
+	pNoURL := &EnterpriseProvider{
+		CodeFetcher: func(ctx context.Context, args *mcpauth.AuthorizationArgs) (*mcpauth.AuthorizationResult, error) {
+			return nil, nil
+		},
+	}
+	if _, err := pNoURL.GetHandler(ctx); err == nil {
+		t.Fatal("expected error for missing RedirectURL")
+	}
+
+	// Missing CodeFetcher
+	pNoFetcher := &EnterpriseProvider{
+		RedirectURL: "http://localhost:3142/callback",
+	}
+	if _, err := pNoFetcher.GetHandler(ctx); err == nil {
+		t.Fatal("expected error for missing CodeFetcher")
+	}
+
+	// Valid configuration
+	provider := &EnterpriseProvider{
+		ClientID:     "ent-client",
+		ClientSecret: "ent-secret",
+		RedirectURL:  "http://localhost:3142/callback",
+		CodeFetcher: func(ctx context.Context, args *mcpauth.AuthorizationArgs) (*mcpauth.AuthorizationResult, error) {
+			return &mcpauth.AuthorizationResult{Code: "c", State: "s"}, nil
+		},
+		IdPIssuerURL:     "https://accounts.example.com",
+		MCPAuthServerURL: "https://auth.example.com",
+		MCPResourceURI:   "https://api.example.com/mcp",
+	}
+
+	handler, err := provider.GetHandler(ctx)
+	if err != nil {
+		t.Fatalf("EnterpriseProvider.GetHandler failed: %v", err)
+	}
+	if handler == nil {
+		t.Fatal("expected non-nil handler")
 	}
 }

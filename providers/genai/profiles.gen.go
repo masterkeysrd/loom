@@ -25,7 +25,7 @@ var staticProfiles = map[string]profile.Profile{
 			Temperature: true,
 		},
 		Limits: profile.Limits{
-			Context: 131072,
+			Context: 1048576,
 			Output:  65536,
 		},
 		Modalities: profile.Modalities{
@@ -77,7 +77,7 @@ var staticProfiles = map[string]profile.Profile{
 			Temperature: true,
 		},
 		Limits: profile.Limits{
-			Context: 131072,
+			Context: 1048576,
 			Output:  65536,
 		},
 		Modalities: profile.Modalities{

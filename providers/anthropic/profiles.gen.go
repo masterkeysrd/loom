@@ -108,6 +108,57 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 12.5,
 		},
 	},
+	"claude-fable-5-2": {
+		ID:          "claude-fable-5-2",
+		Name:        "Claude Fable 5.2",
+		Description: "Claude model for demanding reasoning and long-horizon agentic work",
+		Family:      "claude-fable",
+		Knowledge:   "2026-06",
+		ReleaseDate: "2026-11-09",
+		LastUpdated: "2026-11-09",
+		Capabilities: profile.Capabilities{
+			Completion:  true,
+			Decision:    false,
+			Embedding:   false,
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []profile.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: profile.Limits{
+			Context: 1000000,
+			Output:  128000,
+		},
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityPDF,
+			},
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: profile.Pricing{
+			Input:      8,
+			Output:     40,
+			CacheRead:  0.2,
+			CacheWrite: 10,
+		},
+	},
 	"claude-haiku-4-5": {
 		ID:          "claude-haiku-4-5",
 		Name:        "Claude Haiku 4.5 (latest)",

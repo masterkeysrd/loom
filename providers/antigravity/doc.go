@@ -6,10 +6,15 @@
 //   - Authentication: [oauth2.TokenSource] integration supporting Loom's [auth.PersistentTokenSource],
 //     automated OAuth 2.0 PKCE loopback login via [auth.LoginLoopback], helper configuration with [NewOAuthConfig],
 //     and static or environment-sourced tokens.
-//   - Dynamic Model Discovery: Discovers available models directly from Google's endpoint without static catalogs.
-//   - Model Aliasing & Heuristic Resolution: Automatically maps canonical names (e.g. "gemini-3.8-flash")
-//     and effort variants (e.g. "gemini-3.8-flash-high") to gateway endpoints like "gemini-3.8-flash-tiered".
-//   - Reasoning & Thinking Effort: Configurable thinking budgets and levels ("low", "medium", "high").
+//   - Companion Project Discovery: Automatically resolves `cloudaicompanionProject` once per token via
+//     `/v1internal:loadCodeAssist` (configurable via [Config.CompanionProject]), keeping it separate from
+//     an explicit user billing project (`X-Goog-User-Project` via [Config.ProjectID]).
+//   - Dynamic Model Discovery: Discovers available models directly from Google's endpoint without static catalogs,
+//     emitting a versioned CLI `User-Agent` (overridable via `ANTIGRAVITY_USER_AGENT` or [Config.UserAgent]).
+//   - Model Aliasing & Heuristic Resolution: Automatically maps canonical names (e.g. "gemini-3.8-flash",
+//     "gemini-4-carbon") and effort variants across both `-tiered` gateway endpoints and dedicated per-effort
+//     endpoints (`-low`, `-medium`, `-high`).
+//   - Reasoning & Thinking Effort: Configurable thinking budgets and levels ("LOW", "MEDIUM", "HIGH").
 //   - Compact vs. Raw Profiles: Clean family-level profiles by default; raw endpoints togglable via [Config.RawProfiles].
 //   - Quota Inspection: Implements [llm.QuotaProvider] for real-time or cached rate limit and capacity inspection.
 package loomantigravity

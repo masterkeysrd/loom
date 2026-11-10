@@ -41,9 +41,20 @@ const (
 
 // Config configures an Antigravity Provider instance.
 type Config struct {
-	TokenSource     oauth2.TokenSource
-	BaseURL         string
-	ProjectID       string
+	TokenSource oauth2.TokenSource
+	BaseURL     string
+
+	// ProjectID sets an explicit Google Cloud user billing project sent via the
+	// X-Goog-User-Project HTTP header. Leave empty for standard Antigravity accounts,
+	// where CompanionProject is auto-discovered via /v1internal:loadCodeAssist.
+	ProjectID string
+
+	// CompanionProject overrides the Cloud AI Companion project sent in the JSON
+	// request body ("project" field). When empty, the client automatically discovers
+	// it once per token via POST /v1internal:loadCodeAssist without setting
+	// X-Goog-User-Project.
+	CompanionProject string
+
 	HTTPClient      *http.Client
 	UserAgent       string
 	ProfileCacheTTL time.Duration
@@ -104,6 +115,9 @@ func NewProvider(cfg *Config) (*Provider, error) {
 	}
 	if cfg.ProjectID != "" {
 		opts = append(opts, WithProjectID(cfg.ProjectID))
+	}
+	if cfg.CompanionProject != "" {
+		opts = append(opts, WithCompanionProject(cfg.CompanionProject))
 	}
 	if cfg.UserAgent != "" {
 		opts = append(opts, WithUserAgent(cfg.UserAgent))
@@ -288,17 +302,10 @@ func toModelProfile(m AvailableModel) profile.Profile {
 	}
 }
 
-// ListProfiles returns all known Antigravity model profiles.
-// By default (when RawProfiles is false), it returns clean, compacted profiles
-// for each canonical model family with reasoning effort options surfaced.
-// When RawProfiles is true, it returns the raw uncompacted endpoints and variants.
-func (p *Provider) ListProfiles() []profile.Profile {
-	p.ensureProfiles()
-
+func (p *Provider) mergedRawProfiles() map[string]profile.Profile {
+	p.cachedMu.RLock()
 	merged := make(map[string]profile.Profile, len(staticProfiles)+len(p.cached))
 	maps.Copy(merged, staticProfiles)
-
-	p.cachedMu.RLock()
 	maps.Copy(merged, p.cached)
 	p.cachedMu.RUnlock()
 
@@ -306,7 +313,17 @@ func (p *Provider) ListProfiles() []profile.Profile {
 		merged[k.(string)] = v.(profile.Profile)
 		return true
 	})
+	return merged
+}
 
+// ListProfiles returns all known Antigravity model profiles.
+// By default (when RawProfiles is false), it returns clean, compacted profiles
+// for each canonical model family with reasoning effort options surfaced.
+// When RawProfiles is true, it returns the raw uncompacted endpoints and variants.
+func (p *Provider) ListProfiles() []profile.Profile {
+	p.ensureProfiles()
+
+	merged := p.mergedRawProfiles()
 	if !p.rawProfiles {
 		merged = compactModelProfiles(merged)
 	}
@@ -319,7 +336,8 @@ func (p *Provider) ListProfiles() []profile.Profile {
 }
 
 // GetProfile returns the profile for the given model ID, checking overrides,
-// cached dynamic models, and canonical aliases before falling back to the static catalog.
+// compacted canonical families (when RawProfiles is false), cached dynamic models,
+// and canonical/effort aliases before falling back to the static catalog.
 func (p *Provider) GetProfile(id string) (profile.Profile, bool) {
 	if v, ok := p.overrides.Load(id); ok {
 		return v.(profile.Profile), true
@@ -327,35 +345,55 @@ func (p *Provider) GetProfile(id string) (profile.Profile, bool) {
 
 	p.ensureProfiles()
 
-	p.cachedMu.RLock()
-	prof, ok := p.cached[id]
-	p.cachedMu.RUnlock()
-	if ok {
+	merged := p.mergedRawProfiles()
+
+	if !p.rawProfiles {
+		compacted := compactModelProfiles(merged)
+		if prof, ok := compacted[id]; ok {
+			return prof, true
+		}
+		if prof, ok := merged[id]; ok {
+			return prof, true
+		}
+		base, _ := parseEffortSuffix(id)
+		if base != id {
+			if prof, ok := compacted[base]; ok {
+				prof.ID = id
+				return prof, true
+			}
+		}
+		if before, ok := strings.CutSuffix(id, "-tiered"); ok {
+			if prof, ok := compacted[before]; ok {
+				prof.ID = id
+				return prof, true
+			}
+		}
+		return profile.Profile{}, false
+	}
+
+	if prof, ok := merged[id]; ok {
 		return prof, true
 	}
 
-	if m, ok := staticProfiles[id]; ok {
-		return m, true
-	}
-
-	// Try base model lookup if id was an effort variant (e.g. "gemini-3.8-flash-high" -> "gemini-3.8-flash")
 	base, _ := parseEffortSuffix(id)
 	if base != id {
-		p.cachedMu.RLock()
-		prof, ok = p.cached[base]
-		p.cachedMu.RUnlock()
-		if ok {
+		if prof, ok := merged[base]; ok {
+			prof.ID = id
+			return prof, true
+		}
+		if prof, ok := merged[base+"-tiered"]; ok {
 			prof.ID = id
 			return prof, true
 		}
 	}
 
-	// Try tiered model lookup if id was canonical (e.g. "gemini-3.8-flash" -> "gemini-3.8-flash-tiered")
-	p.cachedMu.RLock()
-	prof, ok = p.cached[id+"-tiered"]
-	p.cachedMu.RUnlock()
-	if ok {
+	if prof, ok := merged[id+"-tiered"]; ok {
 		prof.ID = id
+		return prof, true
+	}
+
+	compacted := compactModelProfiles(merged)
+	if prof, ok := compacted[id]; ok {
 		return prof, true
 	}
 
@@ -380,8 +418,23 @@ func compactModelProfiles(raw map[string]profile.Profile) map[string]profile.Pro
 				existing.ID = base
 				existing.Name = cleanDisplayName(prof.Name, id, base)
 				existing.Capabilities.Reasoning = true
-				families[base] = existing
+			} else {
+				existing.Capabilities.Reasoning = true
+				existing.Capabilities.Attachment = existing.Capabilities.Attachment || prof.Capabilities.Attachment
+				if prof.Limits.Context > existing.Limits.Context {
+					existing.Limits.Context = prof.Limits.Context
+				}
+				if prof.Limits.Output > existing.Limits.Output {
+					existing.Limits.Output = prof.Limits.Output
+				}
+				if existing.Description == "" && prof.Description != "" {
+					existing.Description = prof.Description
+				}
+				if len(prof.Modalities.Inputs) > len(existing.Modalities.Inputs) {
+					existing.Modalities.Inputs = prof.Modalities.Inputs
+				}
 			}
+			families[base] = existing
 			if familyEfforts[base] == nil {
 				familyEfforts[base] = make(map[string]bool)
 			}
@@ -393,6 +446,21 @@ func compactModelProfiles(raw map[string]profile.Profile) map[string]profile.Pro
 				familyEfforts[base][strings.ToLower(effort)] = true
 			}
 		} else {
+			if existing, ok := families[id]; ok {
+				prof.ID = id
+				prof.Name = cleanDisplayName(prof.Name, id, id)
+				prof.Capabilities.Reasoning = prof.Capabilities.Reasoning || existing.Capabilities.Reasoning
+				prof.Capabilities.Attachment = prof.Capabilities.Attachment || existing.Capabilities.Attachment
+				if existing.Limits.Context > prof.Limits.Context {
+					prof.Limits.Context = existing.Limits.Context
+				}
+				if existing.Limits.Output > prof.Limits.Output {
+					prof.Limits.Output = existing.Limits.Output
+				}
+				if len(existing.Modalities.Inputs) > len(prof.Modalities.Inputs) {
+					prof.Modalities.Inputs = existing.Modalities.Inputs
+				}
+			}
 			families[id] = prof
 		}
 	}
@@ -493,16 +561,19 @@ func (p *Provider) GetQuota(ctx context.Context, model string) (QuotaInfo, bool,
 		}
 	}
 
-	// 3. Fallbacks for base name and tiered suffixes
+	// 3. Fallbacks for base name, tiered, and per-effort suffixes
 	base, _ := parseEffortSuffix(model)
-	if q, ok := quotas[base]; ok {
-		return q, true, nil
-	}
-	if q, ok := quotas[model+"-tiered"]; ok {
-		return q, true, nil
-	}
-	if q, ok := quotas[base+"-tiered"]; ok {
-		return q, true, nil
+	for _, candidate := range []string{
+		base,
+		model + "-tiered",
+		base + "-tiered",
+		base + "-high",
+		base + "-medium",
+		base + "-low",
+	} {
+		if q, ok := quotas[candidate]; ok {
+			return q, true, nil
+		}
 	}
 
 	return QuotaInfo{}, false, nil

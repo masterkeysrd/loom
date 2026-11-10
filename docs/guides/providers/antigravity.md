@@ -133,14 +133,16 @@ fastModel := llm.NewModel(provider, "gemini-3.8-flash-low")
 deepModel := llm.NewModel(provider, "gemini-3.8-flash-high")
 ```
 
-The provider's heuristic resolver automatically sets `thinkingConfig.thinkingLevel = "HIGH"` and routes requests to the underlying gateway endpoint (such as `gemini-3.8-flash-tiered`).
+The provider's heuristic resolver normalizes `thinkingConfig.thinkingLevel` to uppercase (`"LOW"`, `"MEDIUM"`, `"HIGH"`) and routes requests to either the family's `-tiered` gateway endpoint (such as `gemini-3.8-flash-tiered`) or its dedicated per-effort endpoint (such as `gemini-4-carbon-high`). When a canonical model family with only per-effort endpoints is invoked without an explicit thinking effort, it automatically falls back to `-medium` → `-low` → `-high`.
 
-### Dynamic Model Discovery & Resolution
+### Dynamic Model Discovery, Companion Project & Client Configuration
 
 Antigravity discovers available models dynamically at runtime directly from Google's `/v1internal:fetchAvailableModels` endpoint:
 
-- **Zero hardcoded catalogs**: Newly published models (e.g. Gemini 3.9, Claude updates) work immediately without code changes.
-- **Compact View (`RawProfiles: false`, default)**: Groups endpoints by canonical family and surfaces reasoning effort levels.
+- **Zero hardcoded catalogs**: Newly published models (e.g. Gemini 4 Carbon/Argon, Claude updates) work immediately without code changes, and `availableModels` is lazily populated on cold `Stream` calls if not yet fetched.
+- **Automatic Companion Project Discovery**: Resolves `cloudaicompanionProject` once per OAuth token via `POST /v1internal:loadCodeAssist` and passes it in the JSON body `"project"` field without setting `X-Goog-User-Project`. To override the body project explicitly, set `Config.CompanionProject` (or `ANTIGRAVITY_COMPANION_PROJECT`). Set `Config.ProjectID` only when attributing quota/billing to an explicit user GCP project via `X-Goog-User-Project`.
+- **Versioned Client User-Agent**: Emits `antigravity/cli/<version> (<os>/<arch>)` by default so frontier tiers on `daily-cloudcode-pa.googleapis.com` are unlocked. Override via `Config.UserAgent` or `ANTIGRAVITY_USER_AGENT` (alongside `ANTIGRAVITY_BASE_URL`).
+- **Compact View (`RawProfiles: false`, default)**: Groups `-tiered` and `-low`/`-medium`/`-high` endpoints by canonical family across both `ListProfiles()` and `GetProfile()`, surfacing `ReasoningOptions` and family limits.
 - **Raw View (`RawProfiles: true`)**: Exposes all raw backend endpoints and variants.
 - **Custom Aliases & Resolvers**: Map custom shorthand names (e.g. `"fast" -> "gemini-3.8-flash-low"`) or inject a custom `ModelResolver` function in `loomantigravity.Config`.
 

@@ -86,7 +86,7 @@ func toGenerateContentRequest(req *llm.Request) (GenerateContentRequest, error) 
 			cfg.ThinkingConfig.ThinkingBudget = &b
 		}
 		if req.Thinking.Effort != "" {
-			cfg.ThinkingConfig.ThinkingLevel = string(req.Thinking.Effort)
+			cfg.ThinkingConfig.ThinkingLevel = strings.ToUpper(req.Thinking.Effort)
 		}
 		hasConfig = true
 	}

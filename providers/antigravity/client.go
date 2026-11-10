@@ -10,6 +10,7 @@ import (
 	"maps"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -26,8 +27,13 @@ const (
 	// DailyBaseURL is the daily staging / canary environment URL.
 	DailyBaseURL = "https://daily-cloudcode-pa.googleapis.com"
 
-	// DefaultUserAgent emulates the standard Antigravity client identifier.
-	DefaultUserAgent = "antigravity"
+	// DefaultClientVersion is the emulated Antigravity CLI version reported in DefaultUserAgent.
+	DefaultClientVersion = "2.0.0"
+
+	// DefaultUserAgent emulates a modern versioned Antigravity CLI client identifier.
+	// Frontier model tiers on daily-cloudcode-pa.googleapis.com gate model visibility
+	// and routing on a versioned User-Agent string.
+	DefaultUserAgent = "antigravity/cli/" + DefaultClientVersion + " (" + runtime.GOOS + "/" + runtime.GOARCH + ")"
 )
 
 // ModelResolver translates a requested model ID and request into a target backend model ID
@@ -36,15 +42,24 @@ type ModelResolver func(requestedModel string, req GenerateContentRequest, avail
 
 // Client handles direct HTTP communication with the Cloud Code streamGenerateContent endpoint.
 type Client struct {
-	baseURL         string
-	httpClient      *http.Client
-	tokenSource     oauth2.TokenSource
-	projectID       string
-	userAgent       string
-	aliases         map[string]string
-	resolver        ModelResolver
-	availableMu     sync.RWMutex
-	availableModels map[string]bool
+	baseURL          string
+	httpClient       *http.Client
+	tokenSource      oauth2.TokenSource
+	projectID        string
+	companionProject string
+	userAgent        string
+	aliases          map[string]string
+	resolver         ModelResolver
+
+	companionMu                sync.RWMutex
+	companionLoaded            bool
+	companionToken             string
+	discoveredCompanionProject string
+
+	availableInitMu      sync.Mutex
+	availableMu          sync.RWMutex
+	availableModels      map[string]bool
+	availableLoadedToken string
 }
 
 // ClientOption configures a Client.
@@ -64,10 +79,21 @@ func WithHTTPClient(client *http.Client) ClientOption {
 	}
 }
 
-// WithProjectID sets the Google Cloud project ID.
+// WithProjectID sets an explicit Google Cloud user billing project ID sent via the
+// X-Goog-User-Project HTTP header (and used as a fallback body project if no
+// CompanionProject is configured or discovered).
 func WithProjectID(projectID string) ClientOption {
 	return func(c *Client) {
 		c.projectID = projectID
+	}
+}
+
+// WithCompanionProject sets an explicit Cloud AI Companion project sent only in the
+// JSON request body ("project" field), bypassing /v1internal:loadCodeAssist discovery
+// without setting the X-Goog-User-Project header.
+func WithCompanionProject(projectID string) ClientOption {
+	return func(c *Client) {
+		c.companionProject = projectID
 	}
 }
 
@@ -102,13 +128,19 @@ func NewClient(tokenSource oauth2.TokenSource, opts ...ClientOption) *Client {
 		baseURL = DailyBaseURL
 	}
 
+	userAgent := os.Getenv("ANTIGRAVITY_USER_AGENT")
+	if userAgent == "" {
+		userAgent = DefaultUserAgent
+	}
+
 	c := &Client{
-		baseURL:         baseURL,
-		httpClient:      &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)},
-		tokenSource:     tokenSource,
-		userAgent:       DefaultUserAgent,
-		availableModels: make(map[string]bool),
-		aliases:         make(map[string]string),
+		baseURL:          strings.TrimRight(baseURL, "/"),
+		httpClient:       &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)},
+		tokenSource:      tokenSource,
+		companionProject: os.Getenv("ANTIGRAVITY_COMPANION_PROJECT"),
+		userAgent:        userAgent,
+		availableModels:  make(map[string]bool),
+		aliases:          make(map[string]string),
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -116,18 +148,199 @@ func NewClient(tokenSource oauth2.TokenSource, opts ...ClientOption) *Client {
 	return c
 }
 
+// LoadCodeAssist calls POST /v1internal:loadCodeAssist once per token/account to
+// resolve and cache the server-assigned cloudaicompanionProject.
+func (c *Client) LoadCodeAssist(ctx context.Context) (string, error) {
+	if c.companionProject != "" {
+		return c.companionProject, nil
+	}
+
+	tok, err := c.tokenSource.Token()
+	if err != nil {
+		return "", fmt.Errorf("antigravity: acquire token: %w", err)
+	}
+	token := tok.AccessToken
+
+	c.companionMu.RLock()
+	if c.companionLoaded && c.companionToken == token {
+		proj := c.discoveredCompanionProject
+		c.companionMu.RUnlock()
+		return proj, nil
+	}
+	c.companionMu.RUnlock()
+
+	c.companionMu.Lock()
+	if c.companionLoaded && c.companionToken == token {
+		proj := c.discoveredCompanionProject
+		c.companionMu.Unlock()
+		return proj, nil
+	}
+
+	proj, _, err := c.doLoadCodeAssist(ctx, token)
+	if err != nil {
+		c.companionMu.Unlock()
+		return "", err
+	}
+
+	invalidateModels := c.companionLoaded && c.discoveredCompanionProject != proj
+	c.discoveredCompanionProject = proj
+	c.companionToken = token
+	c.companionLoaded = true
+	c.companionMu.Unlock()
+
+	if invalidateModels {
+		c.availableMu.Lock()
+		c.availableModels = make(map[string]bool)
+		c.availableLoadedToken = ""
+		c.availableMu.Unlock()
+	}
+
+	return proj, nil
+}
+
+func (c *Client) resolveBodyProject(ctx context.Context, token string) string {
+	if c.companionProject != "" {
+		return c.companionProject
+	}
+
+	c.companionMu.RLock()
+	if c.companionLoaded && c.companionToken == token {
+		proj := c.discoveredCompanionProject
+		c.companionMu.RUnlock()
+		if proj != "" {
+			return proj
+		}
+		return c.projectID
+	}
+	c.companionMu.RUnlock()
+
+	c.companionMu.Lock()
+	if c.companionLoaded && c.companionToken == token {
+		proj := c.discoveredCompanionProject
+		c.companionMu.Unlock()
+		if proj != "" {
+			return proj
+		}
+		return c.projectID
+	}
+
+	proj, statusCode, err := c.doLoadCodeAssist(ctx, token)
+	var invalidateModels bool
+	if err == nil {
+		invalidateModels = c.companionLoaded && c.discoveredCompanionProject != proj
+		c.discoveredCompanionProject = proj
+		c.companionToken = token
+		c.companionLoaded = true
+	} else if statusCode == http.StatusNotFound || statusCode == http.StatusMethodNotAllowed || statusCode == http.StatusNotImplemented {
+		c.discoveredCompanionProject = ""
+		c.companionToken = token
+		c.companionLoaded = true
+	}
+	c.companionMu.Unlock()
+
+	if invalidateModels {
+		c.availableMu.Lock()
+		c.availableModels = make(map[string]bool)
+		c.availableLoadedToken = ""
+		c.availableMu.Unlock()
+	}
+
+	if proj != "" {
+		return proj
+	}
+	return c.projectID
+}
+
+func (c *Client) doLoadCodeAssist(ctx context.Context, token string) (string, int, error) {
+	url := fmt.Sprintf("%s/v1internal:loadCodeAssist", c.baseURL)
+	const payload = `{"metadata":{"ideType":"ANTIGRAVITY"}}`
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(payload))
+	if err != nil {
+		return "", 0, fmt.Errorf("antigravity: create loadCodeAssist request: %w", err)
+	}
+
+	httpReq.Header.Set("Authorization", "Bearer "+token)
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("User-Agent", c.userAgent)
+	if c.projectID != "" {
+		httpReq.Header.Set("X-Goog-User-Project", c.projectID)
+	}
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return "", 0, fmt.Errorf("antigravity: loadCodeAssist: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", resp.StatusCode, fmt.Errorf("antigravity: loadCodeAssist error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	var rawResp struct {
+		CloudaicompanionProject json.RawMessage `json:"cloudaicompanionProject"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&rawResp); err != nil {
+		return "", resp.StatusCode, fmt.Errorf("antigravity: decode loadCodeAssist response: %w", err)
+	}
+
+	return parseCompanionProject(rawResp.CloudaicompanionProject), http.StatusOK, nil
+}
+
+func parseCompanionProject(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return strings.TrimSpace(s)
+	}
+	var obj struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(raw, &obj); err == nil {
+		return strings.TrimSpace(obj.ID)
+	}
+	return ""
+}
+
+func (c *Client) ensureAvailableModels(ctx context.Context, token string) {
+	c.availableMu.RLock()
+	ready := len(c.availableModels) > 0 || (c.availableLoadedToken != "" && c.availableLoadedToken == token)
+	c.availableMu.RUnlock()
+	if ready {
+		return
+	}
+
+	c.availableInitMu.Lock()
+	defer c.availableInitMu.Unlock()
+
+	c.availableMu.RLock()
+	ready = len(c.availableModels) > 0 || (c.availableLoadedToken != "" && c.availableLoadedToken == token)
+	c.availableMu.RUnlock()
+	if ready {
+		return
+	}
+
+	_, _ = c.fetchAvailableModelsWithToken(ctx, token)
+}
+
 // StreamGenerateContent sends a streaming generation request to the Cloud Code endpoint
 // and returns an iterator over message.AssistantChunk.
 func (c *Client) StreamGenerateContent(ctx context.Context, model string, req GenerateContentRequest) (llm.StreamResponse, error) {
-	model, req = c.resolveModel(model, req)
 	tok, err := c.tokenSource.Token()
 	if err != nil {
 		return nil, fmt.Errorf("antigravity: acquire token: %w", err)
 	}
 	token := tok.AccessToken
 
+	project := c.resolveBodyProject(ctx, token)
+	c.ensureAvailableModels(ctx, token)
+	model, req = c.resolveModel(model, req)
+
 	envelope := RequestEnvelope{
-		Project:   c.projectID,
+		Project:   project,
 		Model:     model,
 		Request:   req,
 		UserAgent: c.userAgent,
@@ -250,12 +463,22 @@ func (c *Client) FetchAvailableModels(ctx context.Context) ([]AvailableModel, er
 	if err != nil {
 		return nil, fmt.Errorf("antigravity: acquire token: %w", err)
 	}
-	token := tok.AccessToken
+	return c.fetchAvailableModelsWithToken(ctx, tok.AccessToken)
+}
+
+func (c *Client) fetchAvailableModelsWithToken(ctx context.Context, token string) ([]AvailableModel, error) {
+	project := c.resolveBodyProject(ctx, token)
 
 	url := fmt.Sprintf("%s/v1internal:fetchAvailableModels", c.baseURL)
 	payload := "{}"
-	if c.projectID != "" {
-		payload = fmt.Sprintf(`{"project":%q}`, c.projectID)
+	if project != "" {
+		bodyBytes, err := json.Marshal(struct {
+			Project string `json:"project"`
+		}{Project: project})
+		if err != nil {
+			return nil, fmt.Errorf("antigravity: marshal models request: %w", err)
+		}
+		payload = string(bodyBytes)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(payload))
@@ -277,6 +500,11 @@ func (c *Client) FetchAvailableModels(ctx context.Context) ([]AvailableModel, er
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed || resp.StatusCode == http.StatusNotImplemented {
+			c.availableMu.Lock()
+			c.availableLoadedToken = token
+			c.availableMu.Unlock()
+		}
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("antigravity: fetch models error (status %d): %s", resp.StatusCode, string(body))
 	}
@@ -309,6 +537,7 @@ func (c *Client) FetchAvailableModels(ctx context.Context) ([]AvailableModel, er
 	for id := range rawResp.Models {
 		c.availableModels[id] = true
 	}
+	c.availableLoadedToken = token
 	c.availableMu.Unlock()
 
 	var models []AvailableModel
@@ -403,6 +632,10 @@ func (c *Client) resolveModel(model string, req GenerateContentRequest) (string,
 	avail := c.availableModels
 	c.availableMu.RUnlock()
 
+	if req.GenerationConfig != nil && req.GenerationConfig.ThinkingConfig != nil && req.GenerationConfig.ThinkingConfig.ThinkingLevel != "" {
+		req = withThinkingLevel(req, req.GenerationConfig.ThinkingConfig.ThinkingLevel)
+	}
+
 	// 1. Custom user resolver (Option 4)
 	if c.resolver != nil {
 		return c.resolver(model, req, avail)
@@ -429,13 +662,18 @@ func (c *Client) resolveModel(model string, req GenerateContentRequest) (string,
 		effort = suffixEffort
 	}
 
-	// If no effort was requested and the model had no effort suffix, preserve as-is
+	// If no effort was requested and the model had no effort suffix:
 	if effort == "" && suffixEffort == "" {
 		if len(avail) == 0 || avail[base] {
 			return base, req
 		}
 		if avail[base+"-tiered"] {
 			return base + "-tiered", req
+		}
+		for _, suffix := range []string{"-medium", "-low", "-high"} {
+			if candidate := base + suffix; avail[candidate] {
+				return candidate, req
+			}
 		}
 		return model, req
 	}
@@ -447,15 +685,22 @@ func (c *Client) resolveModel(model string, req GenerateContentRequest) (string,
 		return tieredID, withThinkingLevel(req, effort)
 	}
 
-	// 2. If separate endpoint base-[effort] exists (e.g. gemini-3.6-flash-low), use it
+	// 2. If separate endpoint base-[effort] exists (e.g. gemini-4-carbon-high), use it
 	effortID := base + "-" + strings.ToLower(effort)
 	if avail[effortID] {
 		return effortID, req
 	}
 
-	// 3. Fallback to base or original model
+	// 3. Fallback to base if available
 	if avail[base] {
 		return base, withThinkingLevel(req, effort)
+	}
+
+	// 4. Fallback to another available effort variant in the same family
+	for _, suffix := range []string{"-medium", "-low", "-high"} {
+		if candidate := base + suffix; avail[candidate] {
+			return candidate, req
+		}
 	}
 
 	return model, req
@@ -492,14 +737,22 @@ func cleanDisplayName(displayName, id, base string) string {
 func withThinkingLevel(req GenerateContentRequest, level string) GenerateContentRequest {
 	if req.GenerationConfig == nil {
 		req.GenerationConfig = &GenerationConfig{}
+	} else {
+		cfgCopy := *req.GenerationConfig
+		req.GenerationConfig = &cfgCopy
 	}
 	if req.GenerationConfig.ThinkingConfig == nil {
 		req.GenerationConfig.ThinkingConfig = &ThinkingConfig{
 			IncludeThoughts: true,
 		}
+	} else {
+		tcCopy := *req.GenerationConfig.ThinkingConfig
+		req.GenerationConfig.ThinkingConfig = &tcCopy
 	}
 	if req.GenerationConfig.ThinkingConfig.ThinkingLevel == "" {
-		req.GenerationConfig.ThinkingConfig.ThinkingLevel = level
+		req.GenerationConfig.ThinkingConfig.ThinkingLevel = strings.ToUpper(level)
+	} else {
+		req.GenerationConfig.ThinkingConfig.ThinkingLevel = strings.ToUpper(req.GenerationConfig.ThinkingConfig.ThinkingLevel)
 	}
 	return req
 }

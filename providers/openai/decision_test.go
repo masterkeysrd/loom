@@ -168,11 +168,11 @@ func TestToDecisionNewParams_Questions(t *testing.T) {
 	if predQ.Name.Value != "is_safe" {
 		t.Errorf("expected name 'is_safe', got %q", predQ.Name.Value)
 	}
-	if !strings.Contains(predQ.Instructions, "assess content safety") {
-		t.Errorf("expected instructions to contain base prompt, got %q", predQ.Instructions)
+	if !strings.Contains(predQ.Instructions.OfString.Value, "assess content safety") {
+		t.Errorf("expected instructions to contain base prompt, got %q", predQ.Instructions.OfString.Value)
 	}
-	if !strings.Contains(predQ.Instructions, "safe and benign") || !strings.Contains(predQ.Instructions, "hateful or dangerous") {
-		t.Errorf("expected instructions to contain criteria, got %q", predQ.Instructions)
+	if !strings.Contains(predQ.Instructions.OfString.Value, "safe and benign") || !strings.Contains(predQ.Instructions.OfString.Value, "hateful or dangerous") {
+		t.Errorf("expected instructions to contain criteria, got %q", predQ.Instructions.OfString.Value)
 	}
 
 	// Choice question
@@ -183,8 +183,8 @@ func TestToDecisionNewParams_Questions(t *testing.T) {
 	if choiceQ.Name.Value != "intent" {
 		t.Errorf("expected name 'intent', got %q", choiceQ.Name.Value)
 	}
-	if choiceQ.Instructions != "classify intent" {
-		t.Errorf("expected instructions 'classify intent', got %q", choiceQ.Instructions)
+	if choiceQ.Instructions.OfString.Value != "classify intent" {
+		t.Errorf("expected instructions 'classify intent', got %q", choiceQ.Instructions.OfString.Value)
 	}
 	if len(choiceQ.Choices) != 2 {
 		t.Fatalf("expected 2 choices, got %d", len(choiceQ.Choices))
@@ -204,8 +204,8 @@ func TestToDecisionNewParams_Questions(t *testing.T) {
 	if scoreQ.Name.Value != "quality" {
 		t.Errorf("expected name 'quality', got %q", scoreQ.Name.Value)
 	}
-	if scoreQ.Instructions != "rate response quality" {
-		t.Errorf("expected instructions 'rate response quality', got %q", scoreQ.Instructions)
+	if scoreQ.Instructions.OfString.Value != "rate response quality" {
+		t.Errorf("expected instructions 'rate response quality', got %q", scoreQ.Instructions.OfString.Value)
 	}
 	if len(scoreQ.Levels) != 3 {
 		t.Fatalf("expected 3 levels, got %d", len(scoreQ.Levels))

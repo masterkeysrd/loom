@@ -149,7 +149,9 @@ func toDecisionNewParams(request *decision.Request) (openai.DecisionNewParams, e
 			questions = append(questions, openai.DecisionNewParamsQuestionUnion{
 				OfPredicate: &openai.DecisionNewParamsQuestionPredicate{
 					Name:         openai.String(q.Name),
-					Instructions: instructions,
+					Instructions: openai.DecisionNewParamsQuestionPredicateInstructionsUnion{
+						OfString: openai.String(instructions),
+					},
 				},
 			})
 
@@ -169,7 +171,9 @@ func toDecisionNewParams(request *decision.Request) (openai.DecisionNewParams, e
 			questions = append(questions, openai.DecisionNewParamsQuestionUnion{
 				OfChoice: &openai.DecisionNewParamsQuestionChoice{
 					Name:         openai.String(q.Name),
-					Instructions: q.Instructions,
+					Instructions: openai.DecisionNewParamsQuestionChoiceInstructionsUnion{
+						OfString: openai.String(q.Instructions),
+					},
 					Choices:      choices,
 				},
 			})
@@ -188,7 +192,9 @@ func toDecisionNewParams(request *decision.Request) (openai.DecisionNewParams, e
 			questions = append(questions, openai.DecisionNewParamsQuestionUnion{
 				OfScore: &openai.DecisionNewParamsQuestionScore{
 					Name:         openai.String(q.Name),
-					Instructions: q.Instructions,
+					Instructions: openai.DecisionNewParamsQuestionScoreInstructionsUnion{
+						OfString: openai.String(q.Instructions),
+					},
 					Levels:       levels,
 				},
 			})

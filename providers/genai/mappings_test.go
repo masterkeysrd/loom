@@ -368,3 +368,49 @@ func TestToGenaiTools_DeferredToolFailFast(t *testing.T) {
 		t.Errorf("expected error for deferred tool in toGenaiTools, got nil")
 	}
 }
+
+func TestToAssistantChunk_TrailingSignatureOnlyPartRoundTrip(t *testing.T) {
+	sigBytes := []byte("sig-abc")
+
+	c1, err := toAssistantChunk(&genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{{
+			Content: &genai.Content{
+				Parts: []*genai.Part{{Text: "Hello"}},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("chunk 1 failed: %v", err)
+	}
+
+	c2, err := toAssistantChunk(&genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{{
+			Content: &genai.Content{
+				Parts: []*genai.Part{{Text: "", ThoughtSignature: sigBytes}},
+			},
+			FinishReason: genai.FinishReasonStop,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("chunk 2 failed: %v", err)
+	}
+
+	agg := message.NewAssistantAggregator()
+	agg.Add(&c1)
+	agg.Add(&c2)
+	asst, err := agg.Build()
+	if err != nil {
+		t.Fatalf("Aggregator.Build failed: %v", err)
+	}
+
+	parts, err := toModelParts(asst.GetContent())
+	if err != nil {
+		t.Fatalf("toModelParts failed: %v", err)
+	}
+	if len(parts) != 1 {
+		t.Fatalf("expected 1 part, got %d", len(parts))
+	}
+	if parts[0].Text != "Hello" || parts[0].Thought || !reflect.DeepEqual(parts[0].ThoughtSignature, sigBytes) {
+		t.Errorf("expected Part{Text: \"Hello\", ThoughtSignature: %q}, got %+v", sigBytes, parts[0])
+	}
+}

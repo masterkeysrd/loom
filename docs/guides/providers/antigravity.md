@@ -156,6 +156,17 @@ provider, _ := loomantigravity.NewProvider(&loomantigravity.Config{
 })
 ```
 
+### Sticky Session Affinity & Prompt Correlation (`loomantigravity.Session`)
+
+Attach `loomantigravity.Session` via `WithExtension` (or per-call `llm.WithCallExtension`) to set `request.session_id` for sticky replica / implicit KV-cache affinity and `user_prompt_id` on the outer envelope:
+
+```go
+model = model.WithExtension(loomantigravity.Session{
+    ID:           "session-uuid",
+    UserPromptID: "turn-uuid",
+})
+```
+
 ---
 
 ## 4. Quota & Rate Limit Inspection (`llm.QuotaProvider`)

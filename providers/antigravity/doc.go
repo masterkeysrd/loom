@@ -15,6 +15,8 @@
 //     "gemini-4-carbon") and effort variants across both `-tiered` gateway endpoints and dedicated per-effort
 //     endpoints (`-low`, `-medium`, `-high`).
 //   - Reasoning & Thinking Effort: Configurable thinking budgets and levels ("LOW", "MEDIUM", "HIGH").
+//   - Session Affinity & Prompt Correlation: [Session] extension (`antigravity.session`) for sticky replica
+//     KV-cache routing (`request.session_id`) and outer-envelope correlation (`user_prompt_id`).
 //   - Compact vs. Raw Profiles: Clean family-level profiles by default; raw endpoints togglable via [Config.RawProfiles].
 //   - Quota Inspection: Implements [llm.QuotaProvider] for real-time or cached rate limit and capacity inspection.
 package loomantigravity

@@ -24,6 +24,44 @@ var _ llm.Provider = (*Provider)(nil)
 var _ profile.Provider = (*Provider)(nil)
 var _ llm.QuotaProvider = (*Provider)(nil)
 var _ llm.TokenCounter = (*Provider)(nil)
+var _ llm.Extension = Session{}
+
+// SessionExtensionID is the unique identifier for the Session extension.
+const SessionExtensionID = "antigravity.session"
+
+// Session configures sticky session affinity and prompt correlation for Cloud Code.
+type Session struct {
+	// ID sets request.session_id so sequential turns route to the same serving
+	// replica and hit its in-memory implicit KV prefix cache.
+	ID string
+
+	// UserPromptID sets user_prompt_id on the outer RequestEnvelope.
+	UserPromptID string
+}
+
+// ExtensionID returns SessionExtensionID.
+func (Session) ExtensionID() string { return SessionExtensionID }
+
+func extractSession(req *llm.Request) (Session, bool) {
+	if req == nil || req.Extensions == nil {
+		return Session{}, false
+	}
+	ext, ok := req.Extensions[SessionExtensionID]
+	if !ok || ext == nil {
+		return Session{}, false
+	}
+	switch v := ext.(type) {
+	case Session:
+		return v, true
+	case *Session:
+		if v == nil {
+			return Session{}, false
+		}
+		return *v, true
+	default:
+		return Session{}, false
+	}
+}
 
 // QuotaProvider is an optional interface implemented by providers that support
 // querying model quotas and rate-limit replenishment windows.
@@ -178,15 +216,24 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 		return nil, fmt.Errorf("antigravity: build request: %w", err)
 	}
 
+	var userPromptID string
+	if sess, ok := extractSession(request); ok {
+		userPromptID = sess.UserPromptID
+	}
+
 	if sw, ok := stream.WriterFromContext(ctx); ok {
+		payload := map[string]any{
+			"model":   request.Model,
+			"request": wireReq,
+		}
+		if userPromptID != "" {
+			payload["user_prompt_id"] = userPromptID
+		}
 		_ = sw.Write(ctx, stream.Event{
 			Name: "on_llm_request",
 			Data: map[string]any{
 				"provider": "antigravity",
-				"payload": map[string]any{
-					"model":   request.Model,
-					"request": wireReq,
-				},
+				"payload":  payload,
 			},
 		})
 	}
@@ -197,7 +244,7 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 		attribute.String("antigravity.model", request.Model),
 	)
 
-	return p.client.StreamGenerateContent(ctx, request.Model, wireReq)
+	return p.client.streamGenerateContent(ctx, request.Model, wireReq, userPromptID)
 }
 
 // SyncProfiles queries the upstream /v1internal:fetchAvailableModels endpoint

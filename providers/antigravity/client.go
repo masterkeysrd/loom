@@ -329,6 +329,10 @@ func (c *Client) ensureAvailableModels(ctx context.Context, token string) {
 // StreamGenerateContent sends a streaming generation request to the Cloud Code endpoint
 // and returns an iterator over message.AssistantChunk.
 func (c *Client) StreamGenerateContent(ctx context.Context, model string, req GenerateContentRequest) (llm.StreamResponse, error) {
+	return c.streamGenerateContent(ctx, model, req, "")
+}
+
+func (c *Client) streamGenerateContent(ctx context.Context, model string, req GenerateContentRequest, userPromptID string) (llm.StreamResponse, error) {
 	tok, err := c.tokenSource.Token()
 	if err != nil {
 		return nil, fmt.Errorf("antigravity: acquire token: %w", err)
@@ -340,10 +344,11 @@ func (c *Client) StreamGenerateContent(ctx context.Context, model string, req Ge
 	model, req = c.resolveModel(model, req)
 
 	envelope := RequestEnvelope{
-		Project:   project,
-		Model:     model,
-		Request:   req,
-		UserAgent: c.userAgent,
+		Project:      project,
+		Model:        model,
+		Request:      req,
+		UserAgent:    c.userAgent,
+		UserPromptID: userPromptID,
 	}
 
 	bodyBytes, err := json.Marshal(envelope)

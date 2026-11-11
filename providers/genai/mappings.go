@@ -260,22 +260,31 @@ func toModelParts(content message.Content) ([]*genai.Part, error) {
 	for _, block := range content {
 		switch v := block.(type) {
 		case *message.TextBlock:
-			if v.Text != "" {
-				part := &genai.Part{Text: v.Text}
-
-				if sig, ok := v.Extras[ThoughtSignatureKey].(string); ok {
-					decodedSig, err := decodeThoughtSignature(sig)
-					if err != nil {
-						return nil, fmt.Errorf("decode thought signature for text block: %w", err)
-					}
-					part.ThoughtSignature = decodedSig
+			var sig []byte
+			if s, ok := v.Extras[ThoughtSignatureKey].(string); ok && s != "" {
+				decodedSig, err := decodeThoughtSignature(s)
+				if err != nil {
+					return nil, fmt.Errorf("decode thought signature for text block: %w", err)
 				}
-
-				parts = append(parts, part)
+				sig = decodedSig
 			}
+			if v.Text == "" {
+				if len(sig) > 0 {
+					if n := len(parts); n > 0 && parts[n-1].FunctionCall == nil && len(parts[n-1].ThoughtSignature) == 0 {
+						parts[n-1].ThoughtSignature = sig
+					} else {
+						pendingSig = sig
+					}
+				}
+				continue
+			}
+			parts = append(parts, &genai.Part{
+				Text:             v.Text,
+				ThoughtSignature: sig,
+			})
 		case *message.ThinkingBlock:
 			var sig []byte
-			if s, ok := v.Extras[ThoughtSignatureKey].(string); ok {
+			if s, ok := v.Extras[ThoughtSignatureKey].(string); ok && s != "" {
 				decodedSig, err := decodeThoughtSignature(s)
 				if err != nil {
 					return nil, fmt.Errorf("decode thought signature for thinking block: %w", err)
@@ -285,10 +294,14 @@ func toModelParts(content message.Content) ([]*genai.Part, error) {
 
 			if v.Thinking == "" {
 				// A thought part without text is rejected by the API
-				// ("Unsupported input part"). Keep only its signature and
-				// attach it to the next part that has none.
+				// ("Unsupported input part"). Attach its signature to the preceding
+				// non-function part if possible, or carry it over to the next part.
 				if len(sig) > 0 {
-					pendingSig = sig
+					if n := len(parts); n > 0 && parts[n-1].FunctionCall == nil && len(parts[n-1].ThoughtSignature) == 0 {
+						parts[n-1].ThoughtSignature = sig
+					} else {
+						pendingSig = sig
+					}
 				}
 				continue
 			}
@@ -479,7 +492,21 @@ func toAssistantChunk(resp *genai.GenerateContentResponse) (message.AssistantChu
 		}
 		for _, part := range candidate.Content.Parts {
 			switch {
-			case part.Text != "":
+			case part.FunctionCall != nil:
+				tc := &message.ToolCall{
+					ID:   part.FunctionCall.ID,
+					Name: part.FunctionCall.Name,
+					Args: part.FunctionCall.Args,
+				}
+
+				if len(part.ThoughtSignature) > 0 {
+					tc.Extras = map[string]any{
+						ThoughtSignatureKey: encodeThoughtSignature(part.ThoughtSignature),
+					}
+				}
+
+				content = append(content, tc)
+			case part.Text != "" || len(part.ThoughtSignature) > 0:
 				if part.Thought {
 					tb := &message.ThinkingBlock{Thinking: part.Text}
 					if len(part.ThoughtSignature) > 0 {
@@ -497,20 +524,6 @@ func toAssistantChunk(resp *genai.GenerateContentResponse) (message.AssistantChu
 					}
 					content = append(content, txt)
 				}
-			case part.FunctionCall != nil:
-				tc := &message.ToolCall{
-					ID:   part.FunctionCall.ID,
-					Name: part.FunctionCall.Name,
-					Args: part.FunctionCall.Args,
-				}
-
-				if len(part.ThoughtSignature) > 0 {
-					tc.Extras = map[string]any{
-						ThoughtSignatureKey: encodeThoughtSignature(part.ThoughtSignature),
-					}
-				}
-
-				content = append(content, tc)
 			}
 		}
 	}

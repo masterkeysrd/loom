@@ -5,11 +5,12 @@ import "encoding/json"
 // RequestEnvelope represents the outer JSON envelope required by the internal
 // Cloud Code / Antigravity streaming endpoint.
 type RequestEnvelope struct {
-	Project   string                 `json:"project,omitempty"`
-	Model     string                 `json:"model"`
-	Request   GenerateContentRequest `json:"request"`
-	RequestID string                 `json:"requestId,omitempty"`
-	UserAgent string                 `json:"userAgent,omitempty"`
+	Project      string                 `json:"project,omitempty"`
+	Model        string                 `json:"model"`
+	Request      GenerateContentRequest `json:"request"`
+	RequestID    string                 `json:"requestId,omitempty"`
+	UserAgent    string                 `json:"userAgent,omitempty"`
+	UserPromptID string                 `json:"user_prompt_id,omitempty"`
 }
 
 // GenerateContentRequest represents the inner payload containing chat contents,
@@ -20,6 +21,7 @@ type GenerateContentRequest struct {
 	GenerationConfig  *GenerationConfig `json:"generationConfig,omitempty"`
 	Tools             []Tool            `json:"tools,omitempty"`
 	ToolConfig        *ToolConfig       `json:"toolConfig,omitempty"`
+	SessionID         string            `json:"session_id,omitempty"`
 }
 
 // Content represents a single conversational turn (user, model, or tool response).

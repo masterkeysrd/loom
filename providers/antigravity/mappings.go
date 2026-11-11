@@ -26,6 +26,9 @@ const (
 // GenerateContentRequest expected by Cloud Code / Antigravity.
 func toGenerateContentRequest(req *llm.Request) (GenerateContentRequest, error) {
 	out := GenerateContentRequest{}
+	if sess, ok := extractSession(req); ok && sess.ID != "" {
+		out.SessionID = sess.ID
+	}
 
 	for _, d := range req.Tools {
 		if d.DeferLoading {
@@ -245,16 +248,37 @@ func toUserParts(content message.Content) ([]Part, error) {
 
 func toAssistantParts(content message.Content) ([]Part, error) {
 	var parts []Part
+	var firstFCSeen bool
+	var pendingSig string
+
+	attachOrHoldSig := func(sig string) {
+		if sig == "" {
+			return
+		}
+		if n := len(parts); n > 0 && parts[n-1].FunctionCall == nil && parts[n-1].ThoughtSignature == "" {
+			parts[n-1].ThoughtSignature = sig
+			return
+		}
+		pendingSig = sig
+	}
+
 	for _, block := range content {
 		switch v := block.(type) {
 		case *message.TextBlock:
-			if v.Text != "" {
-				p := Part{Text: v.Text}
-				if sig, ok := v.Extras[ThoughtSignatureKey].(string); ok && sig != "" {
-					p.ThoughtSignature = sig
-				}
-				parts = append(parts, p)
+			sig, _ := v.Extras[ThoughtSignatureKey].(string)
+			if v.Text == "" {
+				attachOrHoldSig(sig)
+				continue
 			}
+			p := Part{Text: v.Text}
+			if sig != "" {
+				p.ThoughtSignature = sig
+			} else if pendingSig != "" {
+				p.ThoughtSignature = pendingSig
+				pendingSig = ""
+			}
+			parts = append(parts, p)
+
 		case *message.ToolCall:
 			p := Part{
 				FunctionCall: &FunctionCall{
@@ -266,23 +290,33 @@ func toAssistantParts(content message.Content) ([]Part, error) {
 			if sig, ok := v.Extras[ThoughtSignatureKey].(string); ok && sig != "" {
 				p.ThoughtSignature = sig
 			}
-			// Google requires thought_signature on every functionCall part in thinking models.
-			// If missing from the tool call (e.g. from history or cross-model turns), supply DummyThoughtSignature.
-			if p.ThoughtSignature == "" {
+			if p.ThoughtSignature == "" && pendingSig != "" {
+				p.ThoughtSignature = pendingSig
+				pendingSig = ""
+			}
+			// For parallel function calls, Gemini only places thoughtSignature on the first
+			// functionCall part; calls #2..N intentionally carry no signature.
+			if !firstFCSeen && p.ThoughtSignature == "" {
 				p.ThoughtSignature = DummyThoughtSignature
 			}
+			firstFCSeen = true
 			parts = append(parts, p)
+
 		case *message.ThinkingBlock:
-			if v.Thinking != "" {
-				p := Part{
-					Text:    v.Thinking,
-					Thought: true,
-				}
-				if sig, ok := v.Extras[ThoughtSignatureKey].(string); ok && sig != "" {
-					p.ThoughtSignature = sig
-				}
-				parts = append(parts, p)
+			sig, _ := v.Extras[ThoughtSignatureKey].(string)
+			if v.Thinking == "" {
+				attachOrHoldSig(sig)
+				continue
 			}
+			p := Part{
+				Text:    v.Thinking,
+				Thought: true,
+			}
+			if sig != "" {
+				p.ThoughtSignature = sig
+			}
+			parts = append(parts, p)
+
 		default:
 			return nil, fmt.Errorf("unsupported block type in assistant content: %T", block)
 		}
@@ -360,26 +394,6 @@ func toAssistantChunk(resp *GenerateContentResponse, model string) (message.Assi
 		if cand.Content != nil {
 			for _, part := range cand.Content.Parts {
 				switch {
-				case part.Thought:
-					tb := &message.ThinkingBlock{
-						Thinking: part.Text,
-					}
-					if part.ThoughtSignature != "" {
-						tb.Extras = map[string]any{
-							ThoughtSignatureKey: part.ThoughtSignature,
-						}
-					}
-					chunk.Content = append(chunk.Content, tb)
-				case part.Text != "":
-					txt := &message.TextBlock{
-						Text: part.Text,
-					}
-					if part.ThoughtSignature != "" {
-						txt.Extras = map[string]any{
-							ThoughtSignatureKey: part.ThoughtSignature,
-						}
-					}
-					chunk.Content = append(chunk.Content, txt)
 				case part.FunctionCall != nil:
 					tc := &message.ToolCall{
 						ID:   part.FunctionCall.ID,
@@ -392,6 +406,26 @@ func toAssistantChunk(resp *GenerateContentResponse, model string) (message.Assi
 						}
 					}
 					chunk.Content = append(chunk.Content, tc)
+				case part.Thought:
+					tb := &message.ThinkingBlock{
+						Thinking: part.Text,
+					}
+					if part.ThoughtSignature != "" {
+						tb.Extras = map[string]any{
+							ThoughtSignatureKey: part.ThoughtSignature,
+						}
+					}
+					chunk.Content = append(chunk.Content, tb)
+				case part.Text != "" || part.ThoughtSignature != "":
+					txt := &message.TextBlock{
+						Text: part.Text,
+					}
+					if part.ThoughtSignature != "" {
+						txt.Extras = map[string]any{
+							ThoughtSignatureKey: part.ThoughtSignature,
+						}
+					}
+					chunk.Content = append(chunk.Content, txt)
 				}
 			}
 		}

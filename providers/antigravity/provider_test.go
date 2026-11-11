@@ -1530,3 +1530,236 @@ func TestCompactedPerEffortProfilesAndQuotas(t *testing.T) {
 		t.Errorf("expected remainingFraction 0.42, got %f", qClaude.RemainingFraction)
 	}
 }
+
+func TestSessionExtensionWiring(t *testing.T) {
+	var rawEnvelopes []map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1internal:streamGenerateContent" {
+			http.NotFound(w, r)
+			return
+		}
+		var raw map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+			t.Errorf("decode envelope JSON: %v", err)
+		}
+		rawEnvelopes = append(rawEnvelopes, raw)
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintf(w, "data: {\"response\":{\"candidates\":[{\"finishReason\":\"STOP\"}]}}\n\n")
+	}))
+	defer server.Close()
+
+	p, err := NewProvider(&Config{
+		TokenSource: auth.StaticTokenSource("tok"),
+		BaseURL:     server.URL,
+	})
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+
+	ctx := context.Background()
+
+	// 1. Session attached by value
+	s1, err := p.Stream(ctx, &llm.Request{
+		Model:    "gemini-2.5-pro",
+		Messages: []message.Message{message.NewUserText("turn 1")},
+		Extensions: map[string]llm.Extension{
+			SessionExtensionID: Session{
+				ID:           "sess-123",
+				UserPromptID: "prompt-abc",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Stream 1 failed: %v", err)
+	}
+	for range s1 {
+	}
+
+	// 2. Session attached by pointer
+	s2, err := p.Stream(ctx, &llm.Request{
+		Model:    "gemini-2.5-pro",
+		Messages: []message.Message{message.NewUserText("turn 2")},
+		Extensions: map[string]llm.Extension{
+			SessionExtensionID: &Session{
+				ID:           "sess-123",
+				UserPromptID: "prompt-def",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Stream 2 failed: %v", err)
+	}
+	for range s2 {
+	}
+
+	// 3. No Session extension attached — both fields must be omitted
+	s3, err := p.Stream(ctx, &llm.Request{
+		Model:    "gemini-2.5-pro",
+		Messages: []message.Message{message.NewUserText("turn 3")},
+	})
+	if err != nil {
+		t.Fatalf("Stream 3 failed: %v", err)
+	}
+	for range s3 {
+	}
+
+	if len(rawEnvelopes) != 3 {
+		t.Fatalf("expected 3 requests, got %d", len(rawEnvelopes))
+	}
+
+	// Check turn 1 (value Session)
+	if got := rawEnvelopes[0]["user_prompt_id"]; got != "prompt-abc" {
+		t.Errorf("turn 1: expected root user_prompt_id 'prompt-abc', got %v", got)
+	}
+	req1, _ := rawEnvelopes[0]["request"].(map[string]any)
+	if got := req1["session_id"]; got != "sess-123" {
+		t.Errorf("turn 1: expected request.session_id 'sess-123', got %v", got)
+	}
+
+	// Check turn 2 (pointer *Session)
+	if got := rawEnvelopes[1]["user_prompt_id"]; got != "prompt-def" {
+		t.Errorf("turn 2: expected root user_prompt_id 'prompt-def', got %v", got)
+	}
+	req2, _ := rawEnvelopes[1]["request"].(map[string]any)
+	if got := req2["session_id"]; got != "sess-123" {
+		t.Errorf("turn 2: expected request.session_id 'sess-123', got %v", got)
+	}
+
+	// Check turn 3 (unset -> omitted)
+	if _, exists := rawEnvelopes[2]["user_prompt_id"]; exists {
+		t.Errorf("turn 3: expected user_prompt_id to be omitted when unset, got %v", rawEnvelopes[2]["user_prompt_id"])
+	}
+	req3, _ := rawEnvelopes[2]["request"].(map[string]any)
+	if _, exists := req3["session_id"]; exists {
+		t.Errorf("turn 3: expected request.session_id to be omitted when unset, got %v", req3["session_id"])
+	}
+}
+
+func TestTrailingEmptyTextThoughtSignatureRoundTrip(t *testing.T) {
+	// 1. Stream [{"text": "Hello"}, {"text": "", "thoughtSignature": "sig-abc"}]
+	// through toAssistantChunk -> AssistantAggregator -> toAssistantParts
+	c1, err := toAssistantChunk(&GenerateContentResponse{
+		Candidates: []*Candidate{{
+			Content: &Content{Role: "model", Parts: []Part{{Text: "Hello"}}},
+		}},
+	}, "gemini-4-carbon")
+	if err != nil {
+		t.Fatalf("chunk 1 failed: %v", err)
+	}
+
+	c2, err := toAssistantChunk(&GenerateContentResponse{
+		Candidates: []*Candidate{{
+			Content:      &Content{Role: "model", Parts: []Part{{Text: "", ThoughtSignature: "sig-abc"}}},
+			FinishReason: "STOP",
+		}},
+	}, "gemini-4-carbon")
+	if err != nil {
+		t.Fatalf("chunk 2 failed: %v", err)
+	}
+
+	agg := message.NewAssistantAggregator()
+	agg.Add(&c1)
+	agg.Add(&c2)
+	asst, err := agg.Build()
+	if err != nil {
+		t.Fatalf("Aggregator.Build failed: %v", err)
+	}
+
+	parts, err := toAssistantParts(asst.GetContent())
+	if err != nil {
+		t.Fatalf("toAssistantParts failed: %v", err)
+	}
+	if len(parts) != 1 {
+		t.Fatalf("expected 1 part, got %d (%#v)", len(parts), parts)
+	}
+	if parts[0].Text != "Hello" || parts[0].Thought || parts[0].ThoughtSignature != "sig-abc" {
+		t.Errorf("expected Part{Text: \"Hello\", ThoughtSignature: \"sig-abc\"}, got %+v", parts[0])
+	}
+
+	// 2. Un-aggregated [TextBlock{"Hello"}, TextBlock{"", sig}] attaches to preceding part without textless Part
+	unaggParts, err := toAssistantParts(message.Content{
+		&message.TextBlock{Text: "Hello"},
+		&message.TextBlock{Text: "", Extras: map[string]any{ThoughtSignatureKey: "sig-trailing"}},
+	})
+	if err != nil {
+		t.Fatalf("toAssistantParts unaggregated failed: %v", err)
+	}
+	if len(unaggParts) != 1 || unaggParts[0].Text != "Hello" || unaggParts[0].ThoughtSignature != "sig-trailing" {
+		t.Errorf("expected single merged part with sig-trailing, got %+v", unaggParts)
+	}
+
+	// 3. Empty ThinkingBlock carrying a signature before a ToolCall
+	partsBeforeFC, err := toAssistantParts(message.Content{
+		&message.ThinkingBlock{Thinking: "", Extras: map[string]any{ThoughtSignatureKey: "sig-from-thought"}},
+		&message.ToolCall{ID: "call-1", Name: "fn_one"},
+		&message.ToolCall{ID: "call-2", Name: "fn_two"},
+	})
+	if err != nil {
+		t.Fatalf("toAssistantParts empty ThinkingBlock before ToolCall failed: %v", err)
+	}
+	if len(partsBeforeFC) != 2 {
+		t.Fatalf("expected 2 parts (empty ThinkingBlock not emitted), got %d", len(partsBeforeFC))
+	}
+	if partsBeforeFC[0].FunctionCall == nil || partsBeforeFC[0].ThoughtSignature != "sig-from-thought" {
+		t.Errorf("expected call-1 to inherit 'sig-from-thought', got %+v", partsBeforeFC[0])
+	}
+	if partsBeforeFC[1].ThoughtSignature != "" {
+		t.Errorf("expected call-2 to have empty signature, got %q", partsBeforeFC[1].ThoughtSignature)
+	}
+}
+
+func TestParallelToolCallThoughtSignatures(t *testing.T) {
+	// 1. Call 1 has explicit signature, Call 2 has none -> Call 2 must NOT get DummyThoughtSignature
+	partsSigned, err := toAssistantParts(message.Content{
+		&message.ToolCall{
+			ID:     "1",
+			Name:   "tool_a",
+			Extras: map[string]any{ThoughtSignatureKey: "sig-1"},
+		},
+		&message.ToolCall{
+			ID:   "2",
+			Name: "tool_b",
+		},
+	})
+	if err != nil {
+		t.Fatalf("toAssistantParts failed: %v", err)
+	}
+	if len(partsSigned) != 2 {
+		t.Fatalf("expected 2 parts, got %d", len(partsSigned))
+	}
+	if partsSigned[0].ThoughtSignature != "sig-1" {
+		t.Errorf("expected call 1 signature 'sig-1', got %q", partsSigned[0].ThoughtSignature)
+	}
+	if partsSigned[1].ThoughtSignature != "" {
+		t.Errorf("expected call 2 signature to be empty (omitted), got %q", partsSigned[1].ThoughtSignature)
+	}
+
+	// Verify wire JSON omits thoughtSignature on call 2
+	rawCall2, err := json.Marshal(partsSigned[1])
+	if err != nil {
+		t.Fatalf("marshal call 2: %v", err)
+	}
+	if strings.Contains(string(rawCall2), "thoughtSignature") {
+		t.Errorf("expected thoughtSignature to be omitted in JSON for call 2, got %s", string(rawCall2))
+	}
+
+	// 2. Neither Call 1 nor Call 2 has a signature -> ONLY Call 1 gets DummyThoughtSignature
+	partsUnsigned, err := toAssistantParts(message.Content{
+		&message.ToolCall{ID: "1", Name: "tool_a"},
+		&message.ToolCall{ID: "2", Name: "tool_b"},
+	})
+	if err != nil {
+		t.Fatalf("toAssistantParts failed: %v", err)
+	}
+	if len(partsUnsigned) != 2 {
+		t.Fatalf("expected 2 parts, got %d", len(partsUnsigned))
+	}
+	if partsUnsigned[0].ThoughtSignature != DummyThoughtSignature {
+		t.Errorf("expected call 1 to receive DummyThoughtSignature, got %q", partsUnsigned[0].ThoughtSignature)
+	}
+	if partsUnsigned[1].ThoughtSignature != "" {
+		t.Errorf("expected call 2 signature to remain empty, got %q", partsUnsigned[1].ThoughtSignature)
+	}
+}

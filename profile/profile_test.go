@@ -122,3 +122,76 @@ func TestEstimatePriced(t *testing.T) {
 		t.Fatal("pricing with tiers must be priced")
 	}
 }
+
+func TestMerge(t *testing.T) {
+	base := profile.Profile{
+		ID:     "gpt-5.4-pro",
+		Name:   "gpt-5.4-pro",
+		Family: "gpt-pro",
+		Capabilities: profile.Capabilities{
+			Completion:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+		},
+		Limits: profile.Limits{
+			Context: 400000,
+		},
+		Modalities: profile.Modalities{
+			Inputs:  []profile.Modality{profile.ModalityText, profile.ModalityImage},
+			Outputs: []profile.Modality{profile.ModalityText},
+		},
+		Pricing: profile.Pricing{
+			Input:  15,
+			Output: 60,
+		},
+	}
+
+	overlay := profile.Profile{
+		ID:          "gpt-5.4-pro",
+		Name:        "GPT-5.4 Pro",
+		Description: "Live description",
+		ReleaseDate: "2026-03-01",
+		Capabilities: profile.Capabilities{
+			Completion:  true,
+			Temperature: true, // must NOT overwrite base Temperature=false
+			ReasoningOptions: []profile.ReasoningOption{
+				{Type: "effort", Values: []string{"low", "medium", "high"}},
+			},
+		},
+		Limits: profile.Limits{
+			Context: 128000, // must NOT overwrite base Context=400000
+			Output:  128000, // should backfill zero Output
+		},
+		Pricing: profile.Pricing{
+			Input:  999, // must NOT overwrite base Pricing
+			Output: 999,
+		},
+	}
+
+	merged := profile.Merge(base, overlay)
+	if merged.Name != "GPT-5.4 Pro" {
+		t.Errorf("expected Name upgraded to display name, got %q", merged.Name)
+	}
+	if merged.Description != "Live description" {
+		t.Errorf("expected Description backfilled, got %q", merged.Description)
+	}
+	if merged.ReleaseDate != "2026-03-01" {
+		t.Errorf("expected ReleaseDate backfilled, got %q", merged.ReleaseDate)
+	}
+	if merged.Capabilities.Temperature {
+		t.Error("expected base Temperature=false to be preserved")
+	}
+	if len(merged.Capabilities.ReasoningOptions) != 1 {
+		t.Errorf("expected ReasoningOptions backfilled, got %+v", merged.Capabilities.ReasoningOptions)
+	}
+	if merged.Limits.Context != 400000 {
+		t.Errorf("expected Context=400000 preserved, got %d", merged.Limits.Context)
+	}
+	if merged.Limits.Output != 128000 {
+		t.Errorf("expected Output=128000 backfilled, got %d", merged.Limits.Output)
+	}
+	if merged.Pricing.Input != 15 || merged.Pricing.Output != 60 {
+		t.Errorf("expected base Pricing preserved, got %+v", merged.Pricing)
+	}
+}

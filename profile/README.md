@@ -28,8 +28,11 @@ import (
 // Search a slice of profiles by ID or Name (case-insensitive)
 matches := profile.Search(profiles, "embedding")
 
+// Merge live API metadata onto an authoritative static base profile without overwriting pricing or limits
+merged := profile.Merge(staticProfile, liveProfile)
+
 // Estimate token cost in nano-dollars (automatically applying tiered pricing if applicable)
-costDetails, totalCost := prof.EstimateCost(message.TokenDetails{
+est := merged.Estimate(message.TokenDetails{
     Input:  1500,
     Output: 500,
 })

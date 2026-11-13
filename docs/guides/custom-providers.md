@@ -15,6 +15,18 @@ type Provider interface {
 }
 ```
 
+### Optional: Live Model Discovery (`llm.ModelLister`)
+If your backend exposes endpoints to list or inspect models dynamically, implement the `llm.ModelLister` interface:
+
+```go
+type ModelLister interface {
+    ListModels(ctx context.Context) ([]profile.Profile, error)
+    GetModel(ctx context.Context, id string) (profile.Profile, error)
+}
+```
+
+If your provider also maintains a static catalog (`staticProfiles`), use `profile.Merge(staticBase, liveOverlay)` so live discovery preserves curated pricing and capability metadata.
+
 ### Optional: Cache Management
 If your provider supports explicit resource management for context caching, you can optionally implement the `CacheManager` interface:
 

@@ -20,6 +20,7 @@ import (
 var (
 	_ llm.Provider     = (*Provider)(nil)
 	_ profile.Provider = (*Provider)(nil)
+	_ llm.ModelLister  = (*Provider)(nil)
 )
 
 // ContextCache is an extension that specifies a pre-created context cache

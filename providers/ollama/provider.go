@@ -2,6 +2,7 @@ package loomollama
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"net/http"
@@ -26,6 +27,7 @@ import (
 var (
 	_ llm.Provider     = (*Provider)(nil)
 	_ profile.Provider = (*Provider)(nil)
+	_ llm.ModelLister  = (*Provider)(nil)
 )
 
 const defaultContextLength = 4096
@@ -33,9 +35,10 @@ const defaultContextLength = 4096
 // Provider represents the Ollama backend client for
 // handling chat requests for the Loom application.
 type Provider struct {
-	client    *api.Client
-	baseURL   *url.URL
-	overrides sync.Map
+	client     *api.Client
+	baseURL    *url.URL
+	discovered sync.Map
+	overrides  sync.Map
 }
 
 func (p *Provider) NewProvider(client *api.Client, baseURL *url.URL) *Provider {
@@ -135,33 +138,86 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 	}, nil
 }
 
+// ListModels queries the Ollama /api/tags endpoint for installed models, updates
+// the runtime discovered cache, and returns the resulting model profiles (with
+// any static or explicit OverrideProfile entries applied).
+func (p *Provider) ListModels(ctx context.Context) ([]profile.Profile, error) {
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.String("ollama.api.type", "tags"))
+
+	tags, err := p.client.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("ollama: list models: %w", err)
+	}
+
+	result := make([]profile.Profile, 0, len(tags.Models))
+	for _, m := range tags.Models {
+		id := m.Name
+		live := toListModelProfile(m)
+		if prev, ok := p.discovered.Load(id); ok {
+			// Preserve previously fetched Show metadata (limits, reasoning options).
+			live = profile.Merge(prev.(profile.Profile), live)
+		}
+		p.discovered.Store(id, live)
+
+		result = append(result, p.resolveCatalogEntry(id, live))
+	}
+	return result, nil
+}
+
+// GetModel queries the Ollama /api/show endpoint for detailed model metadata
+// (capabilities, context length, embedding dimensions, and thinking options),
+// updates the runtime discovered cache, and returns the resolved profile.
+func (p *Provider) GetModel(ctx context.Context, id string) (profile.Profile, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return profile.Profile{}, errors.New("ollama: model id is required")
+	}
+
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(
+		attribute.String("ollama.api.type", "show"),
+		attribute.String("ollama.model", id),
+	)
+
+	prof, err := p.fetchAndCacheProfile(ctx, id)
+	if err != nil {
+		return profile.Profile{}, fmt.Errorf("ollama: get model %q: %w", id, err)
+	}
+	return p.resolveCatalogEntry(id, prof), nil
+}
+
+func (p *Provider) resolveCatalogEntry(id string, live profile.Profile) profile.Profile {
+	if v, ok := p.overrides.Load(id); ok {
+		return v.(profile.Profile)
+	}
+	if base, ok := staticProfiles[id]; ok {
+		return profile.Merge(base, live)
+	}
+	return live
+}
+
 // ListProfiles returns all known Ollama model profiles. It first queries the
-// local Ollama instance for installed models, registering any new ones as
-// skeleton profiles in the runtime cache.
+// local Ollama instance for installed models, registering any new ones in the
+// runtime discovered cache.
 func (p *Provider) ListProfiles() []profile.Profile {
-	// Discover models via tags
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	if tags, err := p.client.List(ctx); err == nil {
-		for _, m := range tags.Models {
-			id := m.Name
-			if _, ok := p.overrides.Load(id); !ok {
-				if _, ok := staticProfiles[id]; !ok {
-					// Add a skeleton profile so it shows up in searches.
-					// Full metadata will be fetched on first GetProfile.
-					p.overrides.Store(id, profile.Profile{
-						ID:     id,
-						Name:   id,
-						Family: m.Details.Family,
-					})
-				}
-			}
-		}
-	}
+	_, _ = p.ListModels(ctx)
 
 	merged := make(map[string]profile.Profile, len(staticProfiles))
 	maps.Copy(merged, staticProfiles)
+	p.discovered.Range(func(k, v any) bool {
+		id := k.(string)
+		live := v.(profile.Profile)
+		if base, ok := merged[id]; ok {
+			merged[id] = profile.Merge(base, live)
+		} else {
+			merged[id] = live
+		}
+		return true
+	})
 	p.overrides.Range(func(k, v any) bool {
 		merged[k.(string)] = v.(profile.Profile)
 		return true
@@ -174,44 +230,66 @@ func (p *Provider) ListProfiles() []profile.Profile {
 }
 
 // GetProfile returns the profile for the given model ID. It checks overrides
-// and the static catalog first; if not found, it attempts to fetch full
-// metadata (context window, capabilities) from the Ollama API and caches the
-// result.
+// and the static catalog first; if not found (or only a tag skeleton exists),
+// it attempts to fetch full metadata (context window, capabilities) from the
+// Ollama API and caches the result.
 func (p *Provider) GetProfile(id string) (profile.Profile, bool) {
 	if v, ok := p.overrides.Load(id); ok {
+		return v.(profile.Profile), true
+	}
+	if m, ok := staticProfiles[id]; ok {
+		return m, true
+	}
+	if v, ok := p.discovered.Load(id); ok {
 		prof := v.(profile.Profile)
-		// If it's just a skeleton (missing limits), try to upgrade it
 		if prof.Limits.Context == 0 {
-			if upgraded, err := p.fetchAndCacheProfile(id); err == nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			if upgraded, err := p.fetchAndCacheProfile(ctx, id); err == nil {
 				return upgraded, true
 			}
 		}
 		return prof, true
 	}
-	if m, ok := staticProfiles[id]; ok {
-		return m, true
-	}
 
-	// Lazy fetch full details if not even a skeleton exists
-	if prof, err := p.fetchAndCacheProfile(id); err == nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if prof, err := p.fetchAndCacheProfile(ctx, id); err == nil {
 		return prof, true
 	}
 
 	return profile.Profile{}, false
 }
 
-func (p *Provider) fetchAndCacheProfile(id string) (profile.Profile, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
+func (p *Provider) fetchAndCacheProfile(ctx context.Context, id string) (profile.Profile, error) {
 	resp, err := p.client.Show(ctx, &api.ShowRequest{Model: id})
 	if err != nil {
 		return profile.Profile{}, err
 	}
 
 	prof := toModelProfile(id, resp)
-	p.overrides.Store(id, prof)
+	p.discovered.Store(id, prof)
 	return prof, nil
+}
+
+func toListModelProfile(m api.ListModelResponse) profile.Profile {
+	id := m.Name
+	prof := profile.Profile{
+		ID:          id,
+		Name:        id,
+		Family:      m.Details.Family,
+		OpenWeights: true,
+		Capabilities: profile.Capabilities{
+			Completion:  true,
+			Temperature: true,
+			ToolCall:    true,
+		},
+	}
+	if !m.ModifiedAt.IsZero() {
+		prof.LastUpdated = m.ModifiedAt.Format(time.RFC3339)
+	}
+	applyCapabilities(&prof, m.Capabilities)
+	return prof
 }
 
 func toModelProfile(id string, resp *api.ShowResponse) profile.Profile {
@@ -231,38 +309,12 @@ func toModelProfile(id string, resp *api.ShowResponse) profile.Profile {
 		p.LastUpdated = resp.ModifiedAt.Format(time.RFC3339)
 	}
 
-	// Map modalities and capabilities
-	if len(resp.Capabilities) > 0 {
-		p.Capabilities.Completion = false
-		p.Capabilities.ToolCall = false
-
-		for _, cap := range resp.Capabilities {
-			switch string(cap) {
-			case "completion":
-				p.Capabilities.Completion = true
-			case "decision":
-				p.Capabilities.Decision = true
-			case "embedding":
-				p.Capabilities.Embedding = true
-			case "tools":
-				p.Capabilities.ToolCall = true
-			case "vision":
-				p.Modalities.Inputs = append(p.Modalities.Inputs, profile.ModalityImage)
-				p.Capabilities.Attachment = true
-			case "thinking":
-				p.Capabilities.Reasoning = true
-			}
-		}
-	}
+	applyCapabilities(&p, resp.Capabilities)
 
 	if opts := toReasoningOptions(resp.Thinking); len(opts) > 0 {
 		p.Capabilities.Reasoning = true
 		p.Capabilities.ReasoningOptions = opts
 	}
-
-	// Always add text modality
-	p.Modalities.Inputs = append(p.Modalities.Inputs, profile.ModalityText)
-	p.Modalities.Outputs = append(p.Modalities.Outputs, profile.ModalityText)
 
 	// Context window discovery:
 	// 1. Try to parse from Parameters string (Modelfile overrides)
@@ -295,6 +347,39 @@ func toModelProfile(id string, resp *api.ShowResponse) profile.Profile {
 	}
 
 	return p
+}
+
+func applyCapabilities(p *profile.Profile, caps []model.Capability) {
+	if len(caps) > 0 {
+		p.Capabilities.Completion = false
+		p.Capabilities.ToolCall = false
+
+		for _, cap := range caps {
+			switch string(cap) {
+			case "completion":
+				p.Capabilities.Completion = true
+			case "decision":
+				p.Capabilities.Decision = true
+			case "embedding":
+				p.Capabilities.Embedding = true
+			case "tools":
+				p.Capabilities.ToolCall = true
+			case "vision":
+				p.Modalities.Inputs = append(p.Modalities.Inputs, profile.ModalityImage)
+				p.Capabilities.Attachment = true
+			case "thinking":
+				p.Capabilities.Reasoning = true
+			}
+		}
+	}
+
+	// Always add text modality (or embedding output for embedding-only models)
+	p.Modalities.Inputs = append(p.Modalities.Inputs, profile.ModalityText)
+	if p.Capabilities.Embedding && !p.Capabilities.Completion {
+		p.Modalities.Outputs = append(p.Modalities.Outputs, profile.ModalityEmbedding)
+	} else {
+		p.Modalities.Outputs = append(p.Modalities.Outputs, profile.ModalityText)
+	}
 }
 
 func toReasoningOptions(t *model.Thinking) []profile.ReasoningOption {

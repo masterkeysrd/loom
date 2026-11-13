@@ -2,6 +2,7 @@ package profile
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/masterkeysrd/loom/message"
@@ -202,6 +203,61 @@ type Limits struct {
 	Context    int `json:"context"`
 	Output     int `json:"output"`
 	Dimensions int `json:"dimensions,omitempty"`
+}
+
+// Merge returns base with any zero or empty metadata fields populated from
+// overlay. Authoritative fields already set on base (including capabilities,
+// modalities, limits, and pricing) are preserved without modification.
+func Merge(base, overlay Profile) Profile {
+	if base.ID == "" {
+		base.ID = overlay.ID
+	}
+	if base.Name == "" || (base.Name == base.ID && overlay.Name != "" && overlay.Name != overlay.ID) {
+		base.Name = overlay.Name
+	}
+	if base.Description == "" {
+		base.Description = overlay.Description
+	}
+	if base.Family == "" {
+		base.Family = overlay.Family
+	}
+	if base.Knowledge == "" {
+		base.Knowledge = overlay.Knowledge
+	}
+	if base.ReleaseDate == "" {
+		base.ReleaseDate = overlay.ReleaseDate
+	}
+	if base.LastUpdated == "" {
+		base.LastUpdated = overlay.LastUpdated
+	}
+	if len(base.Capabilities.ReasoningOptions) == 0 && len(overlay.Capabilities.ReasoningOptions) > 0 {
+		opts := make([]ReasoningOption, len(overlay.Capabilities.ReasoningOptions))
+		for i, o := range overlay.Capabilities.ReasoningOptions {
+			o.Values = slices.Clone(o.Values)
+			opts[i] = o
+		}
+		base.Capabilities.ReasoningOptions = opts
+	}
+	if base.Limits.Context == 0 {
+		base.Limits.Context = overlay.Limits.Context
+	}
+	if base.Limits.Output == 0 {
+		base.Limits.Output = overlay.Limits.Output
+	}
+	if base.Limits.Dimensions == 0 {
+		base.Limits.Dimensions = overlay.Limits.Dimensions
+	}
+	if len(base.Modalities.Inputs) == 0 && len(overlay.Modalities.Inputs) > 0 {
+		base.Modalities.Inputs = slices.Clone(overlay.Modalities.Inputs)
+	}
+	if len(base.Modalities.Outputs) == 0 && len(overlay.Modalities.Outputs) > 0 {
+		base.Modalities.Outputs = slices.Clone(overlay.Modalities.Outputs)
+	}
+	if base.Pricing.IsZero() && !overlay.Pricing.IsZero() {
+		base.Pricing = overlay.Pricing
+		base.Pricing.TieredLimits = slices.Clone(overlay.Pricing.TieredLimits)
+	}
+	return base
 }
 
 // Search returns all entries from profiles whose ID or Name contains query

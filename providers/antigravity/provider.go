@@ -1,10 +1,13 @@
 package loomantigravity
 
 import (
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 
@@ -22,6 +25,7 @@ import (
 
 var _ llm.Provider = (*Provider)(nil)
 var _ profile.Provider = (*Provider)(nil)
+var _ llm.ModelLister = (*Provider)(nil)
 var _ llm.QuotaProvider = (*Provider)(nil)
 var _ llm.TokenCounter = (*Provider)(nil)
 var _ llm.Extension = Session{}
@@ -258,11 +262,50 @@ func (p *Provider) SyncProfiles(ctx context.Context) error {
 	p.cachedMu.Lock()
 	defer p.cachedMu.Unlock()
 
+	p.cached = make(map[string]profile.Profile, len(models))
 	for _, m := range models {
 		p.cached[m.ID] = toModelProfile(m)
 	}
 	p.lastFetched = time.Now()
 	return nil
+}
+
+// ListModels queries the upstream /v1internal:fetchAvailableModels endpoint,
+// refreshes the in-memory model cache, and returns the resulting model profiles
+// (compacted by canonical family unless RawProfiles is true).
+func (p *Provider) ListModels(ctx context.Context) ([]profile.Profile, error) {
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.String("antigravity.api.type", "fetch_available_models"))
+
+	if err := p.SyncProfiles(ctx); err != nil {
+		return nil, fmt.Errorf("antigravity: list models: %w", err)
+	}
+	return p.collectCachedProfiles(), nil
+}
+
+// GetModel refreshes available models from /v1internal:fetchAvailableModels and
+// resolves id (including canonical families, effort variants, and overrides).
+func (p *Provider) GetModel(ctx context.Context, id string) (profile.Profile, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return profile.Profile{}, errors.New("antigravity: model id is required")
+	}
+
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(
+		attribute.String("antigravity.api.type", "fetch_available_models"),
+		attribute.String("antigravity.model", id),
+	)
+
+	if err := p.SyncProfiles(ctx); err != nil {
+		return profile.Profile{}, fmt.Errorf("antigravity: get model %q: %w", id, err)
+	}
+
+	prof, ok := p.lookupCachedProfile(id)
+	if !ok {
+		return profile.Profile{}, fmt.Errorf("antigravity: model %q not found", id)
+	}
+	return prof, nil
 }
 
 func (p *Provider) ensureProfiles() {
@@ -353,7 +396,13 @@ func (p *Provider) mergedRawProfiles() map[string]profile.Profile {
 	p.cachedMu.RLock()
 	merged := make(map[string]profile.Profile, len(staticProfiles)+len(p.cached))
 	maps.Copy(merged, staticProfiles)
-	maps.Copy(merged, p.cached)
+	for id, live := range p.cached {
+		if base, ok := merged[id]; ok {
+			merged[id] = profile.Merge(base, live)
+		} else {
+			merged[id] = live
+		}
+	}
 	p.cachedMu.RUnlock()
 
 	p.overrides.Range(func(k, v any) bool {
@@ -363,13 +412,7 @@ func (p *Provider) mergedRawProfiles() map[string]profile.Profile {
 	return merged
 }
 
-// ListProfiles returns all known Antigravity model profiles.
-// By default (when RawProfiles is false), it returns clean, compacted profiles
-// for each canonical model family with reasoning effort options surfaced.
-// When RawProfiles is true, it returns the raw uncompacted endpoints and variants.
-func (p *Provider) ListProfiles() []profile.Profile {
-	p.ensureProfiles()
-
+func (p *Provider) collectCachedProfiles() []profile.Profile {
 	merged := p.mergedRawProfiles()
 	if !p.rawProfiles {
 		merged = compactModelProfiles(merged)
@@ -379,7 +422,19 @@ func (p *Provider) ListProfiles() []profile.Profile {
 	for _, m := range merged {
 		result = append(result, m)
 	}
+	slices.SortFunc(result, func(a, b profile.Profile) int {
+		return cmp.Compare(a.ID, b.ID)
+	})
 	return result
+}
+
+// ListProfiles returns all known Antigravity model profiles.
+// By default (when RawProfiles is false), it returns clean, compacted profiles
+// for each canonical model family with reasoning effort options surfaced.
+// When RawProfiles is true, it returns the raw uncompacted endpoints and variants.
+func (p *Provider) ListProfiles() []profile.Profile {
+	p.ensureProfiles()
+	return p.collectCachedProfiles()
 }
 
 // GetProfile returns the profile for the given model ID, checking overrides,
@@ -391,6 +446,13 @@ func (p *Provider) GetProfile(id string) (profile.Profile, bool) {
 	}
 
 	p.ensureProfiles()
+	return p.lookupCachedProfile(id)
+}
+
+func (p *Provider) lookupCachedProfile(id string) (profile.Profile, bool) {
+	if v, ok := p.overrides.Load(id); ok {
+		return v.(profile.Profile), true
+	}
 
 	merged := p.mergedRawProfiles()
 

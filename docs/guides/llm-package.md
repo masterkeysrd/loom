@@ -146,7 +146,31 @@ resp, _ := model.Invoke(ctx, prompt, llm.WithExtensionOption(loomgenai.ContextCa
 model.DeleteCache(ctx, cacheID)
 ```
 
-## 5. Quota & Rate Limit Inspection (`llm.QuotaProvider`)
+## 5. Live Model Discovery (`llm.ModelLister`)
+
+Providers that expose model-listing APIs (OpenAI, Anthropic, Google GenAI, Ollama, and Google Antigravity) implement [`llm.ModelLister`](file:///Users/masterkeysrd/Projects/loom/llm/provider.go):
+
+```go
+if ml, ok := provider.(llm.ModelLister); ok {
+    // Query all models available to your credentials or local server
+    models, err := ml.ListModels(ctx)
+    if err == nil {
+        for _, m := range models {
+            fmt.Printf("• %s (%s) — ctx=%d\n", m.ID, m.Name, m.Limits.Context)
+        }
+    }
+
+    // Fetch live metadata for a single model by ID
+    prof, err := ml.GetModel(ctx, "claude-sonnet-4-6")
+    _ = prof
+    _ = err
+}
+```
+
+- **Static-catalog providers (`openai`, `anthropic`, `genai`)**: Enrich live API results with static catalog metadata (preserving `Pricing`, `TieredLimits`, `Modalities`, and `Capabilities`) without mutating `provider.ListProfiles()`. Unknown models (such as fine-tunes `ft:...`, tuned Gemini models, or OpenAI-compatible vLLM/LiteLLM servers) receive synthesized profiles from live API metadata.
+- **Dynamic-catalog providers (`ollama`, `antigravity`)**: Refresh their in-memory discovered model cache while preserving any explicit `provider.OverrideProfile(...)` entries.
+
+## 6. Quota & Rate Limit Inspection (`llm.QuotaProvider`)
 
 Providers that expose quota or rolling-window capacity metrics (such as Google Antigravity) implement the [`llm.QuotaProvider`](file:///Users/masterkeysrd/Projects/loom/llm/provider.go) interface. This allows callers to inspect remaining capacity percentages and reset times:
 
@@ -169,7 +193,7 @@ if qp, ok := provider.(llm.QuotaProvider); ok {
 }
 ```
 
-## 6. Using the LLM Registry
+## 7. Using the LLM Registry
 The `Registry` is useful for decoupling your application from specific provider packages. It allows you to register provider factories and retrieve them by name.
 
 ## Summary
@@ -177,10 +201,11 @@ The `Registry` is useful for decoupling your application from specific provider 
 - Use `llm.NewModel` to start interacting with an LLM.
 - Use the `With*` methods to configure model parameters.
 - Use `Invoke` for simple request-response and `Stream` for real-time applications.
+- Use `llm.ModelLister` to discover models dynamically from provider APIs.
 - Use `llm.QuotaProvider` to query model quotas and replenishment windows.
 - Use `llm.Registry` to manage multiple providers in a large application.
 
-## 7. Cost Estimation and Pricing Tiers
+## 8. Cost Estimation and Pricing Tiers
 
 `profile.Profile.Estimate(tokens)` returns a `CostEstimate` (`Details`, `Total`, `Tier`, `Priced`). `Model.Stream` copies these onto `chunk.Metrics` (`Cost`, `TotalCost`, `CostTier`, `Priced`) for LLM, embedding, and decision models.
 

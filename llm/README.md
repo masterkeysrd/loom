@@ -10,6 +10,7 @@ The `llm` package provides a provider-agnostic abstraction for interacting with 
 | `Model` | A high-level wrapper around a `Provider` and a specific model ID (e.g., `gpt-4o`). |
 | `Request` | The common format for LLM instructions, including messages and tools. |
 | `Registry` | A thread-safe map for resolving providers by name at runtime. |
+| `ModelLister` | Optional interface for live model discovery (`ListModels`) and single-model lookup (`GetModel`). |
 | `QuotaProvider` | Optional interface for inspecting model remaining capacity and rate-limit replenishment windows. |
 | `CacheManager` | Optional interface for managing long-lived context caches (e.g., Google Gemini). |
 
@@ -147,6 +148,23 @@ registry.Register("ollama", func() (llm.Provider, error) {
 
 // Later in your application...
 p, _ := registry.Get("openai")
+```
+
+## Live Model Discovery (`llm.ModelLister`)
+
+Providers that expose model-listing endpoints (OpenAI, Anthropic, Google GenAI, Ollama, and Google Antigravity) implement [`llm.ModelLister`](file:///Users/masterkeysrd/Projects/loom/llm/provider.go). Live responses are automatically enriched with static catalog metadata (such as pricing and tiered limits) when available:
+
+```go
+if ml, ok := provider.(llm.ModelLister); ok {
+    // 1. List all models available to the authenticated account or local server
+    models, err := ml.ListModels(ctx)
+
+    // 2. Fetch live metadata for a single model by ID
+    prof, err := ml.GetModel(ctx, "gpt-5.4-pro")
+    _ = models
+    _ = prof
+    _ = err
+}
 ```
 
 ## Token Counting

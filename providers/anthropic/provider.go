@@ -19,6 +19,7 @@ import (
 var (
 	_ llm.Provider             = (*Provider)(nil)
 	_ profile.Provider         = (*Provider)(nil)
+	_ llm.ModelLister          = (*Provider)(nil)
 	_ llm.DeferredToolsSupport = (*Provider)(nil)
 )
 

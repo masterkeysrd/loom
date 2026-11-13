@@ -111,13 +111,18 @@ msg := message.NewUser(
 - **Native Mid-Conversation Inline Tool Additions**: Claude 4.8 (`claude-opus-4-8`, `claude-opus-4.8`), Claude 5 (`claude-opus-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-fable-5`, `claude-mythos-5`).
 - **Fallback for Older Models**: For Claude 3.5 Sonnet, Claude 4.6, or other earlier models, attach `llm.DeferredToolsMiddleware(nil)` and/or `llm.InlineToolsMiddleware(nil)` to your model. The middlewares handle client-side filtering, schema injection, and type coercion.
 
-## 4. Model Catalog
+## 4. Model Catalog & Live Discovery
 
-The provider maintains a list of known Anthropic models and their characteristics.
+The provider maintains a curated static catalog with pricing and limits, and also implements [`llm.ModelLister`](../llm-package.md#5-live-model-discovery-llmmodellister) against Anthropic's `/v1/models` and `/v1/models/{model_id}` endpoints (mapping live `max_input_tokens`, `max_tokens`, modalities, thinking, and effort levels while preserving static pricing):
 
 ```go
-profile, found := provider.GetProfile("claude-3-5-sonnet-latest")
+// 1. Static in-memory lookup
+prof, found := provider.GetProfile("claude-sonnet-4-6")
 if found {
-    fmt.Println("Context Limit:", profile.Limits.Context)
+    fmt.Println("Context Limit:", prof.Limits.Context)
 }
+
+// 2. Live API discovery & single-model lookup
+models, err := provider.ListModels(ctx)
+liveProf, err := provider.GetModel(ctx, "claude-sonnet-4-6")
 ```

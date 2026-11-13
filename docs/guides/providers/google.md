@@ -68,12 +68,18 @@ It is good practice to delete the cache when finished to save on costs.
 model.DeleteCache(ctx, cacheID)
 ```
 
-## 4. Model Profiles
+## 4. Model Profiles & Live Discovery
 
-Google provider models are statically defined and include information about multimodal support and context window sizes.
+Google GenAI models are statically defined with multimodal support, context window sizes, and tiered pricing, and the provider also implements [`llm.ModelLister`](../llm-package.md#5-live-model-discovery-llmmodellister) against the Gemini `models.list` and `models.get` endpoints:
 
 ```go
-profiles := provider.SearchProfiles("gemini-1.5")
+// 1. Search static profiles
+profiles := provider.SearchProfiles("gemini-2.5")
+
+// 2. Live API discovery (normalizes "models/..." prefixes, preserves static pricing,
+// and discovers tunedModels/... or newly released models)
+models, err := provider.ListModels(ctx)
+prof, err := provider.GetModel(ctx, "gemini-2.5-pro")
 ```
 
 ## 5. Embedding Models 🧭

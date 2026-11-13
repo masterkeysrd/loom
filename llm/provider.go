@@ -137,6 +137,24 @@ func (q QuotaInfo) ParsedResetTime() (time.Time, error) {
 	return time.Parse(time.RFC3339, q.ResetTime)
 }
 
+// ModelLister is an optional interface that providers can implement if they
+// support live model discovery and metadata lookup from the backend API.
+//
+// Providers with a static catalog (such as OpenAI, Anthropic, and Google GenAI)
+// enrich live API responses with static profile metadata (such as pricing,
+// capabilities, and limits) without mutating their [Provider.ListProfiles] catalog.
+// Dynamic providers (such as Ollama and Antigravity) update their in-memory
+// discovered model cache while preserving explicit [Provider.OverrideProfile] entries.
+type ModelLister interface {
+	// ListModels queries the provider's backend for available models, enriching
+	// entries with static or overridden profile metadata when available.
+	ListModels(ctx context.Context) ([]profile.Profile, error)
+
+	// GetModel queries the provider's backend for a single model by ID, enriching
+	// the result with static or overridden profile metadata when available.
+	GetModel(ctx context.Context, id string) (profile.Profile, error)
+}
+
 // QuotaProvider is an optional interface that providers can implement if they
 // support querying model quotas, usage limits, or rate-limit replenishment windows.
 type QuotaProvider interface {

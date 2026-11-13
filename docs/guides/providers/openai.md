@@ -184,15 +184,21 @@ msg := message.NewUser(
 > [!NOTE]
 > Native tool search and mid-conversation tool additions require `gpt-5.4` or later with the Responses API. For models prior to `gpt-5.4` (e.g. `gpt-4o`, `o3-mini`) or when using standard Chat Completions, use `llm.DeferredToolsMiddleware(nil)` and `llm.InlineToolsMiddleware(nil)` to gain deferred and inline tool benefits via client-side transformation.
 
-## 6. Model Catalog
+## 6. Model Catalog & Live Discovery
 
-The provider includes a static catalog of common OpenAI models with their context limits and capabilities. You can search or list them at runtime:
+The provider includes a static catalog of OpenAI models (with pricing, modalities, and context limits) accessible synchronously via `ListProfiles()` and `GetProfile()`, and also implements [`llm.ModelLister`](../llm-package.md#5-live-model-discovery-llmmodellister) against OpenAI's `/v1/models` and `/v1/models/{model}` endpoints:
 
 ```go
+// 1. Static in-memory catalog
 profiles := provider.ListProfiles()
 for _, p := range profiles {
     fmt.Printf("Model: %s, Context: %d\n", p.ID, p.Limits.Context)
 }
+
+// 2. Live API discovery (enriches known models with static pricing/limits;
+// also surfaces fine-tuned ft:... or OpenAI-compatible vLLM/LiteLLM models)
+liveModels, err := provider.ListModels(ctx)
+ftProfile, err := provider.GetModel(ctx, "ft:gpt-4o-mini:my-org:custom:1")
 ```
 
 ## 7. Decision Models (System One) ⚖️

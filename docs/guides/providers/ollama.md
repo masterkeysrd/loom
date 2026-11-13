@@ -25,14 +25,21 @@ if err != nil {
 model := llm.NewModel(provider, "llama3.1")
 ```
 
-## 3. Local Model Catalog
+## 3. Local Model Discovery & Overrides
 
-Unlike cloud providers, Ollama's available models depend on what you have installed locally. You can register your local models with Loom to ensure context window metadata is available:
+Unlike cloud providers, Ollama's available models depend on what you have installed locally. `loomollama.Provider` implements [`llm.ModelLister`](../llm-package.md#5-live-model-discovery-llmmodellister) using `/api/tags` (`ListModels`) and `/api/show` (`GetModel`), and also supports custom profile overrides:
 
 ```go
+// 1. List installed local models via /api/tags
+models, err := provider.ListModels(ctx)
+
+// 2. Inspect full model details (context window, dimensions, thinking options) via /api/show
+qwen, err := provider.GetModel(ctx, "qwen3:32b")
+
+// 3. Or register explicit runtime overrides (always takes precedence)
 provider.OverrideProfile("my-local-llama", profile.Profile{
-    ID: "my-local-llama",
-    DisplayName: "Local Llama 3",
+    ID:   "my-local-llama",
+    Name: "Local Llama 3",
     Limits: profile.Limits{
         Context: 8192,
     },

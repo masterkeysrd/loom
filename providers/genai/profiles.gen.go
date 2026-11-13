@@ -147,16 +147,6 @@ var staticProfiles = map[string]profile.Profile{
 			Output:     10,
 			CacheRead:  0,
 			CacheWrite: 0,
-			TieredLimits: []profile.TierPricing{
-				{
-					Label:      "context>200000",
-					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 200000},
-					Input:      2.5,
-					Output:     15,
-					CacheRead:  0,
-					CacheWrite: 0,
-				},
-			},
 		},
 	},
 	"gemini-2.5-flash": {
@@ -1290,6 +1280,109 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0,
 		},
 	},
+	"gemini-4-carbon": {
+		ID:          "gemini-4-carbon",
+		Name:        "Gemini 4 Carbon",
+		Description: "Google's most capable reasoning model for complex software engineering, deep math and science, high factual accuracy, and long-horizon autonomous agents",
+		Family:      "gemini",
+		Knowledge:   "2026-03",
+		ReleaseDate: "2026-11-10",
+		LastUpdated: "2026-11-10",
+		Capabilities: profile.Capabilities{
+			Completion:  true,
+			Decision:    false,
+			Embedding:   false,
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: true,
+			ReasoningOptions: []profile.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+					},
+				},
+			},
+		},
+		Limits: profile.Limits{
+			Context: 1048576,
+			Output:  32768,
+		},
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
+				profile.ModalityAudio,
+				profile.ModalityPDF,
+			},
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: profile.Pricing{
+			Input:      2,
+			Output:     10,
+			CacheRead:  0.1,
+			CacheWrite: 0,
+		},
+	},
+	"gemini-4-hydrogen": {
+		ID:          "gemini-4-hydrogen",
+		Name:        "Gemini 4 Hydrogen",
+		Description: "Google's Gemini 4 model for everyday coding and agentic workflows, with four thinking levels and a 1M-token context window",
+		Family:      "gemini",
+		Knowledge:   "2026-03",
+		ReleaseDate: "2026-11-12",
+		LastUpdated: "2026-11-12",
+		Capabilities: profile.Capabilities{
+			Completion:  true,
+			Decision:    false,
+			Embedding:   false,
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: true,
+			ReasoningOptions: []profile.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+					},
+				},
+			},
+		},
+		Limits: profile.Limits{
+			Context: 1048576,
+			Output:  65536,
+		},
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
+				profile.ModalityAudio,
+				profile.ModalityPDF,
+			},
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: profile.Pricing{
+			Input:      1.5,
+			Output:     7.5,
+			CacheRead:  0.075,
+			CacheWrite: 0,
+		},
+	},
 	"gemini-embedding-001": {
 		ID:          "gemini-embedding-001",
 		Name:        "Gemini Embedding 001",
@@ -1468,44 +1561,6 @@ var staticProfiles = map[string]profile.Profile{
 			Input:      0.3,
 			Output:     2.5,
 			CacheRead:  0.03,
-			CacheWrite: 0,
-		},
-	},
-	"gemini-omni-flash-preview": {
-		ID:          "gemini-omni-flash-preview",
-		Name:        "Gemini Omni Flash Preview",
-		Description: "Video generation and editing model for fast, conversational text- and image-to-video workflows",
-		Family:      "gemini",
-		ReleaseDate: "2026-06-30",
-		LastUpdated: "2026-06-30",
-		Capabilities: profile.Capabilities{
-			Completion:  false,
-			Decision:    false,
-			Embedding:   false,
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    false,
-			Temperature: true,
-		},
-		Limits: profile.Limits{
-			Context: 131072,
-			Output:  65536,
-		},
-		Modalities: profile.Modalities{
-			Inputs: []profile.Modality{
-				profile.ModalityText,
-				profile.ModalityImage,
-				profile.ModalityVideo,
-			},
-			Outputs: []profile.Modality{
-				profile.ModalityVideo,
-			},
-		},
-		OpenWeights: false,
-		Pricing: profile.Pricing{
-			Input:      1.5,
-			Output:     17.5,
-			CacheRead:  0,
 			CacheWrite: 0,
 		},
 	},

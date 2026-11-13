@@ -39,9 +39,9 @@ var staticProfiles = map[string]profile.Profile{
 		},
 		OpenWeights: false,
 		Pricing: profile.Pricing{
-			Input:      0,
-			Output:     0,
-			CacheRead:  0,
+			Input:      5,
+			Output:     10,
+			CacheRead:  1.25,
 			CacheWrite: 0,
 		},
 	},
@@ -1141,7 +1141,7 @@ var staticProfiles = map[string]profile.Profile{
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
-			Temperature: false,
+			Temperature: true,
 			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
@@ -1261,7 +1261,7 @@ var staticProfiles = map[string]profile.Profile{
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
-			Temperature: false,
+			Temperature: true,
 			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
@@ -1323,7 +1323,7 @@ var staticProfiles = map[string]profile.Profile{
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
-			Temperature: false,
+			Temperature: true,
 			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
@@ -1385,7 +1385,7 @@ var staticProfiles = map[string]profile.Profile{
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
-			Temperature: false,
+			Temperature: true,
 			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
@@ -1447,7 +1447,7 @@ var staticProfiles = map[string]profile.Profile{
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
-			Temperature: false,
+			Temperature: true,
 			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
@@ -1570,7 +1570,7 @@ var staticProfiles = map[string]profile.Profile{
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
-			Temperature: false,
+			Temperature: true,
 			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
@@ -1632,7 +1632,7 @@ var staticProfiles = map[string]profile.Profile{
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
-			Temperature: false,
+			Temperature: true,
 			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
@@ -1755,7 +1755,7 @@ var staticProfiles = map[string]profile.Profile{
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
-			Temperature: false,
+			Temperature: true,
 			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
@@ -1817,7 +1817,7 @@ var staticProfiles = map[string]profile.Profile{
 			Attachment:  true,
 			Reasoning:   true,
 			ToolCall:    true,
-			Temperature: false,
+			Temperature: true,
 			ReasoningOptions: []profile.ReasoningOption{
 				{
 					Type: "effort",
@@ -1985,9 +1985,9 @@ var staticProfiles = map[string]profile.Profile{
 		},
 		OpenWeights: false,
 		Pricing: profile.Pricing{
-			Input:      0,
-			Output:     0,
-			CacheRead:  0,
+			Input:      5,
+			Output:     10,
+			CacheRead:  1.25,
 			CacheWrite: 0,
 		},
 	},

@@ -2022,9 +2022,9 @@ var staticProfiles = map[string]profile.Profile{
 		},
 		OpenWeights: false,
 		Pricing: profile.Pricing{
-			Input:      5,
-			Output:     30,
-			CacheRead:  1.25,
+			Input:      0,
+			Output:     0,
+			CacheRead:  0,
 			CacheWrite: 0,
 		},
 	},

@@ -66,11 +66,19 @@ func NewDefaultProvider(ctx context.Context) (*Provider, error) {
 
 // NewProvider creates a Google GenAI provider with the given configuration. The config can be used to customize credentials,
 // timeouts, and other client options.
+//
+// Unless the config specifies an API version, requests are pinned to the v1beta
+// API. The SDK defaults API-key clients to v1 from v1.78.0 onward, which drops
+// support for "-latest" model aliases; pinning v1beta preserves that behavior.
+// Vertex AI clients keep the SDK default when no version is set.
 func NewProvider(ctx context.Context, config *genai.ClientConfig) (*Provider, error) {
 	if config.HTTPClient == nil {
 		config.HTTPClient = &http.Client{
 			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		}
+	}
+	if config.HTTPOptions.APIVersion == "" && config.Backend != genai.BackendVertexAI {
+		config.HTTPOptions.APIVersion = "v1beta"
 	}
 	client, err := genai.NewClient(ctx, config)
 	if err != nil {

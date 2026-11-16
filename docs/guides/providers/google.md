@@ -28,6 +28,13 @@ if err != nil {
 model := llm.NewModel(provider, "gemini-1.5-pro")
 ```
 
+> [!NOTE]
+> Providers created through `NewProvider`/`NewDefaultProvider` pin requests to the
+> `v1beta` API unless `HTTPOptions.APIVersion` is set explicitly. This keeps
+> `-latest` model aliases (such as `gemini-flash-lite-latest`) working, since the
+> Google GenAI SDK defaults API-key clients to `v1` from v1.78.0 onward. Vertex AI
+> clients keep the SDK default when no version is set.
+
 ## 3. Advanced Features
 
 ### Reasoning

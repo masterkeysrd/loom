@@ -193,7 +193,26 @@ if qp, ok := provider.(llm.QuotaProvider); ok {
 }
 ```
 
-## 7. Using the LLM Registry
+## 7. Idle Notifications (`llm.IdleMessageNotifier`) & Sync-on-Write (`llm.OutOfSyncError`)
+
+Stateful providers (such as `providers/claudecode`) can push unsolicited `message.Message` events while idle between turns via [`llm.IdleMessageNotifier`](file:///Users/masterkeysrd/Projects/loom/llm/provider.go) and reject out-of-sync writes with [`llm.OutOfSyncError`](file:///Users/masterkeysrd/Projects/loom/llm/provider.go):
+
+```go
+if notifier, ok := provider.(llm.IdleMessageNotifier); ok {
+    unsub := notifier.OnIdleMessage(func(msg message.Message) {
+        // Promptly enqueue or react to idle updates (e.g. background compaction)
+    })
+    defer unsub()
+}
+
+resp, err := model.Invoke(ctx, messages)
+var syncErr *llm.OutOfSyncError
+if errors.As(err, &syncErr) && len(syncErr.Messages) > 0 {
+    // Reconcile local conversation history using syncErr.Messages and resubmit
+}
+```
+
+## 8. Using the LLM Registry
 The `Registry` is useful for decoupling your application from specific provider packages. It allows you to register provider factories and retrieve them by name.
 
 ## Summary
@@ -203,9 +222,10 @@ The `Registry` is useful for decoupling your application from specific provider 
 - Use `Invoke` for simple request-response and `Stream` for real-time applications.
 - Use `llm.ModelLister` to discover models dynamically from provider APIs.
 - Use `llm.QuotaProvider` to query model quotas and replenishment windows.
+- Use `llm.IdleMessageNotifier` and `llm.OutOfSyncError` to keep local history synchronized with stateful providers.
 - Use `llm.Registry` to manage multiple providers in a large application.
 
-## 8. Cost Estimation and Pricing Tiers
+## 9. Cost Estimation and Pricing Tiers
 
 `profile.Profile.Estimate(tokens)` returns a `CostEstimate` (`Details`, `Total`, `Tier`, `Priced`). `Model.Stream` copies these onto `chunk.Metrics` (`Cost`, `TotalCost`, `CostTier`, `Priced`) for LLM, embedding, and decision models.
 

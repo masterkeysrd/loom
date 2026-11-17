@@ -97,7 +97,7 @@ Now that you've built your first graph, check out these advanced guides:
 - [Graph Workflows](./graphs.md): Deep dive into parallel fan-out/fan-in, sub-graphs (`AsNode`/`MapNode`), node middleware, retries, and execution safety.
 - [Conversations](./conversations.md): Deep dive into message roles, multimodal content, and history.
 - [LLM Package](./llm-package.md): Deep dive into the Model API and Registry.
-- [LLM Providers](./providers/openai.md): Learn about [OpenAI](./providers/openai.md), [Anthropic](./providers/anthropic.md), [Gemini](./providers/google.md), and [Ollama](./providers/ollama.md).
+- [LLM Providers](./providers/openai.md): Learn about [OpenAI](./providers/openai.md), [Anthropic](./providers/anthropic.md), [Claude Code](./providers/claudecode.md), [Gemini](./providers/google.md), and [Ollama](./providers/ollama.md).
 - [Persistence & State](./persistence.md): Learn how to save and resume your workflows.
 - [Human-in-the-Loop](./hitl.md): Patterns for human approval and input.
 - [Tools & Streaming](./tools.md): Integrate your agents with external tools and real-time updates.

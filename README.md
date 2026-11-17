@@ -13,7 +13,7 @@ Unlike linear chains, `loom` provides a robust, state-first architecture inspire
 - **🧠 Advanced Memory Management**:
     - **Automatic Summarization**: Intelligently condense long conversations when token limits are reached.
     - **Precise Trimming**: Flexible message trimming strategies (e.g., sliding window) to fit context windows.
-- **🔌 Provider Agnostic**: One interface for OpenAI, Anthropic, Ollama, and Google Gemini.
+- **🔌 Provider Agnostic**: One interface for OpenAI, Anthropic, Ollama, Google Gemini, and Claude Code CLI.
 - **🔌 MCP Support**: Native integration with the Model Context Protocol for tools, resources, and prompts.
 - **🛠️ Tool Integration**: Native support for tool calling and tool-use loops.
 - **🛡️ Type Safe**: Built from the ground up with Go generics for maximum developer productivity and safety.
@@ -31,7 +31,7 @@ Detailed guides on how to use Loom's features:
 - [🧭 Embedding Models](./docs/guides/embedding.md): Dense text and multimodal vector embeddings.
 - [💾 Persistent Store](./docs/guides/persistent-store.md): Namespaced key-value store with semantic vector indexing (`memorydb`, `sqlite`, `pg`).
 - [📚 RAG (Documents, VectorStore & Retrievers)](./docs/guides/rag.md): Lazy document loaders, text splitters, vector stores, RRF fusion, and System One reranking.
-- [🔌 Providers: OpenAI](./docs/guides/providers/openai.md), [Anthropic](./docs/guides/providers/anthropic.md), [Gemini](./docs/guides/providers/google.md), [Antigravity](./docs/guides/providers/antigravity.md), [Ollama](./docs/guides/providers/ollama.md), [TypeSafe AI](./docs/guides/providers/typesafe.md).
+- [🔌 Providers: OpenAI](./docs/guides/providers/openai.md), [Anthropic](./docs/guides/providers/anthropic.md), [Gemini](./docs/guides/providers/google.md), [Antigravity](./docs/guides/providers/antigravity.md), [Ollama](./docs/guides/providers/ollama.md), [TypeSafe AI](./docs/guides/providers/typesafe.md), [Claude Code](./docs/guides/providers/claudecode.md).
 - [🔌 MCP Support](./docs/guides/mcp.md): Connect to MCP servers for tools, resources, and prompts.
 - [💾 Persistence & State](./docs/guides/persistence.md): Learn about checkpointing and thread resumption.
 - [🤝 Human-in-the-Loop](./docs/guides/hitl.md): Patterns for human approval and input.
@@ -231,6 +231,8 @@ Explore runnable end-to-end examples in the [`examples/`](./examples/) directory
 | **Graph Agent** | [`examples/graph_agent`](./examples/graph_agent) | Directed agent loop with tool invocation, conditional routing, and state checkpointing. |
 | **Decision Models** | [`examples/decision`](./examples/decision) | Ultra-fast System One probabilistic classification and graph routing without LLM token overhead. |
 | **Tool Streaming** | [`examples/tool-streaming`](./examples/tool-streaming) | Real-time token streaming and interactive tool calling. |
+| **Tool Search** | [`examples/tool_search`](./examples/tool_search) | Tool-driven web search with RRF fusion across BM25, regex, and server backends. |
+| **Claude Code** | [`examples/claudecode`](./examples/claudecode) | Interactive REPL backed by the Claude Code CLI (`claude`) with session snapshot/fork for parallel graph branches. |
 | **Mini REPL** | [`examples/mini_repl`](./examples/mini_repl) | Interactive terminal chat REPL with multi-turn conversation memory. |
 
 ## Supported Providers
@@ -243,6 +245,7 @@ Explore runnable end-to-end examples in the [`examples/`](./examples/) directory
 | Google Antigravity | `github.com/masterkeysrd/loom/providers/antigravity` |
 | Ollama | `github.com/masterkeysrd/loom/providers/ollama` |
 | TypeSafe AI | `github.com/masterkeysrd/loom/providers/typesafe` |
+| Claude Code | `github.com/masterkeysrd/loom/providers/claudecode` |
 
 ## License
 

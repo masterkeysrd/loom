@@ -13,6 +13,8 @@ The `llm` package provides a provider-agnostic abstraction for interacting with 
 | `ModelLister` | Optional interface for live model discovery (`ListModels`) and single-model lookup (`GetModel`). |
 | `QuotaProvider` | Optional interface for inspecting model remaining capacity and rate-limit replenishment windows. |
 | `CacheManager` | Optional interface for managing long-lived context caches (e.g., Google Gemini). |
+| `IdleMessageNotifier` | Optional interface for stateful providers to push unsolicited idle `message.Message` events (`OnIdleMessage`). |
+| `OutOfSyncError` | Typed error returned when a stateful provider's session drifts from `Request.Messages` (`Messages` carries reconciled history). |
 
 ## Supported Providers & Configuration
 
@@ -79,6 +81,18 @@ p, _ := loomantigravity.NewProvider(&loomantigravity.Config{
 import "github.com/masterkeysrd/loom/providers/ollama"
 
 p, _ := loomollama.NewDefaultProvider()
+```
+
+### Claude Code
+- **Package**: `github.com/masterkeysrd/loom/providers/claudecode`
+- **Auth**: Uses the local `claude` CLI (`claude auth login`, `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, or custom `ANTHROPIC_BASE_URL` endpoints).
+- **Features**: In-process subprocess proxy for `Agent -> Tools -> Agent` loops, `.jsonl` snapshot/fork recovery, native compaction (`Session.Compact`), `IdleMessageNotifier`, and `OutOfSyncError`.
+
+```go
+import loomclaudecode "github.com/masterkeysrd/loom/providers/claudecode"
+
+p, _ := loomclaudecode.NewDefaultProvider()
+defer p.Close()
 ```
 
 ## Configuring the Model
@@ -196,5 +210,24 @@ if qp, ok := provider.(llm.QuotaProvider); ok {
     for modelID, q := range quotas {
         fmt.Printf("• %-28s: %5.1f%%\n", modelID, q.Percentage())
     }
+}
+```
+
+## Idle Notifications (`llm.IdleMessageNotifier`) & Sync-on-Write (`llm.OutOfSyncError`)
+
+Stateful providers (such as Claude Code) can emit unsolicited `message.Message` notifications while idle between turns (e.g., background compaction or unexpected exits) and optionally reject stale writes with `*llm.OutOfSyncError`:
+
+```go
+if notifier, ok := provider.(llm.IdleMessageNotifier); ok {
+    unsub := notifier.OnIdleMessage(func(msg message.Message) {
+        // Handle idle message (offload blocking I/O to a goroutine/channel)
+    })
+    defer unsub()
+}
+
+resp, err := model.Invoke(ctx, history)
+var syncErr *llm.OutOfSyncError
+if errors.As(err, &syncErr) && len(syncErr.Messages) > 0 {
+    // Rearrange history from syncErr.Messages and resubmit
 }
 ```

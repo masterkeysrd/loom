@@ -59,6 +59,22 @@ type InlineToolsSupport interface {
 
 When implemented, `llm.InlineToolsMiddleware` checks this method to avoid applying unnecessary client-side tool transformations on models that natively support inline tool injection.
 
+### Optional: Idle Notifications & Sync-on-Write (`llm.IdleMessageNotifier`, `llm.OutOfSyncError`)
+If your provider wraps a stateful session or subprocess that can change state while idle (e.g., background compaction or session termination), implement `llm.IdleMessageNotifier` to push `message.Message` notifications and return `*llm.OutOfSyncError` from `Stream()` when sync-on-write detects drift:
+
+```go
+type IdleMessageNotifier interface {
+    OnIdleMessage(fn IdleMessageHandler) (unsubscribe func())
+}
+
+type OutOfSyncError struct {
+    Provider string
+    Reason   string
+    Messages message.MessageList
+    Err      error
+}
+```
+
 ### Optional: Extensions
 If your provider has specialized features, you should define your own extension structs.
 

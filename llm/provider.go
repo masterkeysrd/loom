@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"fmt"
 	"iter"
 	"time"
 
@@ -177,6 +178,53 @@ type DeferredToolsSupport interface {
 // tool definitions ([message.ToolDefinitionBlock]).
 type InlineToolsSupport interface {
 	SupportsInlineTools(model string) bool
+}
+
+// IdleMessageHandler receives unsolicited [message.Message] notifications
+// emitted by a stateful [Provider] while idle between active [Provider.Stream]
+// calls (such as background compaction or session lifecycle events).
+//
+// Implementations must return promptly without blocking so underlying provider
+// transports are not stalled.
+type IdleMessageHandler func(msg message.Message)
+
+// IdleMessageNotifier is an optional interface that stateful providers can
+// implement to push idle [message.Message] notifications to callers.
+type IdleMessageNotifier interface {
+	// OnIdleMessage registers fn to receive idle messages and returns an
+	// unsubscribe function that removes the listener.
+	OnIdleMessage(fn IdleMessageHandler) (unsubscribe func())
+}
+
+// OutOfSyncError is returned by a stateful [Provider] (when sync-on-write is
+// enabled) if the provider's active session state has diverged from the
+// caller's [Request.Messages] (for example, due to background compaction or
+// out-of-band history edits).
+//
+// Callers may inspect Reason and apply Messages to rearrange their local
+// conversation history before resubmitting the request.
+type OutOfSyncError struct {
+	Provider string
+	Reason   string
+	Messages message.MessageList
+	Err      error
+}
+
+func (e *OutOfSyncError) Error() string {
+	if e == nil {
+		return ""
+	}
+	if e.Err != nil {
+		return fmt.Sprintf("%s: session out of sync (%s): %v", e.Provider, e.Reason, e.Err)
+	}
+	return fmt.Sprintf("%s: session out of sync (%s)", e.Provider, e.Reason)
+}
+
+func (e *OutOfSyncError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
 }
 
 // StreamResponse is an iterator over streaming chunks from an LLM provider.

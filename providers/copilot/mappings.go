@@ -477,7 +477,8 @@ func toArgsMap(v any) map[string]any {
 
 // toTokenMetrics converts Copilot AssistantUsageData to Loom TokenMetrics,
 // preserving Loom's normalization rule (message/metrics.go): Input MUST include
-// CacheRead and CacheWrite tokens.
+// CacheRead and CacheWrite tokens. It also captures server-reported AI credit
+// charges, model multipliers, and credit reporting status when present.
 func toTokenMetrics(u *copilot.AssistantUsageData) *message.TokenMetrics {
 	if u == nil {
 		return nil
@@ -514,6 +515,7 @@ func toTokenMetrics(u *copilot.AssistantUsageData) *message.TokenMetrics {
 			CacheWrite: cacheWrite,
 			Reasoning:  reasoning,
 		},
+		Credits: toCreditMetrics(u),
 	}
 	if u.Duration != nil && *u.Duration > 0 {
 		m.Timing.Total = time.Duration(*u.Duration) * time.Millisecond
@@ -521,7 +523,30 @@ func toTokenMetrics(u *copilot.AssistantUsageData) *message.TokenMetrics {
 	return m
 }
 
-func toQuotaInfo(snap rpc.AccountQuotaSnapshot) llm.QuotaInfo {
+const nanoAiuPerCredit = 1e9
+
+func toCreditMetrics(u *copilot.AssistantUsageData) message.CreditMetrics {
+	if u == nil {
+		return message.CreditMetrics{}
+	}
+	var credits message.CreditMetrics
+	if u.Cost != nil && *u.Cost > 0 {
+		credits.Multiplier = *u.Cost
+	}
+	if u.CopilotUsage != nil {
+		credits.Amount = u.CopilotUsage.TotalNanoAiu / nanoAiuPerCredit
+		credits.Unit = "ai_credits"
+	} else if credits.Multiplier > 0 {
+		credits.Amount = credits.Multiplier
+		credits.Unit = "premium_requests"
+	}
+	if u.AiCreditsStatus != nil {
+		credits.Status = string(*u.AiCreditsStatus)
+	}
+	return credits
+}
+
+func toQuotaBucket(id string, snap rpc.AccountQuotaSnapshot) llm.QuotaBucket {
 	var frac float64
 	if snap.IsUnlimitedEntitlement {
 		frac = 1.0
@@ -533,12 +558,27 @@ func toQuotaInfo(snap rpc.AccountQuotaSnapshot) llm.QuotaInfo {
 			frac = 1
 		}
 	}
-	var reset string
-	if snap.ResetDate != nil && !snap.ResetDate.IsZero() {
-		reset = snap.ResetDate.UTC().Format(time.RFC3339)
+	var limit, used float64
+	if !snap.IsUnlimitedEntitlement && snap.EntitlementRequests > 0 {
+		limit = float64(snap.EntitlementRequests)
 	}
-	return llm.QuotaInfo{
+	if snap.UsedRequests > 0 {
+		used = float64(snap.UsedRequests)
+	}
+	var resetAt *time.Time
+	if snap.ResetDate != nil && !snap.ResetDate.IsZero() {
+		t := snap.ResetDate.UTC()
+		resetAt = &t
+	}
+	return llm.QuotaBucket{
+		ID:                id,
+		Scope:             "account",
+		Unit:              llm.QuotaUnitRequests,
+		Limit:             limit,
+		Used:              used,
 		RemainingFraction: frac,
-		ResetTime:         reset,
+		Unlimited:         snap.IsUnlimitedEntitlement,
+		Overage:           snap.Overage,
+		ResetAt:           resetAt,
 	}
 }

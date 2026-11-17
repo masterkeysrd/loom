@@ -939,20 +939,26 @@ func TestCopilotModelListerQuotaAndResponseSchema(t *testing.T) {
 		t.Fatalf("unexpected GetModel: %+v, err=%v", gotModel, err)
 	}
 
-	quotas, err := p.ListQuotas(ctx)
+	snap, err := p.GetQuotaSnapshot(ctx)
 	if err != nil {
-		t.Fatalf("ListQuotas: %v", err)
+		t.Fatalf("GetQuotaSnapshot: %v", err)
 	}
-	if quotas["premium_interactions"].RemainingFraction != 0.75 {
-		t.Fatalf("unexpected premium quota: %+v", quotas["premium_interactions"])
+	prem := snap.Buckets["premium_interactions"]
+	if prem.RemainingFraction != 0.75 || prem.Limit != 300 || prem.Used != 75 || prem.Unit != llm.QuotaUnitRequests {
+		t.Fatalf("unexpected premium quota bucket: %+v", prem)
 	}
-	if quotas["chat"].RemainingFraction != 1.0 {
-		t.Fatalf("expected unlimited chat quota=1.0, got %+v", quotas["chat"])
+	chat := snap.Buckets["chat"]
+	if chat.RemainingFraction != 1.0 || !chat.Unlimited {
+		t.Fatalf("expected unlimited chat quota=1.0, got %+v", chat)
 	}
 
-	q, ok, err := p.GetQuota(ctx, "gpt-5")
-	if err != nil || !ok || q.RemainingFraction != 0.75 {
-		t.Fatalf("unexpected GetQuota(gpt-5): %+v ok=%v err=%v", q, ok, err)
+	buckets, ok, err := p.GetQuota(ctx, "gpt-5")
+	if err != nil || !ok {
+		t.Fatalf("unexpected GetQuota(gpt-5): %+v ok=%v err=%v", buckets, ok, err)
+	}
+	bottleneck, ok := buckets.Bottleneck()
+	if !ok || bottleneck.RemainingFraction != 0.75 || bottleneck.ID != "premium_interactions" {
+		t.Fatalf("unexpected GetQuota(gpt-5) bottleneck: %+v ok=%v", bottleneck, ok)
 	}
 
 	model, _ := llm.NewModel(p, "gpt-5", nil)

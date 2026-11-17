@@ -217,38 +217,44 @@ func (p *Provider) streamCompactOnly(ctx context.Context, plan *routePlan, req *
 	}
 }
 
-// ListQuotas queries Copilot's `account.getQuota` RPC and maps quota buckets
-// (such as "chat", "completions", "premium_interactions") into [llm.QuotaInfo].
-func (p *Provider) ListQuotas(ctx context.Context) (map[string]llm.QuotaInfo, error) {
+// GetQuotaSnapshot queries Copilot's `account.getQuota` RPC and maps quota
+// pools (such as "chat", "completions", "premium_interactions") into [llm.QuotaSnapshot].
+func (p *Provider) GetQuotaSnapshot(ctx context.Context) (llm.QuotaSnapshot, error) {
 	if p.mgr == nil {
-		return nil, fmt.Errorf("copilot: provider has nil session manager")
+		return llm.QuotaSnapshot{}, fmt.Errorf("copilot: provider has nil session manager")
 	}
 	res, err := p.mgr.getQuotas(ctx)
 	if err != nil {
-		return nil, err
+		return llm.QuotaSnapshot{}, err
 	}
-	out := make(map[string]llm.QuotaInfo, len(res.QuotaSnapshots))
-	for k, snap := range res.QuotaSnapshots {
-		out[k] = toQuotaInfo(snap)
+	snap := llm.QuotaSnapshot{
+		CollectedAt: time.Now(),
+		Buckets:     make(map[string]llm.QuotaBucket, len(res.QuotaSnapshots)),
 	}
-	return out, nil
+	for k, raw := range res.QuotaSnapshots {
+		snap.Buckets[k] = toQuotaBucket(k, raw)
+	}
+	return snap, nil
 }
 
-// GetQuota returns quota information for a quota bucket key (e.g.,
-// "premium_interactions", "chat") or falls back to Copilot's default
-// "premium_interactions" / "chat" bucket when queried by model name.
-func (p *Provider) GetQuota(ctx context.Context, model string) (llm.QuotaInfo, bool, error) {
-	quotas, err := p.ListQuotas(ctx)
+// GetQuota returns quota buckets for a bucket key (e.g., "premium_interactions",
+// "chat") or falls back to Copilot's default account pool ("premium_interactions",
+// "chat", "completions") when queried by model name.
+func (p *Provider) GetQuota(ctx context.Context, model string) (llm.QuotaBuckets, bool, error) {
+	snap, err := p.GetQuotaSnapshot(ctx)
 	if err != nil {
-		return llm.QuotaInfo{}, false, err
+		return nil, false, err
 	}
-	if q, ok := quotas[model]; ok {
-		return q, true, nil
+	if buckets, ok := snap.ForModel(model); ok {
+		return buckets, true, nil
+	}
+	if b, ok := snap.Buckets[model]; ok {
+		return llm.QuotaBuckets{b}, true, nil
 	}
 	for _, fallback := range []string{"premium_interactions", "chat", "completions"} {
-		if q, ok := quotas[fallback]; ok {
-			return q, true, nil
+		if b, ok := snap.Buckets[fallback]; ok {
+			return llm.QuotaBuckets{b}, true, nil
 		}
 	}
-	return llm.QuotaInfo{}, false, nil
+	return nil, false, nil
 }

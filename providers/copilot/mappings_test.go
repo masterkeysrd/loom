@@ -44,6 +44,31 @@ func TestToTokenMetricsNormalization(t *testing.T) {
 		}
 	})
 
+	t.Run("credits from copilotUsage and multiplier", func(t *testing.T) {
+		cost := 1.5
+		status := copilot.AiCreditsStatusComplete
+		m := toTokenMetrics(&copilot.AssistantUsageData{
+			Cost:            &cost,
+			AiCreditsStatus: &status,
+			CopilotUsage: &copilot.AssistantUsageCopilotUsage{
+				TotalNanoAiu: 250_000_000,
+			},
+		})
+		if m.Credits.Amount != 0.25 || m.Credits.Unit != "ai_credits" || m.Credits.Multiplier != 1.5 || m.Credits.Status != "complete" || m.Credits.Estimated {
+			t.Fatalf("unexpected credits: %+v", m.Credits)
+		}
+	})
+
+	t.Run("credits fallback to multiplier as premium_requests", func(t *testing.T) {
+		cost := 0.33
+		m := toTokenMetrics(&copilot.AssistantUsageData{
+			Cost: &cost,
+		})
+		if m.Credits.Amount != 0.33 || m.Credits.Unit != "premium_requests" || m.Credits.Multiplier != 0.33 {
+			t.Fatalf("unexpected fallback credits: %+v", m.Credits)
+		}
+	})
+
 	t.Run("anthropic v1_messages sums cache into input", func(t *testing.T) {
 		in := int64(100)
 		out := int64(50)
@@ -176,15 +201,24 @@ func TestMapModelInfoAndQuota(t *testing.T) {
 	}
 
 	reset := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
-	q := toQuotaInfo(rpc.AccountQuotaSnapshot{
+	b := toQuotaBucket("premium_interactions", rpc.AccountQuotaSnapshot{
+		EntitlementRequests: 300,
+		UsedRequests:        52,
 		RemainingPercentage: 82.5,
+		Overage:             1.5,
 		ResetDate:           &reset,
 	})
-	if q.RemainingFraction != 0.825 {
-		t.Fatalf("expected RemainingFraction=0.825, got %v", q.RemainingFraction)
+	if b.ID != "premium_interactions" || b.Scope != "account" || b.Unit != llm.QuotaUnitRequests {
+		t.Fatalf("unexpected bucket identity/unit: %+v", b)
 	}
-	if q.ResetTime != "2026-12-01T00:00:00Z" {
-		t.Fatalf("unexpected ResetTime: %q", q.ResetTime)
+	if b.Limit != 300 || b.Used != 52 || b.Overage != 1.5 {
+		t.Fatalf("unexpected bucket counters: %+v", b)
+	}
+	if b.RemainingFraction != 0.825 {
+		t.Fatalf("expected RemainingFraction=0.825, got %v", b.RemainingFraction)
+	}
+	if b.ResetAt == nil || !b.ResetAt.Equal(reset) {
+		t.Fatalf("unexpected ResetAt: %v", b.ResetAt)
 	}
 }
 

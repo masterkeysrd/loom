@@ -5,9 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/masterkeysrd/loom/examples/internal/agentrepl"
 	"github.com/masterkeysrd/loom/llm"
@@ -33,6 +36,7 @@ func main() {
 	authToken := flag.String("auth-token", os.Getenv("ANTHROPIC_AUTH_TOKEN"), "Optional ANTHROPIC_AUTH_TOKEN when using --endpoint")
 	configDir := flag.String("config-dir", defaultConfigDir, "Optional CLAUDE_CONFIG_DIR (empty uses an isolated temp directory)")
 	prompt := flag.String("prompt", "", "Optional single prompt (if omitted, starts interactive REPL)")
+	quota := flag.Bool("quota", false, "Inspect account usage limits via /usage and exit")
 	syncOnWrite := flag.Bool("sync-on-write", false, "Enable strict SyncOnWrite (*llm.OutOfSyncError) reconciliation")
 	debug := flag.Bool("debug", false, "Print raw Claude CLI stdin/stdout/stderr protocol frames to stderr")
 	flag.Parse()
@@ -72,6 +76,14 @@ func main() {
 	}
 	defer provider.Close()
 
+	ctx := context.Background()
+	if *quota {
+		if err := printQuotas(ctx, provider); err != nil {
+			log.Printf("failed to inspect quotas: %v", err)
+		}
+		return
+	}
+
 	model, err := llm.NewModel(provider, *modelName, nil)
 	if err != nil {
 		log.Fatalf("failed to create model: %v", err)
@@ -82,7 +94,7 @@ func main() {
 		log.Fatalf("failed to create shell tool: %v", err)
 	}
 
-	err = agentrepl.Run(context.Background(), model, agentrepl.Options{
+	err = agentrepl.Run(ctx, model, agentrepl.Options{
 		Title:        "Loom Claude Code REPL (commands: /compact [focus], exit)",
 		GraphName:    "ClaudeCodeAgent",
 		SystemPrompt: "You are a helpful coding assistant. Use shell_command only when needed.",
@@ -105,4 +117,44 @@ func main() {
 	if err != nil {
 		log.Fatalf("agent failed: %v", err)
 	}
+}
+
+func printQuotas(ctx context.Context, provider any) error {
+	fmt.Println("\n--- Claude Code Usage & Rate Limits (/usage) ---")
+	qp, ok := provider.(llm.QuotaProvider)
+	if !ok {
+		fmt.Println("Provider does not implement llm.QuotaProvider")
+		return nil
+	}
+	snap, err := qp.GetQuotaSnapshot(ctx)
+	if err != nil {
+		return err
+	}
+	if len(snap.Buckets) == 0 {
+		fmt.Println("No rate limits reported (requires a claude.ai subscription login; API keys return session totals only).")
+		return nil
+	}
+	for _, id := range slices.Sorted(maps.Keys(snap.Buckets)) {
+		b := snap.Buckets[id]
+		winStr := ""
+		switch {
+		case b.Window <= 0:
+		case b.Window%(24*time.Hour) == 0:
+			winStr = fmt.Sprintf("(%dd)", int(b.Window/(24*time.Hour)))
+		case b.Window%time.Hour == 0:
+			winStr = fmt.Sprintf("(%dh)", int(b.Window/time.Hour))
+		default:
+			winStr = fmt.Sprintf("(%s)", b.Window)
+		}
+		usageStr := ""
+		if b.Limit > 0 {
+			usageStr = fmt.Sprintf(" [%.0f/%.0f %s]", b.Used, b.Limit, b.Unit)
+		}
+		resetStr := ""
+		if b.ResetAt != nil {
+			resetStr = fmt.Sprintf(" (resets at %s)", b.ResetAt.Format(time.RFC3339))
+		}
+		fmt.Printf("• %-20s %-6s | Remaining: %5.1f%%%s%s\n", id, winStr, b.Percentage(), usageStr, resetStr)
+	}
+	return nil
 }

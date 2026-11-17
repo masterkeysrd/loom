@@ -231,7 +231,7 @@ func (bs QuotaBuckets) Get(id string) (QuotaBucket, bool) {
 // and how models map onto those shared or dedicated buckets.
 type QuotaSnapshot struct {
 	// CollectedAt is when this snapshot was retrieved from the provider.
-	CollectedAt time.Time `json:"collectedAt,omitempty"`
+	CollectedAt time.Time `json:"collectedAt"`
 
 	// Buckets maps canonical bucket IDs to their quota state. Multiple models
 	// sharing the same underlying pool reference the same bucket ID here.

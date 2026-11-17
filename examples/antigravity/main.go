@@ -4,9 +4,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"time"
 
 	loomauth "github.com/masterkeysrd/loom/auth"
 	"github.com/masterkeysrd/loom/examples/internal/agentrepl"
@@ -162,21 +165,48 @@ func main() {
 			fmt.Println("Provider does not implement llm.QuotaProvider")
 			return
 		}
-		quotas, err := qp.ListQuotas(ctx)
+		snap, err := qp.GetQuotaSnapshot(ctx)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error fetching quotas: %v\n", err)
 			os.Exit(1)
 		}
-		if len(quotas) == 0 {
+		if len(snap.Models) == 0 && len(snap.Buckets) == 0 {
 			fmt.Println("No quota information reported by server.")
 			return
 		}
-		for model, q := range quotas {
-			resetStr := ""
-			if q.ResetTime != "" {
-				resetStr = fmt.Sprintf(" (resets at %s)", q.ResetTime)
+		if len(snap.Buckets) > 0 {
+			fmt.Println("Pools & Windows:")
+			for _, id := range slices.Sorted(maps.Keys(snap.Buckets)) {
+				b := snap.Buckets[id]
+				winStr := formatWindow(b.Window)
+				resetStr := ""
+				if b.ResetAt != nil {
+					resetStr = fmt.Sprintf(" (resets at %s)", b.ResetAt.Format(time.RFC3339))
+				}
+				fmt.Printf("  • %-28s %-6s | Remaining: %5.1f%%%s\n", id, winStr, b.Percentage(), resetStr)
 			}
-			fmt.Printf("• %-32s | Remaining: %5.1f%%%s\n", model, q.Percentage(), resetStr)
+		}
+		if len(snap.Models) > 0 {
+			fmt.Println("\nModels:")
+			for _, model := range slices.Sorted(maps.Keys(snap.Models)) {
+				buckets, ok := snap.ForModel(model)
+				if !ok {
+					continue
+				}
+				bottleneck, ok := buckets.Bottleneck()
+				if !ok {
+					continue
+				}
+				var parts []string
+				for _, b := range buckets {
+					parts = append(parts, fmt.Sprintf("%s: %.1f%%", b.ID, b.Percentage()))
+				}
+				resetStr := ""
+				if bottleneck.ResetAt != nil {
+					resetStr = fmt.Sprintf(" (bottleneck resets at %s)", bottleneck.ResetAt.Format(time.RFC3339))
+				}
+				fmt.Printf("  • %-32s | Remaining: %5.1f%% [%s]%s\n", model, bottleneck.Percentage(), strings.Join(parts, ", "), resetStr)
+			}
 		}
 		return
 	}
@@ -218,8 +248,10 @@ func main() {
 
 			quotaStr := ""
 			if qp != nil {
-				if q, ok, _ := qp.GetQuota(ctx, p.ID); ok {
-					quotaStr = fmt.Sprintf(" | Quota: %4.1f%%", q.Percentage())
+				if buckets, ok, _ := qp.GetQuota(ctx, p.ID); ok {
+					if b, ok := buckets.Bottleneck(); ok {
+						quotaStr = fmt.Sprintf(" | Quota: %4.1f%%", b.Percentage())
+					}
 				}
 			}
 
@@ -251,5 +283,18 @@ func main() {
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "Error running agent: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+func formatWindow(d time.Duration) string {
+	switch {
+	case d <= 0:
+		return ""
+	case d%(24*time.Hour) == 0:
+		return fmt.Sprintf("(%dd)", int(d/(24*time.Hour)))
+	case d%time.Hour == 0:
+		return fmt.Sprintf("(%dh)", int(d/time.Hour))
+	default:
+		return fmt.Sprintf("(%s)", d)
 	}
 }

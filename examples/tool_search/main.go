@@ -1,16 +1,14 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"flag"
 	"fmt"
 	"log"
 	"math"
-	"os"
-	"os/exec"
 	"strings"
 
+	"github.com/masterkeysrd/loom/examples/internal/agentrepl"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
 	loomanthropic "github.com/masterkeysrd/loom/providers/anthropic"
@@ -229,33 +227,7 @@ func main() {
 		log.Fatalf("failed to create employee tool: %v", err)
 	}
 
-	shellTool, err := tool.New(
-		"shell_command",
-		"Shell Command Executor",
-		"Executes safe basic shell commands: ls, pwd, date, echo, uname.",
-		func(ctx context.Context, in struct {
-			Command string   `json:"command" jsonschema:"Safe command name: ls, pwd, date, echo, uname"`
-			Args    []string `json:"args,omitempty" jsonschema:"Arguments for the command"`
-		}) (string, error) {
-			allowed := map[string]bool{
-				"ls":    true,
-				"pwd":   true,
-				"date":  true,
-				"echo":  true,
-				"uname": true,
-			}
-			if !allowed[in.Command] {
-				return "", fmt.Errorf("command %q is not permitted; allowed commands are: ls, pwd, date, echo, uname", in.Command)
-			}
-			cmd := exec.CommandContext(ctx, in.Command, in.Args...)
-			out, err := cmd.CombinedOutput()
-			if err != nil {
-				return string(out), fmt.Errorf("command execution failed: %w", err)
-			}
-			return strings.TrimSpace(string(out)), nil
-		},
-		tool.WithDeferLoading(),
-	)
+	shellTool, err := agentrepl.NewShellTool(tool.WithDeferLoading())
 	if err != nil {
 		log.Fatalf("failed to create shell tool: %v", err)
 	}
@@ -268,9 +240,8 @@ func main() {
 		shellTool,
 	}
 
-	// 2. Setup Search Tool & Container
-	var allTools []*tool.Tool
-	var container *tool.Container
+	// 2. Setup Search Tool & Model
+	var toolsToBind []*tool.Tool
 
 	model, err := llm.NewModel(p, modelFlag, nil)
 	if err != nil {
@@ -280,11 +251,11 @@ func main() {
 
 	switch searchFlag {
 	case "server":
-		container = tool.NewContainer(deferredTools...)
-		model = model.BindTools(deferredTools...)
-		if providerFlag == "anthropic" {
+		toolsToBind = deferredTools
+		switch providerFlag {
+		case "anthropic":
 			model = model.WithExtension(loomanthropic.ToolSearch{Strategy: loomanthropic.ToolSearchBM25})
-		} else if providerFlag == "openai" {
+		case "openai":
 			model = model.WithExtension(loomopenai.WithToolSearch())
 		}
 	case "regex":
@@ -292,9 +263,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to create regex search tool: %v", err)
 		}
-		allTools = append([]*tool.Tool{searchTool}, deferredTools...)
-		container = tool.NewContainer(allTools...)
-		model = model.BindTools(allTools...)
+		toolsToBind = append([]*tool.Tool{searchTool}, deferredTools...)
 	case "bm25":
 		fallthrough
 	default:
@@ -302,9 +271,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to create bm25 search tool: %v", err)
 		}
-		allTools = append([]*tool.Tool{searchTool}, deferredTools...)
-		container = tool.NewContainer(allTools...)
-		model = model.BindTools(allTools...)
+		toolsToBind = append([]*tool.Tool{searchTool}, deferredTools...)
 	}
 
 	systemPrompt := `You are an AI assistant equipped with deferred tools.
@@ -312,131 +279,45 @@ Most tools are not listed in your initial <tools> header to keep the prompt comp
 1. When asked to perform a task for which you do not yet have the tool schema, call the tool search tool ONCE to discover it.
 2. IMPORTANT: As soon as a tool definition is returned in a tool result (or system message), that tool IS IMMEDIATELY ACTIVE AND CALLABLE in this session. You MUST invoke it directly by its name as a standard tool call, even though it does not appear in your initial <tools> list. Never tell the user a loaded tool is unavailable, and never search for the same tool twice.`
 
-	messages := []message.Message{
-		message.NewSystemText(systemPrompt),
-	}
+	banner := fmt.Sprintf(`Provider: %s | Model: %s | Search Strategy: %s
+Available Deferred Tools:
+  - get_weather        (Current weather & temperature for a city)
+  - convert_currency   (USD, EUR, JPY, GBP, DOP converter)
+  - calculate_mortgage (Loan payment & interest calculator)
+  - query_employees    (Employee directory by department or role)
+  - shell_command      (Safe shell commands: ls, pwd, date, echo, cat, uname)
 
-	executeTurn := func(turnCtx context.Context, userInput string) {
-		messages = append(messages, message.NewUserText(userInput))
+Commands:
+  - Type any prompt (e.g. 'What is the weather in Tokyo and convert 100 USD to EUR?')
+  - Type 'activate <tool_name>' or 'activate:<tool_name>' to manually inject a mid-turn ToolReferenceBlock`,
+		providerFlag, modelFlag, searchFlag)
 
-		for {
-			resp, err := model.Invoke(turnCtx, messages)
-			if err != nil {
-				fmt.Printf("\nError: %v\n", err)
-				break
-			}
-			messages = append(messages, resp)
-
-			// Print any server-side tool calls/results (native Anthropic/OpenAI)
-			for _, block := range resp.GetContent() {
-				switch b := block.(type) {
-				case *message.ServerToolCall:
-					fmt.Printf("\n[Server Tool Call: %s (id: %s) args: %v]\n", b.Name, b.ID, b.Args)
-				case *message.ServerToolResult:
-					fmt.Printf("\n[Server Tool Result: %s (id: %s) is_error: %v]\n", b.Name, b.ToolCallID, b.IsError)
-					for _, sub := range b.Content {
-						if ref, ok := sub.(*message.ToolReferenceBlock); ok {
-							fmt.Printf("  -> [Discovered tool: %s]\n", ref.ToolName)
-						}
-					}
-				}
-			}
-
-			// Print assistant text
-			if text := resp.GetContent().Text(); text != "" {
-				fmt.Printf("\nAssistant: %s\n", text)
-			}
-
-			// Check for client-side tool calls
-			var toolCalls []*message.ToolCall
-			for _, block := range resp.GetContent() {
-				if tc, ok := block.(*message.ToolCall); ok {
-					toolCalls = append(toolCalls, tc)
-				}
-			}
-
-			if len(toolCalls) == 0 {
-				break
-			}
-
-			// Execute client tool calls
-			for _, tc := range toolCalls {
-				fmt.Printf("\n[Executing %s with args %v...]\n", tc.Name, tc.Args)
-				toolResp, err := container.Call(turnCtx, tc)
-				if err != nil {
-					fmt.Printf("Tool Error: %v\n", err)
-					messages = append(messages, &message.Tool{
-						ToolCallID: tc.ID,
-						Name:       tc.Name,
-						IsError:    true,
-						Content:    message.Content{&message.TextBlock{Text: err.Error()}},
-					})
+	if err := agentrepl.Run(ctx, model, agentrepl.Options{
+		Title:        "Loom Deferred Tools & Tool Search REPL",
+		Banner:       banner,
+		GraphName:    "ToolSearchAgent",
+		SystemPrompt: systemPrompt,
+		Prompt:       queryFlag,
+		Tools:        toolsToBind,
+		WrapTurnCtx: func(c context.Context) (context.Context, func()) {
+			spanCtx, span := telemetry.Start(c, "tool-search-turn")
+			return spanCtx, func() { span.End() }
+		},
+		OnCommand: func(input string, history *message.MessageList) (bool, []llm.CallOption) {
+			if strings.HasPrefix(input, "activate:") || strings.HasPrefix(input, "activate ") {
+				var toolName string
+				if after, ok := strings.CutPrefix(input, "activate:"); ok {
+					toolName = strings.TrimSpace(after)
 				} else {
-					// Print discovered tools if tool search returned ToolReferenceBlocks
-					for _, b := range toolResp.Content {
-						if ref, ok := b.(*message.ToolReferenceBlock); ok {
-							fmt.Printf("[Discovered tool: %s]\n", ref.ToolName)
-						}
-					}
-					if toolResp.Content.Text() != "" {
-						fmt.Printf("[Tool Output: %s]\n", toolResp.Content.Text())
-					}
-					messages = append(messages, toolResp)
+					toolName = strings.TrimSpace(strings.TrimPrefix(input, "activate "))
 				}
+				*history = append(*history, message.NewSystem(&message.ToolReferenceBlock{ToolName: toolName}))
+				fmt.Printf("[Manually activated tool %q mid-conversation via ToolReferenceBlock]\n", toolName)
+				return true, nil
 			}
-		}
-	}
-
-	// Single-shot mode if -query was provided
-	if queryFlag != "" {
-		turnCtx, span := telemetry.Start(ctx, "tool-search-query")
-		defer span.End()
-		executeTurn(turnCtx, queryFlag)
-		return
-	}
-
-	// Interactive REPL Mode
-	fmt.Println("=== Loom Deferred Tools & Tool Search REPL ===")
-	fmt.Printf("Provider: %s | Model: %s | Search Strategy: %s\n", providerFlag, modelFlag, searchFlag)
-	fmt.Println("Available Deferred Tools:")
-	fmt.Println("  - get_weather        (Current weather & temperature for a city)")
-	fmt.Println("  - convert_currency   (USD, EUR, JPY, GBP, DOP converter)")
-	fmt.Println("  - calculate_mortgage (Loan payment & interest calculator)")
-	fmt.Println("  - query_employees    (Employee directory by department or role)")
-	fmt.Println("  - shell_command      (Safe shell commands: ls, pwd, date, echo, uname)")
-	fmt.Println("\nCommands:")
-	fmt.Println("  - Type any prompt (e.g. 'What is the weather in Tokyo and convert 100 USD to EUR?')")
-	fmt.Println("  - Type 'activate <tool_name>' or 'activate:<tool_name>' to manually inject a mid-turn ToolReferenceBlock")
-	fmt.Println("  - Type 'exit' or 'quit' to quit")
-
-	scanner := bufio.NewScanner(os.Stdin)
-	for {
-		fmt.Print("\n> ")
-		if !scanner.Scan() {
-			break
-		}
-		input := strings.TrimSpace(scanner.Text())
-		if input == "" {
-			continue
-		}
-		if strings.EqualFold(input, "exit") || strings.EqualFold(input, "quit") {
-			break
-		}
-
-		if strings.HasPrefix(input, "activate:") || strings.HasPrefix(input, "activate ") {
-			var toolName string
-			if after, ok := strings.CutPrefix(input, "activate:"); ok {
-				toolName = strings.TrimSpace(after)
-			} else {
-				toolName = strings.TrimSpace(strings.TrimPrefix(input, "activate "))
-			}
-			messages = append(messages, message.NewSystem(&message.ToolReferenceBlock{ToolName: toolName}))
-			fmt.Printf("[Manually activated tool %q mid-conversation via ToolReferenceBlock]\n", toolName)
-			continue
-		}
-
-		turnCtx, span := telemetry.Start(ctx, "tool-search-turn")
-		executeTurn(turnCtx, input)
-		span.End()
+			return false, nil
+		},
+	}); err != nil {
+		log.Fatalf("tool search agent failed: %v", err)
 	}
 }

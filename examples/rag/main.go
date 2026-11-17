@@ -253,7 +253,7 @@ Candidate chunks are deduplicated and ranked to ensure both exact keyword matche
 	builder := graph.New[RAGState]()
 
 	// Node 1: "retrieve"
-	builder.AddNode("retrieve", graph.NodeFunc[RAGState](func(ctx context.Context, state RAGState) (graph.Command[RAGState], error) {
+	builder.AddNode("retrieve", graph.NodeFunc(func(ctx context.Context, state RAGState) (graph.Command[RAGState], error) {
 		fmt.Printf("\n[Node: retrieve] Querying hybrid retriever for: %q\n", state.Query)
 		docs, err := hybridRetriever.Retrieve(ctx, state.Query, retriever.WithTopK(3))
 		if err != nil {
@@ -278,7 +278,7 @@ Candidate chunks are deduplicated and ranked to ensure both exact keyword matche
 	}))
 
 	// Node 2: "generate"
-	builder.AddNode("generate", graph.NodeFunc[RAGState](func(ctx context.Context, state RAGState) (graph.Command[RAGState], error) {
+	builder.AddNode("generate", graph.NodeFunc(func(ctx context.Context, state RAGState) (graph.Command[RAGState], error) {
 		fmt.Println("\n[Node: generate] Formatting context and invoking LLM...")
 		var contextBuilder strings.Builder
 		for i, doc := range state.Docs {
@@ -288,7 +288,7 @@ Candidate chunks are deduplicated and ranked to ensure both exact keyword matche
 			} else if h, ok := doc.Metadata["h1"].(string); ok && h != "" {
 				heading = fmt.Sprintf(" - %s", h)
 			}
-			contextBuilder.WriteString(fmt.Sprintf("--- Document %d [%s%s] ---\n", i+1, doc.ID, heading))
+			fmt.Fprintf(&contextBuilder, "--- Document %d [%s%s] ---\n", i+1, doc.ID, heading)
 			contextBuilder.WriteString(doc.Content)
 			contextBuilder.WriteString("\n\n")
 		}

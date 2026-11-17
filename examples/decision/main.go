@@ -194,7 +194,7 @@ func main() {
 	builder := graph.New[TicketState]()
 
 	// Define Workflow Nodes
-	builder.AddNode("BillingNode", graph.NodeFunc[TicketState](func(ctx context.Context, state TicketState) (graph.Command[TicketState], error) {
+	builder.AddNode("BillingNode", graph.NodeFunc(func(ctx context.Context, state TicketState) (graph.Command[TicketState], error) {
 		fmt.Printf("  -> [BillingNode] Processing ticket %s for billing/refund handling\n", state.ID)
 		return graph.Update[TicketState](func(s TicketState) TicketState {
 			s.Department = "billing"
@@ -203,7 +203,7 @@ func main() {
 		}), nil
 	}))
 
-	builder.AddNode("EngineeringNode", graph.NodeFunc[TicketState](func(ctx context.Context, state TicketState) (graph.Command[TicketState], error) {
+	builder.AddNode("EngineeringNode", graph.NodeFunc(func(ctx context.Context, state TicketState) (graph.Command[TicketState], error) {
 		fmt.Printf("  -> [EngineeringNode] Investigating technical defect for ticket %s\n", state.ID)
 		return graph.Update[TicketState](func(s TicketState) TicketState {
 			s.Department = "engineering"
@@ -212,7 +212,7 @@ func main() {
 		}), nil
 	}))
 
-	builder.AddNode("HumanTriage", graph.NodeFunc[TicketState](func(ctx context.Context, state TicketState) (graph.Command[TicketState], error) {
+	builder.AddNode("HumanTriage", graph.NodeFunc(func(ctx context.Context, state TicketState) (graph.Command[TicketState], error) {
 		fmt.Printf("  -> [HumanTriage] Confidence low or unmapped department; ticket %s routed to human queue\n", state.ID)
 		return graph.Update[TicketState](func(s TicketState) TicketState {
 			s.Department = "human_triage"
@@ -221,7 +221,7 @@ func main() {
 		}), nil
 	}))
 
-	builder.AddNode("IncidentPageNode", graph.NodeFunc[TicketState](func(ctx context.Context, state TicketState) (graph.Command[TicketState], error) {
+	builder.AddNode("IncidentPageNode", graph.NodeFunc(func(ctx context.Context, state TicketState) (graph.Command[TicketState], error) {
 		fmt.Printf("  -> [IncidentPageNode] EMERGENCY: Urgent outage detected! Paging on-call engineer for ticket %s\n", state.ID)
 		return graph.Update[TicketState](func(s TicketState) TicketState {
 			s.Urgent = true
@@ -239,7 +239,7 @@ func main() {
 		decision.Opt("account", "Login and access issues"),
 	}
 
-	routeEdge := decision.NewRouteEdge[TicketState](
+	routeEdge := decision.NewRouteEdge(
 		decider,
 		"Which team should handle this ticket?",
 		deptChoices,
@@ -256,7 +256,7 @@ func main() {
 
 	// Setup Conditional Edge after EngineeringNode:
 	// If urgency predicate passes >= 0.80, route to IncidentPageNode; otherwise route to END.
-	urgentEdge := decision.NewConditionalEdge[TicketState](
+	urgentEdge := decision.NewConditionalEdge(
 		decider,
 		"IncidentPageNode",
 		"Does this ticket require immediate attention within the hour?",

@@ -69,7 +69,7 @@ func main() {
 	// 2. Build a graph with an Agent node that calls the tool.
 	builder := graph.New[AppState]()
 
-	builder.AddNode("Agent", graph.NodeFunc[AppState](func(ctx context.Context, s AppState) (graph.Command[AppState], error) {
+	builder.AddNode("Agent", graph.NodeFunc(func(ctx context.Context, s AppState) (graph.Command[AppState], error) {
 		fmt.Println("\n--- Node: Agent (Calling Tool) ---")
 
 		// In a real app, you'd get this ToolCall from an LLM.

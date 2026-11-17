@@ -30,7 +30,7 @@ func main() {
 
 	// 2. Add Nodes
 	// The Categorize node determines the "route" based on input content.
-	builder.AddNode("Categorize", graph.NodeFunc[AppState](func(ctx context.Context, state AppState) (graph.Command[AppState], error) {
+	builder.AddNode("Categorize", graph.NodeFunc(func(ctx context.Context, state AppState) (graph.Command[AppState], error) {
 		fmt.Println("--- Node: Categorize ---")
 		category := "general"
 		if strings.Contains(strings.ToLower(state.Input), "math") || strings.Contains(state.Input, "+") {
@@ -45,7 +45,7 @@ func main() {
 	}))
 
 	// Simulated LLM nodes
-	builder.AddNode("MathLLM", graph.NodeFunc[AppState](func(ctx context.Context, state AppState) (graph.Command[AppState], error) {
+	builder.AddNode("MathLLM", graph.NodeFunc(func(ctx context.Context, state AppState) (graph.Command[AppState], error) {
 		fmt.Println("--- Node: MathLLM (Simulated) ---")
 		return graph.Update[AppState](func(s AppState) AppState {
 			s.Output = "The simulated LLM says: I am a math expert. Numbers are fun!"
@@ -53,7 +53,7 @@ func main() {
 		}), nil
 	}))
 
-	builder.AddNode("GeneralLLM", graph.NodeFunc[AppState](func(ctx context.Context, state AppState) (graph.Command[AppState], error) {
+	builder.AddNode("GeneralLLM", graph.NodeFunc(func(ctx context.Context, state AppState) (graph.Command[AppState], error) {
 		fmt.Println("--- Node: GeneralLLM (Simulated) ---")
 		return graph.Update[AppState](func(s AppState) AppState {
 			s.Output = "The simulated LLM says: I can help you with general questions!"

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -10,6 +9,7 @@ import (
 	"strings"
 
 	loomauth "github.com/masterkeysrd/loom/auth"
+	"github.com/masterkeysrd/loom/examples/internal/agentrepl"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
 	"github.com/masterkeysrd/loom/profile"
@@ -103,7 +103,7 @@ func main() {
 	})
 
 	// Determine token source: check env var first, then persistent token source
-	var tokenSource oauth2.TokenSource = loomauth.EnvTokenSource("ANTIGRAVITY_TOKEN", "GOOGLE_ACCESS_TOKEN")
+	var tokenSource = loomauth.EnvTokenSource("ANTIGRAVITY_TOKEN", "GOOGLE_ACCESS_TOKEN")
 	if _, err := tokenSource.Token(); err != nil {
 		tokenSource = persistentSource
 		if _, err := tokenSource.Token(); err != nil {
@@ -230,95 +230,26 @@ func main() {
 		return
 	}
 
-	// 5. Run interactive or single-prompt mode
-	if promptFlag != "" {
-		runPrompt(ctx, provider, modelFlag, promptFlag, effortFlag)
-		return
-	}
-
-	// Interactive REPL loop
-	fmt.Printf("Connected to Antigravity Provider (%s)\n", modelFlag)
-	fmt.Println("Type your prompt and press Enter (or 'exit' to quit):")
-	scanner := bufio.NewScanner(os.Stdin)
-	for {
-		fmt.Print("\n> ")
-		if !scanner.Scan() {
-			break
-		}
-		input := strings.TrimSpace(scanner.Text())
-		if input == "" {
-			continue
-		}
-		if input == "exit" || input == "quit" {
-			break
-		}
-		runPrompt(ctx, provider, modelFlag, input, effortFlag)
-	}
-}
-
-func runPrompt(ctx context.Context, provider llm.Provider, modelName, prompt, effort string) {
-	model, err := llm.NewModel(provider, modelName, nil)
+	// 5. Run interactive REPL or single-prompt mode via shared agentrepl
+	model, err := llm.NewModel(provider, modelFlag, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating model: %v\n", err)
-		return
+		os.Exit(1)
 	}
 	model = model.WithTemperature(0.7)
-	if effort != "" {
-		model = model.WithThinkingEffort(effort)
+	if effortFlag != "" {
+		model = model.WithThinkingEffort(effortFlag)
 	} else {
 		model = model.WithThinking(2048)
 	}
 
-	fmt.Printf("\n[%s]:\n", modelName)
-
-	stream, err := model.Stream(ctx, []message.Message{
-		message.NewUserText(prompt),
-	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating stream: %v\n", err)
-		return
-	}
-
-	var thoughtStarted bool
-	for chunk, err := range stream {
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "\nStream error: %v\n", err)
-			return
-		}
-
-		for _, block := range chunk.Content {
-			switch b := block.(type) {
-			case *message.ThinkingBlock:
-				if !thoughtStarted {
-					fmt.Print("\033[90m[Thinking] ")
-					thoughtStarted = true
-				}
-				fmt.Print(b.Thinking)
-			case *message.TextBlock:
-				if thoughtStarted {
-					fmt.Print("\033[0m\n\n")
-					thoughtStarted = false
-				}
-				fmt.Print(b.Text)
-			}
-		}
-
-		if chunk.Done && chunk.Metrics != nil {
-			if thoughtStarted {
-				fmt.Print("\033[0m\n")
-			}
-			details := fmt.Sprintf("In=%d, Out=%d, Total=%d",
-				chunk.Metrics.Tokens.Input,
-				chunk.Metrics.Tokens.Output,
-				chunk.Metrics.TotalTokens,
-			)
-			if chunk.Metrics.Tokens.Reasoning > 0 {
-				details += fmt.Sprintf(", Reasoning=%d", chunk.Metrics.Tokens.Reasoning)
-			}
-			if chunk.Metrics.Tokens.CacheRead > 0 {
-				details += fmt.Sprintf(", CacheRead=%d", chunk.Metrics.Tokens.CacheRead)
-			}
-			fmt.Printf("\n\n\033[90m[Done: %s | Tokens: %s]\033[0m\n", chunk.DoneReason, details)
-		}
+	if err := agentrepl.Run(ctx, model, agentrepl.Options{
+		Title:     fmt.Sprintf("Antigravity Provider (%s)", modelFlag),
+		GraphName: "AntigravityAgent",
+		Prompt:    promptFlag,
+		Stream:    true,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "Error running agent: %v\n", err)
+		os.Exit(1)
 	}
 }

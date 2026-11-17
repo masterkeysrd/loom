@@ -116,26 +116,148 @@ type CacheManager interface {
 	DeleteCache(context.Context, string) error
 }
 
-// QuotaInfo describes the remaining capacity fraction and rate-limit reset window for a model.
-type QuotaInfo struct {
-	// RemainingFraction is the available capacity between 0.0 and 1.0 (e.g. 0.85 = 85%).
+// QuotaUnit identifies what a quota bucket counts.
+type QuotaUnit string
+
+const (
+	// QuotaUnitPercent represents a percentage/fraction-only limit without discrete counts.
+	QuotaUnitPercent QuotaUnit = "percent"
+	// QuotaUnitRequests represents discrete requests or premium interactions.
+	QuotaUnitRequests QuotaUnit = "requests"
+	// QuotaUnitCredits represents server-billed credits or AI units.
+	QuotaUnitCredits QuotaUnit = "credits"
+	// QuotaUnitTokens represents token-based quota budgets.
+	QuotaUnitTokens QuotaUnit = "tokens"
+)
+
+// QuotaBucket describes a single rate-limit or billing quota bucket
+// (for example, a rolling burst window, a weekly limit, a monthly
+// premium-request pool, or a per-model shared pool).
+type QuotaBucket struct {
+	// ID uniquely identifies this bucket within a snapshot (e.g. "5h", "7d",
+	// "premium_interactions", or a model/pool ID).
+	ID string `json:"id"`
+
+	// Scope describes the breadth of the bucket (e.g. "account", "plan",
+	// "model", "session").
+	Scope string `json:"scope,omitempty"`
+
+	// Window is the replenishment or rolling duration of this bucket (for example,
+	// 5*time.Hour or 7*24*time.Hour). Zero means the window is fixed/monthly or
+	// unspecified by the provider.
+	Window time.Duration `json:"window,omitempty"`
+
+	// Unit identifies what Limit, Used, and Overage measure.
+	Unit QuotaUnit `json:"unit,omitempty"`
+
+	// Limit is the total allocated capacity in Unit (0 when the provider only
+	// reports percentages or Unlimited is true).
+	Limit float64 `json:"limit,omitempty"`
+
+	// Used is the consumed amount in Unit within the current window.
+	Used float64 `json:"used,omitempty"`
+
+	// RemainingFraction is the available capacity between 0.0 and 1.0
+	// (e.g. 0.85 = 85%). When Unlimited is true, RemainingFraction is typically 1.0.
 	RemainingFraction float64 `json:"remainingFraction"`
 
-	// ResetTime is the ISO 8601 / RFC 3339 timestamp string when the quota window resets.
-	ResetTime string `json:"resetTime,omitempty"`
+	// Unlimited reports whether this bucket has no metered ceiling.
+	Unlimited bool `json:"unlimited,omitempty"`
+
+	// Overage is the overage consumption beyond Limit (if permitted by the plan).
+	Overage float64 `json:"overage,omitempty"`
+
+	// ResetAt is the time when this quota window resets, if known.
+	ResetAt *time.Time `json:"resetAt,omitempty"`
 }
 
 // Percentage returns RemainingFraction multiplied by 100.
-func (q QuotaInfo) Percentage() float64 {
-	return q.RemainingFraction * 100
+func (b QuotaBucket) Percentage() float64 {
+	return b.RemainingFraction * 100
 }
 
-// ParsedResetTime parses ResetTime as RFC 3339 or returns a zero time if empty or invalid.
-func (q QuotaInfo) ParsedResetTime() (time.Time, error) {
-	if q.ResetTime == "" {
-		return time.Time{}, nil
+// Remaining returns Limit - Used clamped at zero, or zero when Limit <= 0.
+func (b QuotaBucket) Remaining() float64 {
+	if b.Limit <= 0 {
+		return 0
 	}
-	return time.Parse(time.RFC3339, q.ResetTime)
+	if rem := b.Limit - b.Used; rem > 0 {
+		return rem
+	}
+	return 0
+}
+
+// Exhausted reports whether this bucket has no remaining capacity.
+func (b QuotaBucket) Exhausted() bool {
+	return !b.Unlimited && b.RemainingFraction <= 0
+}
+
+// QuotaBuckets is an ordered list of buckets constraining a model or request.
+type QuotaBuckets []QuotaBucket
+
+// Bottleneck returns the most constraining bucket in the set (preferring
+// metered buckets over unlimited ones, then selecting the lowest RemainingFraction).
+func (bs QuotaBuckets) Bottleneck() (QuotaBucket, bool) {
+	if len(bs) == 0 {
+		return QuotaBucket{}, false
+	}
+	best := bs[0]
+	for _, b := range bs[1:] {
+		if best.Unlimited && !b.Unlimited {
+			best = b
+			continue
+		}
+		if b.Unlimited && !best.Unlimited {
+			continue
+		}
+		if b.RemainingFraction < best.RemainingFraction {
+			best = b
+		}
+	}
+	return best, true
+}
+
+// Get looks up a bucket in the slice by its ID.
+func (bs QuotaBuckets) Get(id string) (QuotaBucket, bool) {
+	for _, b := range bs {
+		if b.ID == id {
+			return b, true
+		}
+	}
+	return QuotaBucket{}, false
+}
+
+// QuotaSnapshot represents a point-in-time view of a provider's quota buckets
+// and how models map onto those shared or dedicated buckets.
+type QuotaSnapshot struct {
+	// CollectedAt is when this snapshot was retrieved from the provider.
+	CollectedAt time.Time `json:"collectedAt,omitempty"`
+
+	// Buckets maps canonical bucket IDs to their quota state. Multiple models
+	// sharing the same underlying pool reference the same bucket ID here.
+	Buckets map[string]QuotaBucket `json:"buckets,omitempty"`
+
+	// Models maps model IDs to the ordered list of bucket IDs that constrain
+	// that model (e.g. ["5h", "7d"] or ["premium_interactions"]).
+	Models map[string][]string `json:"models,omitempty"`
+}
+
+// ForModel returns the QuotaBuckets referenced by model in declared order.
+func (s QuotaSnapshot) ForModel(model string) (QuotaBuckets, bool) {
+	ids, ok := s.Models[model]
+	if !ok || len(ids) == 0 {
+		return nil, false
+	}
+	out := make(QuotaBuckets, 0, len(ids))
+	for _, id := range ids {
+		if b, exists := s.Buckets[id]; exists {
+			out = append(out, b)
+		}
+	}
+	if len(out) == 0 {
+		return nil, false
+	}
+	return out, true
 }
 
 // ModelLister is an optional interface that providers can implement if they
@@ -159,12 +281,14 @@ type ModelLister interface {
 // QuotaProvider is an optional interface that providers can implement if they
 // support querying model quotas, usage limits, or rate-limit replenishment windows.
 type QuotaProvider interface {
-	// GetQuota returns quota information for the given model ID, resolving aliases if applicable.
-	// Returns false if no quota information is available for the model.
-	GetQuota(ctx context.Context, model string) (QuotaInfo, bool, error)
+	// GetQuota returns all quota buckets constraining the given model ID,
+	// resolving aliases if applicable. Returns false if no quota information
+	// is available for the model.
+	GetQuota(ctx context.Context, model string) (QuotaBuckets, bool, error)
 
-	// ListQuotas returns a map of model IDs to their respective QuotaInfo.
-	ListQuotas(ctx context.Context) (map[string]QuotaInfo, error)
+	// GetQuotaSnapshot returns the full point-in-time quota snapshot, separating
+	// shared buckets from per-model bucket bindings.
+	GetQuotaSnapshot(ctx context.Context) (QuotaSnapshot, error)
 }
 
 // DeferredToolsSupport is an optional interface that providers can implement

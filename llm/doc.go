@@ -30,8 +30,8 @@
 // Providers may optionally implement extended capability interfaces:
 //
 //   - [CacheManager]: for backends supporting explicit context cache management (e.g. Gemini).
-//   - [QuotaProvider]: for backends that support live or cached quota, usage percentage,
-//     and rate-limit replenishment window inspection (e.g. Google Antigravity).
+//   - [QuotaProvider]: for backends that support live or cached quota buckets, usage
+//     limits, and rate-limit replenishment windows (e.g. Google Antigravity, GitHub Copilot).
 //
 // # Registry
 //

@@ -204,23 +204,29 @@ count, _ := counter.CountTokens(ctx, messages)
 
 ## Quota & Rate Limit Inspection
 
-Providers that support quota tracking (such as Google Antigravity) implement the [`llm.QuotaProvider`](file:///Users/masterkeysrd/Projects/loom/llm/provider.go) interface. This allows consumers to query real-time remaining capacity percentages and reset windows without hardcoding provider dependencies:
+Providers that support quota tracking (such as Google Antigravity and GitHub Copilot) implement the [`llm.QuotaProvider`](file:///Users/masterkeysrd/Projects/loom/llm/provider.go) interface. This allows consumers to inspect multi-window or account-pooled `QuotaBucket` entries and reset timestamps without hardcoding provider dependencies:
 
 ```go
 // Check if the provider supports quota inspection
 if qp, ok := provider.(llm.QuotaProvider); ok {
-    // 1. Inspect quota for a specific model (resolving aliases like "gemini-3.8-flash")
-    if quota, found, err := qp.GetQuota(ctx, "gemini-3.8-flash"); found && err == nil {
-        fmt.Printf("Model capacity: %.1f%%\n", quota.Percentage())
-        if reset, err := quota.ParsedResetTime(); err == nil && !reset.IsZero() {
-            fmt.Printf("Replenishes at: %s\n", reset.Format(time.RFC1123))
+    // 1. Inspect constraining buckets for a specific model (resolving aliases)
+    if buckets, found, err := qp.GetQuota(ctx, "gemini-3.8-flash"); found && err == nil {
+        if bottleneck, ok := buckets.Bottleneck(); ok {
+            fmt.Printf("Model capacity: %.1f%%\n", bottleneck.Percentage())
+            if bottleneck.ResetAt != nil {
+                fmt.Printf("Replenishes at: %s\n", bottleneck.ResetAt.Format(time.RFC1123))
+            }
         }
     }
 
-    // 2. List quotas across all available models
-    quotas, _ := qp.ListQuotas(ctx)
-    for modelID, q := range quotas {
-        fmt.Printf("• %-28s: %5.1f%%\n", modelID, q.Percentage())
+    // 2. Inspect the full snapshot of shared buckets and model bindings
+    snap, _ := qp.GetQuotaSnapshot(ctx)
+    for model := range snap.Models {
+        if buckets, ok := snap.ForModel(model); ok {
+            if b, ok := buckets.Bottleneck(); ok {
+                fmt.Printf("• %-28s: %5.1f%%\n", model, b.Percentage())
+            }
+        }
     }
 }
 ```

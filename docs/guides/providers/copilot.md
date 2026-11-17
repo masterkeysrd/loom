@@ -42,7 +42,7 @@ if err != nil {
 }
 ```
 
-Model profiles are populated dynamically via `provider.ListModels(ctx)` (`models.list` or custom `WithOnListModels`) with `OverrideProfile` support. Always call `defer provider.Close()` so active/parked sessions and the SDK runtime stop cleanly.
+Model profiles are populated dynamically via `provider.ListModels(ctx)` (`models.list` or custom `WithOnListModels`) with `OverrideProfile` support. Discovered model IDs that match generated `models.dev` metadata (`providers/copilot/profiles.gen.go`, refreshed via `go generate ./providers/copilot`) are automatically enriched with family, release dates, descriptions, input modalities (`PDF`/`Audio`/`Video`), attachment support, USD reference pricing/tiers, and fallback context/reasoning metadata—while keeping live `models.list` limits/efforts authoritative, enforcing `Capabilities.Temperature = false`, and never exposing unadvertised static catalog entries in `ListProfiles()` or `GetProfile()`. Always call `defer provider.Close()` so active/parked sessions and the SDK runtime stop cleanly.
 
 ## 3. How Loops, Retries & History Work
 
@@ -151,4 +151,4 @@ go run ./examples/copilot --debug --endpoint http://localhost:11434/v1 --model q
 
 - Sampling and context parameters not exposed by the Copilot SDK (`Temperature`, `TopP`, `TopK`, `PresencePenalty`, `FrequencyPenalty`, `Stop`, `MaxTokens`, `ContextWindow`) are ignored (except BYOK `ProviderConfig.MaxPromptTokens` / `MaxOutputTokens`).
 - `ResponseSchema` and `ThinkingConfig` (`ReasoningEffort`) are forwarded when supported.
-- Dynamic `ModelInfo` entries report billing multipliers and AI-credit prices rather than USD token pricing, so `Profile.Pricing` remains zero unless overridden via `OverrideProfile`.
+- Dynamic `ModelInfo` entries report billing multipliers and AI-credit prices rather than USD token pricing; `Profile.Pricing` and long-context tiers are filled from generated `models.dev` reference data (`profiles.gen.go`) when the model ID matches, and remain zero for custom/BYOK or uncatalogued IDs unless overridden via `OverrideProfile`.

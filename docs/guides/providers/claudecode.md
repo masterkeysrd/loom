@@ -134,6 +134,20 @@ if errors.As(err, &syncErr) && len(syncErr.Messages) > 0 {
 }
 ```
 
+### Quota Inspection (`llm.QuotaProvider`)
+
+When running with a `claude.ai` subscription credential, `Provider` implements [`llm.QuotaProvider`](../llm-package.md#6-quota--rate-limit-inspection-llmquotaprovider) by querying Claude Code's `/usage` slash command and decoding `usage_report.rate_limits` (`limits[]` rolling windows and `extra_usage` credit pools):
+
+```go
+if qp, ok := provider.(llm.QuotaProvider); ok {
+    snap, err := qp.GetQuotaSnapshot(ctx) // cached 30s by default (WithQuotaCacheTTL)
+    _ = snap
+    _ = err
+}
+```
+
+Unauthenticated sessions or plain `ANTHROPIC_API_KEY` environments return an empty snapshot without error. Use `go run ./examples/claudecode --quota` to inspect active pools from the CLI.
+
 ## 6. Running the Example & Local Endpoints (e.g. Ollama)
 
 See [`examples/claudecode`](../../../examples/claudecode/main.go) for a streaming interactive REPL + `Agent -> Tools -> Agent` demo:
@@ -141,6 +155,9 @@ See [`examples/claudecode`](../../../examples/claudecode/main.go) for a streamin
 ```bash
 # With your local Claude Code login (~/.claude):
 go run ./examples/claudecode --model sonnet
+
+# Inspect subscription rate limits and extra usage via /usage:
+go run ./examples/claudecode --quota
 
 # With a separate account config directory:
 go run ./examples/claudecode --config-dir ~/.claude-work --model sonnet
@@ -152,6 +169,8 @@ go run ./examples/claudecode --debug --endpoint http://localhost:11434 --model q
 
 ## 7. Limitations
 
-- Sampling parameters not exposed by the `claude` CLI (`Temperature`, `TopP`, `TopK`, `PresencePenalty`, `FrequencyPenalty`, `Stop`, `ContextWindow`) are ignored.
+- Sampling parameters not exposed by the `claude` CLI (`Temperature`, `TopP`, `TopK`, `PresencePenalty`, `FrequencyPenalty`, `Stop`, `ContextWindow`) are ignored; `Thinking.Effort` maps to `--effort <level>` (`low`, `medium`, `high`, `xhigh`, `max`).
+- Model swaps and permission-mode changes on sequential warm turns reuse the live session via `control_request` (`set_model`, `set_permission_mode`), and context cancellation issues an `interrupt` control request before shutdown.
+- `ListModels` / `GetModel` discover models dynamically from the CLI's `initialize` handshake (matching `providers/copilot`, so `ListProfiles` / `GetProfile` return cached discovered models + overrides without spawning eagerly) and enrich matched IDs with limits, pricing, and modalities from `providers/anthropic`.
 - When using a Claude Pro/Max subscription (`CLAUDE_CODE_OAUTH_TOKEN` or local login), reported dollar estimates are informational; token usage (`Input`, `Output`, `CacheRead`, `CacheWrite`) is still reported in Loom telemetry and Studio.
 - If you have an `ANTHROPIC_API_KEY` and do not need the `claude` CLI harness or subscription auth, [`providers/anthropic`](anthropic.md) remains the recommended choice for lowest latency and full parameter control.

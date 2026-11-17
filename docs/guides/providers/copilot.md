@@ -110,11 +110,13 @@ provider, err := loomcopilot.NewDefaultProvider(
 
 When `WithSyncOnWrite(true)` is enabled, idle background compaction/truncation or session shutdown causes the next stale write to fail with `*llm.OutOfSyncError` (carrying reconciled `syncErr.Messages`), matching `providers/claudecode`.
 
-### Quota Inspection (`llm.QuotaProvider`)
+### Quota Inspection & Credit Consumption (`llm.QuotaProvider`, `TokenMetrics.Credits`)
 
 ```go
-quotas, err := provider.ListQuotas(ctx) // "premium_interactions", "chat", "completions"
+snap, err := provider.GetQuotaSnapshot(ctx) // "premium_interactions", "chat", "completions"
 ```
+
+When Copilot reports `AssistantUsageData`, `chunk.Metrics.Credits` (`message.CreditMetrics`) is populated with server-reported `ai_credits` (`TotalNanoAiu / 1e9`) or `premium_requests` fallback, along with `Multiplier` (`Cost`) and `Status` (`AiCreditsStatus`).
 
 ### BYOK / Local Endpoints (e.g. Ollama)
 
@@ -137,6 +139,9 @@ go run ./examples/copilot
 
 # Using a specific Copilot model:
 go run ./examples/copilot --model gpt-5.4
+
+# Inspect account quota buckets:
+go run ./examples/copilot --quota
 
 # Using a local OpenAI-compatible BYOK endpoint (e.g. Ollama) with trace logs:
 go run ./examples/copilot --debug --endpoint http://localhost:11434/v1 --model qwen3-coder

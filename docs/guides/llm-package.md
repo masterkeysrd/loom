@@ -172,23 +172,25 @@ if ml, ok := provider.(llm.ModelLister); ok {
 
 ## 6. Quota & Rate Limit Inspection (`llm.QuotaProvider`)
 
-Providers that expose quota or rolling-window capacity metrics (such as Google Antigravity) implement the [`llm.QuotaProvider`](file:///Users/masterkeysrd/Projects/loom/llm/provider.go) interface. This allows callers to inspect remaining capacity percentages and reset times:
+Providers that expose quota or rolling-window capacity metrics (such as Google Antigravity and GitHub Copilot) implement the [`llm.QuotaProvider`](file:///Users/masterkeysrd/Projects/loom/llm/provider.go) interface. This allows callers to inspect multi-bucket constraints (e.g. rolling burst windows, weekly caps, monthly request pools) and reset times:
 
 ```go
 // Type-assert to llm.QuotaProvider
 if qp, ok := provider.(llm.QuotaProvider); ok {
-    // Inspect a specific model (resolves aliases like "gemini-3.8-flash")
-    if quota, ok, err := qp.GetQuota(ctx, "gemini-3.8-flash"); ok && err == nil {
-        fmt.Printf("Remaining: %.1f%%\n", quota.Percentage())
-        if reset, err := quota.ParsedResetTime(); err == nil && !reset.IsZero() {
-            fmt.Printf("Replenishes at: %s\n", reset.Format(time.RFC3339))
+    // Inspect all buckets constraining a specific model (resolving aliases like "gemini-3.8-flash")
+    if buckets, ok, err := qp.GetQuota(ctx, "gemini-3.8-flash"); ok && err == nil {
+        if bottleneck, ok := buckets.Bottleneck(); ok {
+            fmt.Printf("Remaining: %.1f%%\n", bottleneck.Percentage())
+            if bottleneck.ResetAt != nil {
+                fmt.Printf("Replenishes at: %s\n", bottleneck.ResetAt.Format(time.RFC3339))
+            }
         }
     }
 
-    // List all model quotas
-    quotas, _ := qp.ListQuotas(ctx)
-    for model, q := range quotas {
-        fmt.Printf("• %s: %.1f%%\n", model, q.Percentage())
+    // Retrieve the full snapshot separating shared buckets from model bindings
+    snap, _ := qp.GetQuotaSnapshot(ctx)
+    for id, bucket := range snap.Buckets {
+        fmt.Printf("• %s: %.1f%%\n", id, bucket.Percentage())
     }
 }
 ```
@@ -225,9 +227,11 @@ The `Registry` is useful for decoupling your application from specific provider 
 - Use `llm.IdleMessageNotifier` and `llm.OutOfSyncError` to keep local history synchronized with stateful providers.
 - Use `llm.Registry` to manage multiple providers in a large application.
 
-## 9. Cost Estimation and Pricing Tiers
+## 9. Cost Estimation, Pricing Tiers & Provider Credits
 
 `profile.Profile.Estimate(tokens)` returns a `CostEstimate` (`Details`, `Total`, `Tier`, `Priced`). `Model.Stream` copies these onto `chunk.Metrics` (`Cost`, `TotalCost`, `CostTier`, `Priced`) for LLM, embedding, and decision models.
+
+When a provider also reports server-side billing or quota-unit consumption on a turn (for example, Copilot's `ai_credits` / `premium_requests` and billing `Multiplier`, or Claude Code's `total_cost_usd` reported as `Unit: "usd", Estimated: true`), those values are populated on `chunk.Metrics.Credits` (`message.CreditMetrics`) independently of static profile cost estimation.
 
 - **Token semantics**: `message.TokenDetails.Input` is the total prompt size and *includes* cache read/write tokens (they are subsets of `Input`), matching LangChain's `UsageMetadata`. Provider mappings normalize to this rule. The uncached part, `Input - CacheRead - CacheWrite`, is billed at the input price.
 - **Tiers**: a `TierPricing` has a `Condition{Type, Size}`. `TierConditionContext` measures `Input` (output excluded) and applies when it is **strictly greater** than `Size`. Of the matching tiers, the one with the highest `Size` wins regardless of slice order. Unknown condition types never match. A tier without a `Label` gets a generated one such as `context>200000`.

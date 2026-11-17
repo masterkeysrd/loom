@@ -172,23 +172,29 @@ model = model.WithExtension(loomantigravity.Session{
 
 ## 4. Quota & Rate Limit Inspection (`llm.QuotaProvider`)
 
-The Antigravity provider implements Loom's [`llm.QuotaProvider`](../llm-package.md#5-quota--rate-limit-inspection-llmquotaprovider) interface. Quotas are decoupled from the 1-hour profile metadata cache to ensure fresh reporting without staleness:
+The Antigravity provider implements Loom's [`llm.QuotaProvider`](../llm-package.md#6-quota--rate-limit-inspection-llmquotaprovider) interface, combining model mappings from `/v1internal:fetchAvailableModels` with multi-window pools (such as 5-hour and weekly buckets) from `/v1internal:retrieveUserQuotaSummary`. Quotas are decoupled from the 1-hour profile metadata cache to ensure fresh reporting without staleness:
 
 ```go
 // Assert llm.QuotaProvider
 if qp, ok := provider.(llm.QuotaProvider); ok {
-    // Check quota for a specific model (resolves aliases automatically)
-    if quota, found, err := qp.GetQuota(ctx, "gemini-3.8-flash"); found && err == nil {
-        fmt.Printf("Remaining: %.1f%%\n", quota.Percentage())
-        if reset, err := quota.ParsedResetTime(); err == nil && !reset.IsZero() {
-            fmt.Printf("Replenishes at: %s\n", reset.Format(time.RFC3339))
+    // Check quota buckets for a specific model (resolves aliases automatically)
+    if buckets, found, err := qp.GetQuota(ctx, "gemini-3.8-flash"); found && err == nil {
+        if bottleneck, ok := buckets.Bottleneck(); ok {
+            fmt.Printf("Remaining: %.1f%%\n", bottleneck.Percentage())
+            if bottleneck.ResetAt != nil {
+                fmt.Printf("Replenishes at: %s\n", bottleneck.ResetAt.Format(time.RFC3339))
+            }
         }
     }
 
-    // List all model quotas
-    quotas, _ := qp.ListQuotas(ctx)
-    for modelID, q := range quotas {
-        fmt.Printf("• %-30s | Remaining: %5.1f%%\n", modelID, q.Percentage())
+    // Retrieve deduplicated quota snapshot across shared buckets and model bindings
+    snap, _ := qp.GetQuotaSnapshot(ctx)
+    for model := range snap.Models {
+        if buckets, ok := snap.ForModel(model); ok {
+            if b, ok := buckets.Bottleneck(); ok {
+                fmt.Printf("• %-30s | Remaining: %5.1f%%\n", model, b.Percentage())
+            }
+        }
     }
 }
 ```
@@ -198,7 +204,7 @@ if qp, ok := provider.(llm.QuotaProvider); ok {
 Quota caching can be tuned in `loomantigravity.Config`:
 - **`QuotaCacheTTL: 30 * time.Second`** (Default): Avoids redundant network roundtrips during rapid polling.
 - **`QuotaCacheTTL: -1`**: Bypasses the cache and always executes direct live network queries.
-- Direct uncached queries can also be executed via `provider.Client().FetchQuotas(ctx)`.
+- Direct uncached raw protocol queries can also be executed via `provider.Client()` (`*sdk.Client`, e.g. `RetrieveUserQuotaSummary(ctx)` and `FetchAvailableModels(ctx)`).
 
 ---
 

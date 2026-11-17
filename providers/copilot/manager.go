@@ -409,7 +409,7 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 		Model:                 req.Model,
 		ClientName:            m.cfg.ClientName,
 		WorkingDirectory:      workingDir,
-		Streaming:             copilot.Bool(true),
+		Streaming:             new(true),
 		ReasoningEffort:       mapThinkingToReasoningEffort(req.Thinking),
 		ReasoningSummary:      ext.ReasoningSummary,
 		Tools:                 tools,

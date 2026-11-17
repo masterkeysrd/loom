@@ -24,6 +24,8 @@ var (
 )
 
 // Provider implements [llm.Provider] using the official GitHub Copilot Go SDK.
+//
+//go:generate loomgen llm-profiles -provider=github-copilot -out=profiles.gen.go -pkg=loomcopilot
 type Provider struct {
 	cfg        Config
 	mgr        *sessionManager

@@ -1,6 +1,7 @@
 package loomcopilot
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/tool"
 )
 
@@ -220,6 +222,66 @@ func TestMapModelInfoAndQuota(t *testing.T) {
 	if b.ResetAt == nil || !b.ResetAt.Equal(reset) {
 		t.Fatalf("unexpected ResetAt: %v", b.ResetAt)
 	}
+}
+
+func TestMapModelInfoStaticEnrichment(t *testing.T) {
+	t.Run("prefers live limits and forces temperature false", func(t *testing.T) {
+		maxWin := 500000
+		maxOut := 32000
+		prof := mapModelInfoToProfile(copilot.ModelInfo{
+			ID:   "gpt-5.4",
+			Name: "GPT 5.4 Live",
+			Capabilities: copilot.ModelCapabilities{
+				Supports: copilot.ModelSupports{Vision: false, ReasoningEffort: true},
+				Limits:   copilot.ModelLimits{MaxContextWindowTokens: &maxWin, MaxOutputTokens: &maxOut},
+			},
+			SupportedReasoningEfforts: []string{"low", "high"},
+			DefaultReasoningEffort:    "low",
+		})
+
+		if prof.Name != "GPT 5.4 Live" {
+			t.Fatalf("expected live Name preserved, got %q", prof.Name)
+		}
+		if prof.Capabilities.Temperature {
+			t.Fatal("expected Temperature capability forced false even when static profile enables it")
+		}
+		if !prof.Capabilities.Attachment {
+			t.Fatal("expected Attachment enriched from static profile")
+		}
+		if prof.Limits.Context != 500000 || prof.Limits.Output != 32000 {
+			t.Fatalf("expected live limits preserved, got %+v", prof.Limits)
+		}
+		if len(prof.Capabilities.ReasoningOptions) != 1 || !slices.Equal(prof.Capabilities.ReasoningOptions[0].Values, []string{"low", "high"}) || prof.Capabilities.ReasoningOptions[0].Default != "low" {
+			t.Fatalf("expected live ReasoningOptions preserved, got %+v", prof.Capabilities.ReasoningOptions)
+		}
+		if prof.Family != "gpt" || prof.Knowledge != "2025-08-31" || prof.ReleaseDate != "2026-03-05" || prof.Description == "" {
+			t.Fatalf("expected static metadata enriched, got %+v", prof)
+		}
+		if prof.Pricing.Input != 2.5 || prof.Pricing.Output != 15 || len(prof.Pricing.TieredLimits) != 1 {
+			t.Fatalf("expected static pricing and tiers enriched, got %+v", prof.Pricing)
+		}
+		if !slices.Contains(prof.Modalities.Inputs, profile.ModalityImage) || !slices.Contains(prof.Modalities.Inputs, profile.ModalityPDF) {
+			t.Fatalf("expected static image and PDF modalities merged, got %+v", prof.Modalities.Inputs)
+		}
+	})
+
+	t.Run("fills missing limits and reasoning from static profile", func(t *testing.T) {
+		prof := mapModelInfoToProfile(copilot.ModelInfo{
+			ID: "gpt-5.4",
+		})
+		if prof.Name != "GPT-5.4" {
+			t.Fatalf("expected static friendly Name, got %q", prof.Name)
+		}
+		if prof.Limits.Context != 1050000 || prof.Limits.Output != 128000 {
+			t.Fatalf("expected static limits fallback, got %+v", prof.Limits)
+		}
+		if !prof.Capabilities.Reasoning || len(prof.Capabilities.ReasoningOptions) != 1 {
+			t.Fatalf("expected static reasoning options fallback, got %+v", prof.Capabilities)
+		}
+		if prof.Capabilities.Temperature {
+			t.Fatal("expected Temperature forced false")
+		}
+	})
 }
 
 func TestMapThinkingToReasoningEffort(t *testing.T) {

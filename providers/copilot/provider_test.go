@@ -766,7 +766,7 @@ func TestCopilotAgentToolLoopWarmReuseAndParallelTools(t *testing.T) {
 
 		b := graph.New[testAgentState]()
 		container := tool.NewContainer(echoTool)
-		b.AddNode("agent", graph.NodeFunc[testAgentState](func(ctx context.Context, s testAgentState) (graph.Command[testAgentState], error) {
+		b.AddNode("agent", graph.NodeFunc(func(ctx context.Context, s testAgentState) (graph.Command[testAgentState], error) {
 			resp, invErr := model.Invoke(ctx, s.Messages)
 			if invErr != nil {
 				return nil, invErr
@@ -776,7 +776,7 @@ func TestCopilotAgentToolLoopWarmReuseAndParallelTools(t *testing.T) {
 				return cur
 			}), nil
 		}))
-		b.AddNode("tools", graph.NodeFunc[testAgentState](func(ctx context.Context, s testAgentState) (graph.Command[testAgentState], error) {
+		b.AddNode("tools", graph.NodeFunc(func(ctx context.Context, s testAgentState) (graph.Command[testAgentState], error) {
 			last := s.Messages[len(s.Messages)-1].(*message.Assistant)
 			var results []message.Message
 			for _, tc := range last.ToolCalls() {
@@ -925,6 +925,13 @@ func TestCopilotModelListerQuotaAndResponseSchema(t *testing.T) {
 	p, logPath := newTestProvider(t, "basic")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
+	if len(p.ListProfiles()) != 0 {
+		t.Fatalf("expected empty ListProfiles before discovery, got %+v", p.ListProfiles())
+	}
+	if _, ok := p.GetProfile("gpt-5.4"); ok {
+		t.Fatal("expected static catalog model gpt-5.4 not exposed before discovery")
+	}
 
 	models, err := p.ListModels(ctx)
 	if err != nil {

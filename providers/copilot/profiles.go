@@ -48,7 +48,7 @@ func mapModelInfoToProfile(m copilot.ModelInfo) profile.Profile {
 		limits.Output = *m.Capabilities.Limits.MaxOutputTokens
 	}
 
-	return profile.Profile{
+	prof := profile.Profile{
 		ID:           m.ID,
 		Name:         name,
 		Capabilities: caps,
@@ -58,6 +58,21 @@ func mapModelInfoToProfile(m copilot.ModelInfo) profile.Profile {
 			Outputs: []profile.Modality{profile.ModalityText},
 		},
 	}
+
+	if ref, ok := staticProfiles[m.ID]; ok {
+		prof = profile.Merge(prof, ref)
+		prof.OpenWeights = ref.OpenWeights
+		prof.Capabilities.Attachment = prof.Capabilities.Attachment || ref.Capabilities.Attachment
+		prof.Capabilities.Reasoning = prof.Capabilities.Reasoning || ref.Capabilities.Reasoning
+		prof.Capabilities.Temperature = false // Copilot SDK sessions do not expose sampling temperature.
+		for _, mod := range ref.Modalities.Inputs {
+			if !slices.Contains(prof.Modalities.Inputs, mod) {
+				prof.Modalities.Inputs = append(prof.Modalities.Inputs, mod)
+			}
+		}
+	}
+
+	return prof
 }
 
 // ListProfiles returns cached dynamically discovered Copilot profiles merged

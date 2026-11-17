@@ -59,6 +59,7 @@ nav:
       - OpenAI: guides/providers/openai.md
       - Anthropic: guides/providers/anthropic.md
       - Claude Code: guides/providers/claudecode.md
+      - GitHub Copilot: guides/providers/copilot.md
       - Google Gemini: guides/providers/google.md
       - Ollama: guides/providers/ollama.md
       - TypeSafe AI: guides/providers/typesafe.md

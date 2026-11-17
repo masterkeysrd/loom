@@ -95,6 +95,18 @@ p, _ := loomclaudecode.NewDefaultProvider()
 defer p.Close()
 ```
 
+### GitHub Copilot
+- **Package**: `github.com/masterkeysrd/loom/providers/copilot`
+- **Auth**: Uses the official GitHub Copilot Go SDK (`copilot login`, `COPILOT_GITHUB_TOKEN`, fine-grained PATs, or BYOK endpoints via `WithBYOKProvider`).
+- **Features**: Warm session reuse and parked external tool calls for `Agent -> Tools -> Agent` loops, dynamic `ModelLister`, `QuotaProvider`, native compaction (`Session.Compact`), `IdleMessageNotifier`, and `OutOfSyncError`.
+
+```go
+import loomcopilot "github.com/masterkeysrd/loom/providers/copilot"
+
+p, _ := loomcopilot.NewDefaultProvider()
+defer p.Close()
+```
+
 ## Configuring the Model
 
 The `Model` type supports a fluent API for fine-tuning LLM parameters. Each configuration method returns a cloned model with the new settings, making it safe to reuse base models with different parameters.

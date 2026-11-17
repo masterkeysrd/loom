@@ -195,7 +195,7 @@ if qp, ok := provider.(llm.QuotaProvider); ok {
 
 ## 7. Idle Notifications (`llm.IdleMessageNotifier`) & Sync-on-Write (`llm.OutOfSyncError`)
 
-Stateful providers (such as `providers/claudecode`) can push unsolicited `message.Message` events while idle between turns via [`llm.IdleMessageNotifier`](file:///Users/masterkeysrd/Projects/loom/llm/provider.go) and reject out-of-sync writes with [`llm.OutOfSyncError`](file:///Users/masterkeysrd/Projects/loom/llm/provider.go):
+Stateful providers (such as `providers/claudecode` and `providers/copilot`) can push unsolicited `message.Message` events while idle between turns via [`llm.IdleMessageNotifier`](file:///Users/masterkeysrd/Projects/loom/llm/provider.go) and reject out-of-sync writes with [`llm.OutOfSyncError`](file:///Users/masterkeysrd/Projects/loom/llm/provider.go):
 
 ```go
 if notifier, ok := provider.(llm.IdleMessageNotifier); ok {

@@ -1,0 +1,71 @@
+name: Update LLM Profiles
+
+on:
+  schedule:
+    # Run daily at 06:00 UTC
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: update-llm-profiles
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  generate-profiles:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub App Token
+        uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install loomgen
+        run: |
+          go install ./cmd/loomgen
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Generate LLM profiles
+        run: go generate ./...
+
+      - name: Verify generated provider packages
+        run: go test ./providers/...
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          commit-message: |
+            chore(providers): update generated LLM profiles
+
+            Regenerated `profiles.gen.go` catalogs via `go generate ./...` (`loomgen`).
+          committer: ${{ steps.app-token.outputs.app-slug }}[bot] <${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com>
+          author: ${{ steps.app-token.outputs.app-slug }}[bot] <${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com>
+          add-paths: |
+            providers/*/profiles.gen.go
+          branch: chore/update-llm-profiles
+          delete-branch: true
+          title: "chore(providers): update generated LLM profiles"
+          body: |
+            Automated update of generated model profiles from `go generate ./...` (`models.dev`).
+
+            ### Checklist (`AGENTS.md`)
+            - [ ] Review any newly added OpenAI models in `providers/openai/profiles.gen.go` against `modelPrefersResponsesAPI` in `providers/openai/provider.go` and `providers/openai/responses_test.go`.
+            - [ ] Verify all CI checks pass before merging.

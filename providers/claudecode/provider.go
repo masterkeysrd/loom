@@ -2,8 +2,11 @@ package loomclaudecode
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
@@ -17,6 +20,7 @@ var (
 	_ llm.Provider            = (*Provider)(nil)
 	_ profile.Provider        = (*Provider)(nil)
 	_ llm.ModelLister         = (*Provider)(nil)
+	_ llm.QuotaProvider       = (*Provider)(nil)
 	_ llm.IdleMessageNotifier = (*Provider)(nil)
 )
 
@@ -26,6 +30,10 @@ type Provider struct {
 	cfg       Config
 	proxy     *sessionManager
 	overrides sync.Map
+
+	cachedQuotasMu   sync.RWMutex
+	lastQuotaFetched time.Time
+	cachedQuotas     llm.QuotaSnapshot
 }
 
 // NewDefaultProvider creates a [Provider] configured with defaults and optional
@@ -135,16 +143,36 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 	}, nil
 }
 
-// ListModels returns the known Claude Code model profiles (with runtime
-// overrides applied), satisfying [llm.ModelLister].
+// ListModels queries the Claude CLI `initialize` handshake for supported
+// models, enriches matching entries from the Anthropic catalog (limits, pricing,
+// modalities), and applies runtime overrides, satisfying [llm.ModelLister].
 func (p *Provider) ListModels(ctx context.Context) ([]profile.Profile, error) {
-	return p.ListProfiles(), nil
+	if p.proxy == nil {
+		return nil, errors.New("claudecode: provider has nil session manager")
+	}
+	if err := p.proxy.fetchLiveModels(ctx); err != nil {
+		return nil, fmt.Errorf("claudecode: list models: %w", err)
+	}
+	return p.sortedProfiles(p.discoveredProfileMap()), nil
 }
 
-// GetModel returns a single Claude Code model profile by ID, satisfying
-// [llm.ModelLister].
+// GetModel refreshes live CLI model metadata and resolves id (checking
+// explicit OverrideProfile entries first), satisfying [llm.ModelLister].
 func (p *Provider) GetModel(ctx context.Context, id string) (profile.Profile, error) {
-	if prof, ok := p.GetProfile(id); ok {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return profile.Profile{}, errors.New("claudecode: model id is required")
+	}
+	if v, ok := p.overrides.Load(id); ok {
+		return v.(profile.Profile), nil
+	}
+	if p.proxy == nil {
+		return profile.Profile{}, errors.New("claudecode: provider has nil session manager")
+	}
+	if err := p.proxy.ensureLiveModels(ctx); err != nil {
+		return profile.Profile{}, fmt.Errorf("claudecode: get model %q: %w", id, err)
+	}
+	if prof, ok := lookupCaseInsensitive(p.discoveredProfileMap(), id); ok {
 		return prof, nil
 	}
 	return profile.Profile{}, fmt.Errorf("claudecode: model %q not found", id)

@@ -18,6 +18,7 @@ import (
 	"github.com/masterkeysrd/loom/graph"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/stream"
 	"github.com/masterkeysrd/loom/tool"
 )
@@ -37,6 +38,8 @@ func TestMain(m *testing.M) {
 func runMockClaudeCLI() {
 	var (
 		model      = "claude-sonnet-4-6"
+		effort     = ""
+		permMode   = ""
 		resumeID   string
 		sysPrompt  string
 		configDir  = os.Getenv("CLAUDE_CONFIG_DIR")
@@ -53,6 +56,16 @@ func runMockClaudeCLI() {
 		case "--model":
 			if i+1 < len(args) {
 				model = args[i+1]
+				i++
+			}
+		case "--effort":
+			if i+1 < len(args) {
+				effort = args[i+1]
+				i++
+			}
+		case "--permission-mode":
+			if i+1 < len(args) {
+				permMode = args[i+1]
 				i++
 			}
 		case "--resume":
@@ -115,11 +128,109 @@ func runMockClaudeCLI() {
 		writeMu.Unlock()
 	}
 
-	appendLog(fmt.Sprintf("SPAWN session=%s resumed=%v history=%d sys=%q", sessionID, isResumed, historyCnt, sysPrompt))
+	appendLog(fmt.Sprintf("SPAWN session=%s resumed=%v history=%d sys=%q effort=%q mode=%q", sessionID, isResumed, historyCnt, sysPrompt, effort, permMode))
 
 	if scenario == "fail_exit" {
 		_, _ = fmt.Fprintln(os.Stderr, "mock stderr: authentication expired")
 		os.Exit(2)
+	}
+
+	if slices.Contains(args, "/usage") {
+		emit(map[string]any{
+			"type":       "system",
+			"subtype":    "init",
+			"session_id": sessionID,
+			"model":      model,
+		})
+		switch scenario {
+		case "usage_limits":
+			emit(map[string]any{
+				"type":       "assistant",
+				"session_id": sessionID,
+				"message": map[string]any{
+					"role":    "assistant",
+					"model":   "<synthetic>",
+					"content": []map[string]any{{"type": "text", "text": "usage ok"}},
+				},
+				"usage_report": map[string]any{
+					"session": map[string]any{
+						"total_cost_usd": 0,
+					},
+					"rate_limits": map[string]any{
+						"limits": []map[string]any{
+							{
+								"kind":      "seven_day",
+								"percent":   40.0,
+								"resets_at": "2026-11-22T06:00:00Z",
+								"is_active": true,
+							},
+							{
+								"kind":      "five_hour",
+								"percent":   25.0,
+								"resets_at": "2026-11-17T18:00:00Z",
+								"is_active": true,
+							},
+							{
+								"kind":      "seven_day_opus",
+								"percent":   70.0,
+								"resets_at": "2026-11-22T06:00:00Z",
+								"scope": map[string]any{
+									"model": map[string]any{"display_name": "Opus"},
+								},
+								"is_active": true,
+							},
+						},
+						"extra_usage": map[string]any{
+							"is_enabled":    true,
+							"monthly_limit": 60000,
+							"used_credits":  18520,
+							"utilization":   30.866666666666664,
+							"currency":      "USD",
+						},
+					},
+				},
+			})
+		case "usage_extra_only":
+			emit(map[string]any{
+				"type":       "assistant",
+				"session_id": sessionID,
+				"message": map[string]any{
+					"role":    "assistant",
+					"model":   "<synthetic>",
+					"content": []map[string]any{{"type": "text", "text": "usage ok"}},
+				},
+				"usage_report": map[string]any{
+					"rate_limits": map[string]any{
+						"limits": []any{},
+						"extra_usage": map[string]any{
+							"is_enabled":    true,
+							"monthly_limit": 60000,
+							"used_credits":  18520,
+							"utilization":   30.866666666666664,
+							"currency":      "USD",
+						},
+					},
+				},
+			})
+		default:
+			emit(map[string]any{
+				"type":       "assistant",
+				"session_id": sessionID,
+				"message": map[string]any{
+					"role":    "assistant",
+					"model":   "<synthetic>",
+					"content": []map[string]any{{"type": "text", "text": "Total cost: $0.0000"}},
+				},
+			})
+		}
+		emit(map[string]any{
+			"type":       "result",
+			"subtype":    "success",
+			"is_error":   false,
+			"session_id": sessionID,
+			"num_turns":  0,
+		})
+		return
 	}
 
 	scanner := bufio.NewScanner(os.Stdin)
@@ -127,6 +238,8 @@ func runMockClaudeCLI() {
 
 	var advertisedTools []string
 	var pendingToolIDs = make(map[string]string) // control_request_id -> toolName
+	var slowCancelCh chan struct{}
+	var slowCancelOnce sync.Once
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -144,7 +257,8 @@ func runMockClaudeCLI() {
 			reqID, _ := raw["request_id"].(string)
 			reqObj, _ := raw["request"].(map[string]any)
 			subtype, _ := reqObj["subtype"].(string)
-			if subtype == "initialize" {
+			switch subtype {
+			case "initialize":
 				// Emit system init + control_response.
 				emit(map[string]any{
 					"type":       "system",
@@ -152,12 +266,33 @@ func runMockClaudeCLI() {
 					"session_id": sessionID,
 					"model":      model,
 				})
+				respPayload := map[string]any{}
+				if scenario == "live_models" {
+					respPayload["models"] = []map[string]any{
+						{
+							"value":                 "fable",
+							"resolvedModel":         "claude-fable-next",
+							"displayName":           "Fable Next",
+							"description":           "Experimental live model",
+							"supportsEffort":        true,
+							"supportedEffortLevels": []string{"low", "medium", "high", "xhigh", "max"},
+						},
+						{
+							"value":                 "opus",
+							"resolvedModel":         "claude-opus-5-5",
+							"displayName":           "Opus Live",
+							"description":           "Opus live override",
+							"supportsEffort":        true,
+							"supportedEffortLevels": []string{"low", "medium", "high", "max"},
+						},
+					}
+				}
 				emit(map[string]any{
 					"type": "control_response",
 					"response": map[string]any{
 						"subtype":    "success",
 						"request_id": reqID,
-						"response":   map[string]any{},
+						"response":   respPayload,
 					},
 				})
 
@@ -177,6 +312,46 @@ func runMockClaudeCLI() {
 						},
 					})
 				}
+
+			case "set_model":
+				nextModel, _ := reqObj["model"].(string)
+				model = nextModel
+				appendLog(fmt.Sprintf("CONTROL subtype=set_model model=%s", model))
+				emit(map[string]any{
+					"type": "control_response",
+					"response": map[string]any{
+						"subtype":    "success",
+						"request_id": reqID,
+						"response":   map[string]any{"model": model},
+					},
+				})
+
+			case "set_permission_mode":
+				nextMode, _ := reqObj["mode"].(string)
+				permMode = nextMode
+				appendLog(fmt.Sprintf("CONTROL subtype=set_permission_mode mode=%s", permMode))
+				emit(map[string]any{
+					"type": "control_response",
+					"response": map[string]any{
+						"subtype":    "success",
+						"request_id": reqID,
+						"response":   map[string]any{"mode": permMode},
+					},
+				})
+
+			case "interrupt":
+				appendLog("CONTROL subtype=interrupt")
+				if slowCancelCh != nil {
+					slowCancelOnce.Do(func() { close(slowCancelCh) })
+				}
+				emit(map[string]any{
+					"type": "control_response",
+					"response": map[string]any{
+						"subtype":    "success",
+						"request_id": reqID,
+						"response":   map[string]any{"still_queued": []any{}},
+					},
+				})
 			}
 
 		case "control_response":
@@ -252,6 +427,36 @@ func runMockClaudeCLI() {
 					"session_id": sessionID,
 					"errors":     []string{"simulated execution failure"},
 				})
+				continue
+			}
+
+			if strings.Contains(prompt, "SLOW_TURN") {
+				slowCancelCh = make(chan struct{})
+				slowCancelOnce = sync.Once{}
+				cancelCh := slowCancelCh
+				go func() {
+					emit(map[string]any{
+						"type":       "stream_event",
+						"session_id": sessionID,
+						"event": map[string]any{
+							"type":  "content_block_delta",
+							"index": 0,
+							"delta": map[string]any{"type": "text_delta", "text": "slow_start "},
+						},
+					})
+					select {
+					case <-cancelCh:
+						return
+					case <-time.After(3 * time.Second):
+						emit(map[string]any{
+							"type":       "result",
+							"subtype":    "success",
+							"is_error":   false,
+							"session_id": sessionID,
+							"result":     "slow_done",
+						})
+					}
+				}()
 				continue
 			}
 
@@ -890,27 +1095,25 @@ func TestProviderErrorsAndProfiles(t *testing.T) {
 		t.Fatalf("expected stderr in error, got %v", err)
 	}
 
-	// Profiles + ModelLister + OverrideProfile (backed by Anthropic generated catalog + aliases).
-	if profs := pErr.ListProfiles(); len(profs) == 0 {
-		t.Fatal("expected non-empty ListProfiles")
+	// Dynamic-only discovery: fail_exit CLI has no discovered profiles unless explicitly overridden.
+	if profs := pExit.ListProfiles(); len(profs) != 0 {
+		t.Fatalf("expected empty ListProfiles when CLI unavailable, got %+v", profs)
 	}
-	if sonnetProf, ok := pErr.GetProfile("sonnet"); !ok || sonnetProf.Capabilities.Temperature {
-		t.Fatalf("expected sonnet alias with Temperature=false, got (%+v, %v)", sonnetProf, ok)
+	if _, ok := pExit.GetProfile("sonnet"); ok {
+		t.Fatal("expected GetProfile('sonnet') to return false before CLI discovery")
 	}
-	for _, id := range []string{"opus", "haiku", "default", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-2"} {
-		if _, ok := pErr.GetProfile(id); !ok {
-			t.Fatalf("expected profile %q from generated Anthropic catalog", id)
-		}
+	if _, err := pExit.ListModels(context.Background()); err == nil {
+		t.Fatal("expected ListModels to fail when CLI exits non-zero")
 	}
-	if found := pErr.SearchProfiles("opus"); len(found) == 0 {
-		t.Fatal("expected opus search results")
-	}
-	custom := pErr.ListProfiles()[0]
-	custom.ID = "custom-claude"
-	custom.Name = "Custom Claude"
-	pErr.OverrideProfile("custom-claude", custom)
-	if got, err := pErr.GetModel(context.Background(), "custom-claude"); err != nil || got.Name != "Custom Claude" {
+	pExit.OverrideProfile("custom-claude", profile.Profile{
+		ID:   "custom-claude",
+		Name: "Custom Claude",
+	})
+	if got, err := pExit.GetModel(context.Background(), "custom-claude"); err != nil || got.Name != "Custom Claude" {
 		t.Fatalf("GetModel override = (%+v, %v)", got, err)
+	}
+	if profs := pExit.SearchProfiles("custom"); len(profs) != 1 || profs[0].ID != "custom-claude" {
+		t.Fatalf("SearchProfiles('custom') = %+v", profs)
 	}
 }
 
@@ -1208,5 +1411,222 @@ func TestProviderSyncOnWritePrefixMismatch(t *testing.T) {
 	}
 	if !strings.Contains(a2.Content.Text(), "EditedOutOfBand") {
 		t.Fatalf("unexpected ForceFresh reply: %q", a2.Content.Text())
+	}
+}
+
+func TestProviderQuotaProvider(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("limits and extra_usage", func(t *testing.T) {
+		p, logFile := newMockProviderWithOpts(t, WithEnv("MOCK_CLAUDE_SCENARIO=usage_limits"), WithQuotaCacheTTL(time.Minute))
+
+		snap, err := p.GetQuotaSnapshot(ctx)
+		if err != nil {
+			t.Fatalf("GetQuotaSnapshot failed: %v", err)
+		}
+		if len(snap.Buckets) != 4 {
+			t.Fatalf("expected 4 quota buckets, got %d (%+v)", len(snap.Buckets), snap.Buckets)
+		}
+
+		// Verify percent inversion (used -> remainingFraction), Windows, and ExtraUsage.
+		if b := snap.Buckets["five_hour"]; b.Window != 5*time.Hour || b.RemainingFraction != 0.75 || b.ResetAt == nil {
+			t.Fatalf("unexpected five_hour bucket: %+v", b)
+		}
+		if b := snap.Buckets["seven_day"]; b.Window != 7*24*time.Hour || b.RemainingFraction != 0.60 {
+			t.Fatalf("unexpected seven_day bucket: %+v", b)
+		}
+		if b := snap.Buckets["extra_usage"]; b.Unit != llm.QuotaUnitCredits || b.Limit != 60000 || b.Used != 18520 || b.RemainingFraction < 0.69 || b.RemainingFraction > 0.70 {
+			t.Fatalf("unexpected extra_usage bucket: %+v", b)
+		}
+
+		// Sonnet sees [five_hour, seven_day] (not seven_day_opus); bottleneck is seven_day (0.60).
+		sonnetBuckets, ok, err := p.GetQuota(ctx, "sonnet")
+		if err != nil || !ok || len(sonnetBuckets) != 2 {
+			t.Fatalf("GetQuota(sonnet) = %+v, ok=%v, err=%v", sonnetBuckets, ok, err)
+		}
+		if sonnetBuckets[0].ID != "five_hour" || sonnetBuckets[1].ID != "seven_day" {
+			t.Fatalf("expected [five_hour, seven_day] order, got %+v", sonnetBuckets)
+		}
+		if b, ok := sonnetBuckets.Bottleneck(); !ok || b.ID != "seven_day" {
+			t.Fatalf("unexpected sonnet bottleneck: %+v", b)
+		}
+
+		// Opus sees five_hour + seven_day + seven_day_opus (0.30 remaining bottleneck).
+		opusBuckets, ok, err := p.GetQuota(ctx, "opus")
+		if err != nil || !ok || len(opusBuckets) != 3 {
+			t.Fatalf("GetQuota(opus) = %+v, ok=%v, err=%v", opusBuckets, ok, err)
+		}
+		if b, ok := opusBuckets.Bottleneck(); !ok || b.ID != "seven_day_opus" || b.RemainingFraction < 0.29 || b.RemainingFraction > 0.31 {
+			t.Fatalf("unexpected opus bottleneck: %+v", b)
+		}
+
+		// Cached second call should not respawn CLI.
+		if _, err := p.GetQuotaSnapshot(ctx); err != nil {
+			t.Fatalf("cached GetQuotaSnapshot failed: %v", err)
+		}
+		if spawns := countPrefix(readLogLines(t, logFile), "SPAWN "); spawns != 1 {
+			t.Fatalf("expected 1 cached SPAWN, got %d", spawns)
+		}
+	})
+
+	t.Run("extra_usage only binds to models", func(t *testing.T) {
+		p, logFile := newMockProviderWithOpts(t, WithEnv("MOCK_CLAUDE_SCENARIO=usage_extra_only"), WithQuotaCacheTTL(-1))
+
+		buckets, ok, err := p.GetQuota(ctx, "sonnet")
+		if err != nil || !ok || len(buckets) != 1 || buckets[0].ID != "extra_usage" {
+			t.Fatalf("GetQuota(sonnet) = %+v, ok=%v, err=%v", buckets, ok, err)
+		}
+		if _, err := p.GetQuotaSnapshot(ctx); err != nil {
+			t.Fatalf("second uncached call failed: %v", err)
+		}
+		if spawns := countPrefix(readLogLines(t, logFile), "SPAWN "); spawns != 2 {
+			t.Fatalf("expected 2 uncached SPAWNs, got %d", spawns)
+		}
+	})
+
+	t.Run("api key or unauthenticated empty report", func(t *testing.T) {
+		p, _ := newMockProviderWithOpts(t)
+		snap, err := p.GetQuotaSnapshot(ctx)
+		if err != nil {
+			t.Fatalf("expected no error when usage_report is absent, got %v", err)
+		}
+		if len(snap.Buckets) != 0 {
+			t.Fatalf("expected 0 buckets, got %+v", snap.Buckets)
+		}
+		if _, ok, err := p.GetQuota(ctx, "sonnet"); err != nil || ok {
+			t.Fatalf("expected GetQuota ok=false, err=nil; got ok=%v err=%v", ok, err)
+		}
+	})
+}
+
+func TestProviderThinkingEffortAndLiveModels(t *testing.T) {
+	p, logFile := newMockProviderWithOpts(t, WithEnv("MOCK_CLAUDE_SCENARIO=live_models"))
+	ctx := context.Background()
+
+	models, err := p.ListModels(ctx)
+	if err != nil {
+		t.Fatalf("ListModels failed: %v", err)
+	}
+	// live_models fixture returns ONLY fable->claude-fable-next and opus->claude-opus-5-5 (4 IDs).
+	if len(models) != 4 {
+		t.Fatalf("expected strictly 4 dynamically discovered models, got %d (%+v)", len(models), models)
+	}
+
+	// Non-advertised Anthropic catalog models must NOT leak into ListModels/GetProfile.
+	if _, ok := p.GetProfile("claude-haiku-4-5"); ok {
+		t.Fatal("unexpected unadvertised static catalog model claude-haiku-4-5")
+	}
+	if _, err := p.GetModel(ctx, "claude-haiku-4-5"); err == nil {
+		t.Fatal("expected GetModel('claude-haiku-4-5') error when not advertised by CLI")
+	}
+
+	fable, err := p.GetModel(ctx, "claude-fable-next")
+	if err != nil {
+		t.Fatalf("GetModel(claude-fable-next) failed: %v", err)
+	}
+	if !fable.Capabilities.Reasoning || len(fable.Capabilities.ReasoningOptions) == 0 {
+		t.Fatalf("expected effort ReasoningOptions on live fable model: %+v", fable.Capabilities)
+	}
+	if !slices.Contains(fable.Capabilities.ReasoningOptions[0].Values, "xhigh") {
+		t.Fatalf("expected xhigh in live effort levels: %+v", fable.Capabilities.ReasoningOptions)
+	}
+
+	// Enriched from providers/anthropic catalog for resolvedModel=claude-opus-5-5.
+	opus, err := p.GetModel(ctx, "opus")
+	if err != nil || opus.Name != "Opus Live" {
+		t.Fatalf("expected live alias update Opus Live, got %+v err=%v", opus, err)
+	}
+	if opus.Limits.Context == 0 || opus.Pricing.Input == 0 || opus.Capabilities.Temperature {
+		t.Fatalf("expected Anthropic catalog limits/pricing enrichment & Temperature=false, got Limits=%+v Pricing=%+v Caps=%+v",
+			opus.Limits, opus.Pricing, opus.Capabilities)
+	}
+
+	m, _ := llm.NewModel(p, "sonnet", nil)
+	m = m.WithThinkingEffort("xhigh")
+	if _, err := m.Invoke(ctx, message.MessageList{
+		&message.User{Content: message.Content{&message.TextBlock{Text: "Think hard"}}},
+	}); err != nil {
+		t.Fatalf("Invoke with effort: %v", err)
+	}
+
+	logs := strings.Join(readLogLines(t, logFile), "\n")
+	if !strings.Contains(logs, `effort="xhigh"`) {
+		t.Fatalf("expected effort=\"xhigh\" in SPAWN logs:\n%s", logs)
+	}
+}
+
+func TestProviderWarmModelAndPermissionSwitch(t *testing.T) {
+	p, logFile := newMockProviderWithOpts(t, WithSyncOnWrite(true))
+	ctx := context.Background()
+
+	mSonnet, _ := llm.NewModel(p, "sonnet", nil)
+	a1, err := mSonnet.Invoke(ctx, message.MessageList{
+		&message.User{Content: message.Content{&message.TextBlock{Text: "TurnOne"}}},
+	})
+	if err != nil {
+		t.Fatalf("Turn 1 failed: %v", err)
+	}
+
+	// Switch model AND permission mode on the exact same warm session cleanly.
+	mOpus, _ := llm.NewModel(p, "opus", nil)
+	a2, err := mOpus.Invoke(ctx, message.MessageList{
+		&message.User{Content: message.Content{&message.TextBlock{Text: "TurnOne"}}},
+		a1,
+		&message.User{Content: message.Content{&message.TextBlock{Text: "TurnTwo"}}},
+	}, llm.WithExtensionOption(Session{PermissionMode: "acceptEdits"}))
+	if err != nil {
+		t.Fatalf("Turn 2 warm switch failed: %v", err)
+	}
+
+	if a1.Metadata[SessionIDKey] != a2.Metadata[SessionIDKey] {
+		t.Fatalf("expected same warm session_id across model/permission switch: %v vs %v",
+			a1.Metadata[SessionIDKey], a2.Metadata[SessionIDKey])
+	}
+
+	lines := readLogLines(t, logFile)
+	if spawns := countPrefix(lines, "SPAWN "); spawns != 1 {
+		t.Fatalf("expected 1 SPAWN across warm switch, got %d:\n%v", spawns, lines)
+	}
+	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, "CONTROL subtype=set_model model=opus") {
+		t.Fatalf("expected set_model control request in log:\n%s", joined)
+	}
+	if !strings.Contains(joined, "CONTROL subtype=set_permission_mode mode=acceptEdits") {
+		t.Fatalf("expected set_permission_mode control request in log:\n%s", joined)
+	}
+}
+
+func TestProviderGracefulInterruptOnCancel(t *testing.T) {
+	p, logFile := newMockProvider(t)
+	model, _ := llm.NewModel(p, "sonnet", nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	streamResp, err := p.Stream(ctx, &llm.Request{
+		Model:    model.Name(),
+		Messages: []message.Message{&message.User{Content: message.Content{&message.TextBlock{Text: "SLOW_TURN"}}}},
+	})
+	if err != nil {
+		t.Fatalf("Stream failed: %v", err)
+	}
+
+	var gotErr error
+	for chunk, err := range streamResp {
+		if err != nil {
+			gotErr = err
+			break
+		}
+		if len(chunk.Content) > 0 {
+			cancel()
+		}
+	}
+	if !errors.Is(gotErr, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", gotErr)
+	}
+
+	joined := strings.Join(readLogLines(t, logFile), "\n")
+	if !strings.Contains(joined, "CONTROL subtype=interrupt") {
+		t.Fatalf("expected graceful CONTROL subtype=interrupt in log:\n%s", joined)
 	}
 }

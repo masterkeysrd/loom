@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/providers/claudecode/internal/protocol"
 )
 
 type sessionSnapshot struct {
@@ -33,12 +34,13 @@ type sessionManager struct {
 	configDir     string
 	ownsConfigDir bool
 
-	mu        sync.Mutex
-	closed    bool
-	byToken   map[string]*cliSession
-	allSess   map[*cliSession]struct{}
-	snapshots map[string]*sessionSnapshot
-	snapOrder []string
+	mu         sync.Mutex
+	closed     bool
+	byToken    map[string]*cliSession
+	allSess    map[*cliSession]struct{}
+	snapshots  map[string]*sessionSnapshot
+	snapOrder  []string
+	liveModels []protocol.InitModelInfo
 
 	idleMu        sync.Mutex
 	idleListeners map[int64]llm.IdleMessageHandler
@@ -319,7 +321,16 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 					}, nil
 				}
 				if _, isTools := areAllToolResults(deltaMsgs); !isTools && !sess.hasParkedCalls() && (len(deltaMsgs) > 0 || ext.Compact) {
+					desiredMode := m.cfg.PermissionMode
+					if ext.PermissionMode != "" {
+						desiredMode = ext.PermissionMode
+					}
 					ch := sess.beginTurn()
+					if err := syncWarmSessionSettings(ctx, sess, ch, req.Model, desiredMode); err != nil {
+						sess.endTurn(ch)
+						m.retireSession(sess)
+						return nil, err
+					}
 					prompt, cs, err := m.dispatchUserOrCompact(ctx, sess, ch, deltaMsgs, ext, idleCS)
 					if err != nil {
 						sess.endTurn(ch)
@@ -358,6 +369,10 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 							if argErr != nil {
 								return nil, argErr
 							}
+							permMode := m.cfg.PermissionMode
+							if ext.PermissionMode != "" {
+								permMode = ext.PermissionMode
+							}
 							sess, startErr := startCLISession(
 								ctx,
 								m.cfg.CLIPath,
@@ -365,6 +380,8 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 								workingDir,
 								m.buildEnv(),
 								m.configDir,
+								req.Model,
+								permMode,
 								req.Tools,
 								allowedNative,
 								m.cfg.ShutdownTimeout,
@@ -375,6 +392,7 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 								return nil, startErr
 							}
 							sess.id = forkedID
+							m.recordLiveModels(sess.liveModels)
 							m.trackSession(sess)
 
 							ch := sess.beginTurn()
@@ -413,6 +431,10 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 	if err != nil {
 		return nil, err
 	}
+	permMode := m.cfg.PermissionMode
+	if ext.PermissionMode != "" {
+		permMode = ext.PermissionMode
+	}
 	sess, err := startCLISession(
 		ctx,
 		m.cfg.CLIPath,
@@ -420,6 +442,8 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 		workingDir,
 		m.buildEnv(),
 		m.configDir,
+		req.Model,
+		permMode,
 		req.Tools,
 		allowedNative,
 		m.cfg.ShutdownTimeout,
@@ -429,6 +453,7 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 	if err != nil {
 		return nil, err
 	}
+	m.recordLiveModels(sess.liveModels)
 	m.trackSession(sess)
 
 	ch := sess.beginTurn()
@@ -471,6 +496,76 @@ func (m *sessionManager) trackSession(s *cliSession) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.allSess[s] = struct{}{}
+}
+
+func (m *sessionManager) recordLiveModels(models []protocol.InitModelInfo) {
+	if len(models) == 0 {
+		return
+	}
+	m.mu.Lock()
+	m.liveModels = slices.Clone(models)
+	m.mu.Unlock()
+}
+
+func (m *sessionManager) snapshotLiveModels() []protocol.InitModelInfo {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return slices.Clone(m.liveModels)
+}
+
+func (m *sessionManager) fetchLiveModels(ctx context.Context) error {
+	args := []string{
+		"-p",
+		"--input-format", "stream-json",
+		"--output-format", "stream-json",
+		"--verbose",
+		"--tools", "",
+	}
+	if len(m.cfg.ExtraArgs) > 0 {
+		args = append(args, m.cfg.ExtraArgs...)
+	}
+	sess, err := startCLISession(
+		ctx,
+		m.cfg.CLIPath,
+		args,
+		m.cfg.WorkingDir,
+		m.buildEnv(),
+		m.configDir,
+		"",
+		m.cfg.PermissionMode,
+		nil,
+		nil,
+		m.cfg.ShutdownTimeout,
+		nil,
+		m.cfg.TraceWriter,
+	)
+	if err != nil {
+		return err
+	}
+	m.recordLiveModels(sess.liveModels)
+	_ = sess.close()
+	return nil
+}
+
+func (m *sessionManager) ensureLiveModels(ctx context.Context) error {
+	if len(m.snapshotLiveModels()) > 0 {
+		return nil
+	}
+	return m.fetchLiveModels(ctx)
+}
+
+func syncWarmSessionSettings(ctx context.Context, sess *cliSession, ch chan readEvent, desiredModel, desiredMode string) error {
+	if desiredModel != "" && sess.currentModel() != desiredModel {
+		if err := sess.setModel(ctx, ch, desiredModel); err != nil {
+			return err
+		}
+	}
+	if desiredMode != "" && sess.currentPermissionMode() != desiredMode {
+		if err := sess.setPermissionMode(ctx, ch, desiredMode); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (m *sessionManager) retireSession(s *cliSession) {

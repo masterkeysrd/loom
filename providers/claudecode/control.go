@@ -21,14 +21,6 @@ type pendingMCPCall struct {
 	Args             map[string]any
 }
 
-func buildInitializeControlRequest(reqID string, hasTools bool) (protocol.ControlRequest, error) {
-	var servers []string
-	if hasTools {
-		servers = []string{DefaultMCPServerName}
-	}
-	return protocol.BuildInitializeControlRequest(reqID, servers)
-}
-
 // handleIncomingControlRequest processes a `control_request` / `sdk_control_request`
 // emitted by the CLI. It returns either an immediate `protocol.ControlResponse`
 // to send back on stdin, or a `pendingMCPCall` when `tools/call` must be

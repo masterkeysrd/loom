@@ -140,7 +140,6 @@ func computePrefixDigest(
 		_, _ = fmt.Fprintf(h, "%d:%s\n", len(s), s)
 	}
 
-	writeStr("model:" + req.Model)
 	writeStr("sys:" + systemPrompt)
 	writeStr("cwd:" + ext.WorkingDir)
 
@@ -344,6 +343,10 @@ func buildCLIArgs(
 		args = append(args, "--model", req.Model)
 	}
 
+	if effort := resolveEffortLevel(req.Thinking); effort != "" {
+		args = append(args, "--effort", effort)
+	}
+
 	if len(req.Tools) > 0 {
 		mcpCfg, err := json.Marshal(map[string]any{
 			"mcpServers": map[string]any{
@@ -407,4 +410,11 @@ func resolveAllowedNativeTools(cfg Config, ext Session) []string {
 		return ext.NativeTools
 	}
 	return cfg.AllowedNativeTools
+}
+
+func resolveEffortLevel(tc *llm.ThinkingConfig) string {
+	if tc == nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(tc.Effort))
 }

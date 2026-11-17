@@ -32,6 +32,40 @@ type InitializeRequest struct {
 	SDKMCPServers []string       `json:"sdkMcpServers,omitempty"`
 }
 
+// InitModelInfo describes a model entry returned in the `initialize` control
+// response (`response.models`).
+type InitModelInfo struct {
+	Value                    string   `json:"value"`
+	ResolvedModel            string   `json:"resolvedModel,omitempty"`
+	DisplayName              string   `json:"displayName,omitempty"`
+	Description              string   `json:"description,omitempty"`
+	SupportsEffort           bool     `json:"supportsEffort,omitempty"`
+	SupportedEffortLevels    []string `json:"supportedEffortLevels,omitempty"`
+	SupportsAdaptiveThinking bool     `json:"supportsAdaptiveThinking,omitempty"`
+}
+
+// InitializeResult decodes the `response` body of a successful `initialize` control_response.
+type InitializeResult struct {
+	Models []InitModelInfo `json:"models,omitempty"`
+}
+
+// SetModelRequest is the `set_model` control subtype payload.
+type SetModelRequest struct {
+	Subtype string `json:"subtype"`
+	Model   string `json:"model"`
+}
+
+// SetPermissionModeRequest is the `set_permission_mode` control subtype payload.
+type SetPermissionModeRequest struct {
+	Subtype string `json:"subtype"`
+	Mode    string `json:"mode"`
+}
+
+// InterruptRequest is the `interrupt` control subtype payload.
+type InterruptRequest struct {
+	Subtype string `json:"subtype"`
+}
+
 // ControlResponse represents a bidirectional `control_response` frame.
 type ControlResponse struct {
 	Type     string              `json:"type"`
@@ -99,6 +133,7 @@ type Frame struct {
 	Response             *ControlResponseBody    `json:"response,omitempty"`
 	Event                *StreamEvent            `json:"event,omitempty"`
 	Message              *AssistantMessage       `json:"message,omitempty"`
+	UsageReport          *UsageReport            `json:"usage_report,omitempty"`
 	CompactMetadata      *CompactMetadata        `json:"compactMetadata,omitempty"`
 	CompactMetadataSnake *CompactMetadata        `json:"compact_metadata,omitempty"`
 	IsError              bool                    `json:"is_error,omitempty"`
@@ -108,6 +143,60 @@ type Frame struct {
 	NumTurns             int                     `json:"num_turns,omitempty"`
 	TotalCostUSD         float64                 `json:"total_cost_usd,omitempty"`
 	Usage                *Usage                  `json:"usage,omitempty"`
+}
+
+// UsageReport decodes the structured `usage_report` field attached to
+// assistant frames when running local slash commands such as `/usage`.
+type UsageReport struct {
+	Session    *UsageReportSession `json:"session,omitempty"`
+	RateLimits *UsageRateLimits    `json:"rate_limits,omitempty"`
+}
+
+// UsageReportSession holds session totals reported inside a usage_report frame.
+type UsageReportSession struct {
+	TotalCostUSD       float64 `json:"total_cost_usd,omitempty"`
+	TotalAPIDurationMS int64   `json:"total_api_duration_ms,omitempty"`
+	TotalDurationMS    int64   `json:"total_duration_ms,omitempty"`
+	TotalLinesAdded    int     `json:"total_lines_added,omitempty"`
+	TotalLinesRemoved  int     `json:"total_lines_removed,omitempty"`
+}
+
+// UsageRateLimits holds subscription/account quota windows and extra usage spend
+// returned inside `usage_report.rate_limits`.
+type UsageRateLimits struct {
+	Limits     []RateLimitEntry `json:"limits,omitempty"`
+	ExtraUsage *ExtraUsageLimit `json:"extra_usage,omitempty"`
+}
+
+// RateLimitEntry represents one rate-limit window (e.g. `five_hour` or `seven_day`).
+type RateLimitEntry struct {
+	Kind     string          `json:"kind"`
+	Group    string          `json:"group,omitempty"`
+	Percent  float64         `json:"percent"`
+	ResetsAt string          `json:"resets_at,omitempty"`
+	Scope    *RateLimitScope `json:"scope,omitempty"`
+	Severity string          `json:"severity,omitempty"`
+	IsActive bool            `json:"is_active,omitempty"`
+}
+
+// RateLimitScope optionally narrows a RateLimitEntry to a model or surface display name.
+type RateLimitScope struct {
+	Model   *RateLimitScopeName `json:"model,omitempty"`
+	Surface *RateLimitScopeName `json:"surface,omitempty"`
+}
+
+// RateLimitScopeName carries display_name inside a RateLimitScope field.
+type RateLimitScopeName struct {
+	DisplayName string `json:"display_name,omitempty"`
+}
+
+// ExtraUsageLimit represents extra/overage credit usage inside `rate_limits.extra_usage`.
+type ExtraUsageLimit struct {
+	IsEnabled    bool     `json:"is_enabled,omitempty"`
+	MonthlyLimit *float64 `json:"monthly_limit,omitempty"`
+	UsedCredits  *float64 `json:"used_credits,omitempty"`
+	Utilization  *float64 `json:"utilization,omitempty"`
+	Currency     string   `json:"currency,omitempty"`
 }
 
 // CompactMetadata holds pre-compaction stats from a `compact_boundary` system frame.
@@ -197,14 +286,9 @@ type Usage struct {
 	ThinkingTokens           int `json:"thinking_tokens,omitempty"`
 }
 
-// BuildInitializeControlRequest constructs the initial `control_request` handshake frame.
-func BuildInitializeControlRequest(reqID string, sdkMCPServers []string) (ControlRequest, error) {
-	initReq := InitializeRequest{
-		Subtype:       "initialize",
-		Hooks:         map[string]any{},
-		SDKMCPServers: sdkMCPServers,
-	}
-	raw, err := json.Marshal(initReq)
+// BuildControlRequest marshals payload as an outgoing `control_request` frame.
+func BuildControlRequest(reqID string, payload any) (ControlRequest, error) {
+	raw, err := json.Marshal(payload)
 	if err != nil {
 		return ControlRequest{}, err
 	}
@@ -213,6 +297,15 @@ func BuildInitializeControlRequest(reqID string, sdkMCPServers []string) (Contro
 		RequestID: reqID,
 		Request:   raw,
 	}, nil
+}
+
+// BuildInitializeControlRequest constructs the initial `control_request` handshake frame.
+func BuildInitializeControlRequest(reqID string, sdkMCPServers []string) (ControlRequest, error) {
+	return BuildControlRequest(reqID, InitializeRequest{
+		Subtype:       "initialize",
+		Hooks:         map[string]any{},
+		SDKMCPServers: sdkMCPServers,
+	})
 }
 
 // NewSuccessControlResponse builds a successful `control_response` envelope.

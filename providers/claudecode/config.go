@@ -69,6 +69,10 @@ const (
 	// DefaultMaxSnapshots is the maximum number of pre-turn .jsonl snapshots
 	// retained in memory by the in-process proxy.
 	DefaultMaxSnapshots = 64
+
+	// DefaultQuotaCacheTTL is how long `/usage` quota snapshots are cached
+	// before spawning another local CLI check.
+	DefaultQuotaCacheTTL = 30 * time.Second
 )
 
 func init() {
@@ -203,6 +207,11 @@ type Config struct {
 	// cache-preserving retries and graph forks. Defaults to DefaultMaxSnapshots.
 	MaxSnapshots int
 
+	// QuotaCacheTTL controls how long `/usage` quota snapshots are cached.
+	// Defaults to DefaultQuotaCacheTTL (30s). Negative disables caching and
+	// queries the CLI live on every call.
+	QuotaCacheTTL time.Duration
+
 	// Env appends additional KEY=VALUE environment variables to spawned CLI processes.
 	Env []string
 
@@ -274,6 +283,12 @@ func WithMaxSnapshots(n int) Option {
 	return func(c *Config) { c.MaxSnapshots = n }
 }
 
+// WithQuotaCacheTTL sets how long `/usage` quota snapshots are cached.
+// Negative values bypass caching.
+func WithQuotaCacheTTL(d time.Duration) Option {
+	return func(c *Config) { c.QuotaCacheTTL = d }
+}
+
 // WithEnv appends extra KEY=VALUE entries to the CLI environment.
 func WithEnv(env ...string) Option {
 	return func(c *Config) { c.Env = append(c.Env, env...) }
@@ -326,6 +341,9 @@ func normalizeConfig(cfg *Config) Config {
 	}
 	if out.MaxSnapshots <= 0 {
 		out.MaxSnapshots = DefaultMaxSnapshots
+	}
+	if out.QuotaCacheTTL == 0 {
+		out.QuotaCacheTTL = DefaultQuotaCacheTTL
 	}
 	if out.SourceAuthDir == "" {
 		if home, err := os.UserHomeDir(); err == nil && home != "" {

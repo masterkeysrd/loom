@@ -76,6 +76,9 @@ type cliSession struct {
 	doneCh   chan struct{}
 
 	mu                  sync.Mutex
+	model               string
+	permissionMode      string
+	liveModels          []protocol.InitModelInfo
 	expectedToken       string
 	prefixDigest        string
 	parkedCalls         []pendingMCPCall
@@ -98,6 +101,8 @@ func startCLISession(
 	workingDir string,
 	env []string,
 	configDir string,
+	initialModel string,
+	initialPermissionMode string,
 	tools []tool.Definition,
 	allowedNativeTools []string,
 	shutdownTimeout time.Duration,
@@ -136,6 +141,8 @@ func startCLISession(
 
 	s := &cliSession{
 		configDir:          configDir,
+		model:              initialModel,
+		permissionMode:     initialPermissionMode,
 		allowedNativeTools: append([]string(nil), allowedNativeTools...),
 		tools:              append([]tool.Definition(nil), tools...),
 		shutdownTimeout:    shutdownTimeout,
@@ -429,29 +436,38 @@ func (s *cliSession) recvEvent(ctx context.Context, ch chan readEvent) (readEven
 	}
 }
 
-func (s *cliSession) initialize(ctx context.Context, hasTools bool) error {
-	ch := s.beginTurn()
-	defer s.endTurn(ch)
+func (s *cliSession) currentModel() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.model
+}
 
-	reqID := fmt.Sprintf("init_%d", s.reqSeq.Add(1))
-	initFrame, err := buildInitializeControlRequest(reqID, hasTools)
+func (s *cliSession) currentPermissionMode() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.permissionMode
+}
+
+func (s *cliSession) sendControlRequest(ctx context.Context, ch chan readEvent, label string, payload any) (any, error) {
+	reqID := fmt.Sprintf("%s_%d", label, s.reqSeq.Add(1))
+	frame, err := protocol.BuildControlRequest(reqID, payload)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if err := s.writeJSONLine(initFrame); err != nil {
-		return err
+	if err := s.writeJSONLine(frame); err != nil {
+		return nil, err
 	}
 
 	for {
 		ev, ok, rerr := s.recvEvent(ctx, ch)
 		if rerr != nil {
-			return rerr
+			return nil, rerr
 		}
 		if !ok {
-			return s.waitExitError("claudecode: cli exited during initialize")
+			return nil, s.waitExitError("claudecode: cli exited during " + label)
 		}
 		if ev.err != nil {
-			return ev.err
+			return nil, ev.err
 		}
 		f := ev.frame
 		if f.SessionID != "" && s.id == "" {
@@ -461,18 +477,18 @@ func (s *cliSession) initialize(ctx context.Context, hasTools bool) error {
 		case "control_response":
 			if f.Response != nil && f.Response.RequestID == reqID {
 				if f.Response.Subtype == "error" {
-					return fmt.Errorf("claudecode: initialize failed: %s", f.Response.Error)
+					return nil, fmt.Errorf("claudecode: %s failed: %s", label, f.Response.Error)
 				}
-				return nil
+				return f.Response.Response, nil
 			}
 		case "control_request", "sdk_control_request":
 			resp, _, cerr := handleIncomingControlRequest(f, s.tools, s.allowedNativeTools)
 			if cerr != nil {
-				return cerr
+				return nil, cerr
 			}
 			if resp != nil {
 				if werr := s.writeJSONLine(resp); werr != nil {
-					return werr
+					return nil, werr
 				}
 			}
 		case "system":
@@ -482,6 +498,74 @@ func (s *cliSession) initialize(ctx context.Context, hasTools bool) error {
 			}
 		}
 	}
+}
+
+func (s *cliSession) initialize(ctx context.Context, hasTools bool) error {
+	ch := s.beginTurn()
+	defer s.endTurn(ch)
+
+	var servers []string
+	if hasTools {
+		servers = []string{DefaultMCPServerName}
+	}
+	respBody, err := s.sendControlRequest(ctx, ch, "initialize", protocol.InitializeRequest{
+		Subtype:       "initialize",
+		Hooks:         map[string]any{},
+		SDKMCPServers: servers,
+	})
+	if err != nil {
+		return err
+	}
+	if respBody != nil {
+		if raw, err := json.Marshal(respBody); err == nil {
+			var initRes protocol.InitializeResult
+			if err := json.Unmarshal(raw, &initRes); err == nil && len(initRes.Models) > 0 {
+				s.mu.Lock()
+				s.liveModels = initRes.Models
+				s.mu.Unlock()
+			}
+		}
+	}
+	return nil
+}
+
+func (s *cliSession) setModel(ctx context.Context, ch chan readEvent, model string) error {
+	if _, err := s.sendControlRequest(ctx, ch, "set_model", protocol.SetModelRequest{
+		Subtype: "set_model",
+		Model:   model,
+	}); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.model = model
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *cliSession) setPermissionMode(ctx context.Context, ch chan readEvent, mode string) error {
+	if _, err := s.sendControlRequest(ctx, ch, "set_permission_mode", protocol.SetPermissionModeRequest{
+		Subtype: "set_permission_mode",
+		Mode:    mode,
+	}); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.permissionMode = mode
+	s.mu.Unlock()
+	return nil
+}
+
+// abortTurn sends an `interrupt` control request when ctx is cancelled and waits
+// briefly for the CLI's control acknowledgment so active inference/tools stop cleanly.
+func (s *cliSession) abortTurn(ch chan readEvent) {
+	if s.isClosed() {
+		return
+	}
+	abortCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_, _ = s.sendControlRequest(abortCtx, ch, "interrupt", protocol.InterruptRequest{
+		Subtype: "interrupt",
+	})
 }
 
 func (s *cliSession) isClosed() bool {
@@ -682,6 +766,7 @@ func (s *cliSession) runCompactTurn(ctx context.Context, ch chan readEvent, inst
 	for {
 		ev, ok, rerr := s.recvEvent(ctx, ch)
 		if rerr != nil {
+			s.abortTurn(ch)
 			return cs, rerr
 		}
 		if !ok {
@@ -824,6 +909,7 @@ func (s *cliSession) streamTurn(
 	for {
 		ev, ok, rerr := s.recvEvent(ctx, ch)
 		if rerr != nil {
+			s.abortTurn(ch)
 			onDone(turnResult{errored: true})
 			yield(message.AssistantChunk{}, rerr)
 			return

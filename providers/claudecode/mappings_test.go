@@ -173,6 +173,7 @@ func TestBuildCLIArgsAndNormalizeToolName(t *testing.T) {
 	req := &llm.Request{
 		Model:          "sonnet",
 		ResponseFormat: "json_object",
+		Thinking:       &llm.ThinkingConfig{Effort: "xhigh"},
 		Tools:          []tool.Definition{{Name: "shell_command"}},
 	}
 	args, err := buildCLIArgs(req, cfg, Session{}, "sys prompt", "sess_resume_1")
@@ -187,6 +188,7 @@ func TestBuildCLIArgsAndNormalizeToolName(t *testing.T) {
 		" --permission-prompt-tool stdio ",
 		" --mcp-config ",
 		" --model sonnet ",
+		" --effort xhigh ",
 		" --system-prompt sys prompt ",
 		" --tools  ",
 		" --resume sess_resume_1 ",
@@ -195,6 +197,13 @@ func TestBuildCLIArgsAndNormalizeToolName(t *testing.T) {
 		if !containsSubstr(joined, want) {
 			t.Fatalf("expected %q in args %v", want, args)
 		}
+	}
+
+	if got := resolveEffortLevel(&llm.ThinkingConfig{Budget: 8192}); got != "" {
+		t.Fatalf("resolveEffortLevel(budget-only) = %q, want empty", got)
+	}
+	if got := resolveEffortLevel(&llm.ThinkingConfig{Effort: "HIGH"}); got != "high" {
+		t.Fatalf("resolveEffortLevel(HIGH) = %q, want high", got)
 	}
 }
 

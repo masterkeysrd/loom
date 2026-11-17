@@ -16,6 +16,7 @@ import (
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
 	"github.com/masterkeysrd/loom/profile"
+	"github.com/masterkeysrd/loom/providers/antigravity/sdk"
 	"github.com/masterkeysrd/loom/stream"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/attribute"
@@ -67,12 +68,19 @@ func extractSession(req *llm.Request) (Session, bool) {
 	}
 }
 
-// QuotaProvider is an optional interface implemented by providers that support
-// querying model quotas and rate-limit replenishment windows.
-// Type alias to [llm.QuotaProvider].
-type QuotaProvider = llm.QuotaProvider
-
 const (
+	// DefaultBaseURL is the production Google Cloud Code / Antigravity API base URL.
+	DefaultBaseURL = sdk.DefaultBaseURL
+
+	// DailyBaseURL is the daily staging / canary environment URL.
+	DailyBaseURL = sdk.DailyBaseURL
+
+	// DefaultClientVersion is the emulated Antigravity CLI version reported in DefaultUserAgent.
+	DefaultClientVersion = sdk.DefaultClientVersion
+
+	// DefaultUserAgent emulates a modern versioned Antigravity CLI client identifier.
+	DefaultUserAgent = sdk.DefaultUserAgent
+
 	// DefaultProfileCacheTTL is the duration dynamic models are cached before re-fetching.
 	DefaultProfileCacheTTL = 1 * time.Hour
 
@@ -121,7 +129,16 @@ type Config struct {
 
 // Provider represents the Antigravity (Cloud Code) LLM provider for Loom.
 type Provider struct {
-	client      *Client
+	client      *sdk.Client
+	tokenSource oauth2.TokenSource
+	aliases     map[string]string
+	resolver    ModelResolver
+
+	availableInitMu sync.Mutex
+	availableMu     sync.RWMutex
+	availableModels map[string]bool
+	availableToken  string
+
 	overrides   sync.Map
 	cachedMu    sync.RWMutex
 	lastFetched time.Time
@@ -132,7 +149,7 @@ type Provider struct {
 	quotaTTL         time.Duration
 	cachedQuotasMu   sync.RWMutex
 	lastQuotaFetched time.Time
-	cachedQuotas     map[string]QuotaInfo
+	cachedQuotas     QuotaSnapshot
 }
 
 // NewProvider creates a Provider with custom configuration.
@@ -144,31 +161,25 @@ func NewProvider(cfg *Config) (*Provider, error) {
 		return nil, fmt.Errorf("antigravity: TokenSource is required")
 	}
 
-	var opts []ClientOption
+	var opts []sdk.ClientOption
 	if cfg.BaseURL != "" {
-		opts = append(opts, WithBaseURL(cfg.BaseURL))
+		opts = append(opts, sdk.WithBaseURL(cfg.BaseURL))
 	}
 	if cfg.HTTPClient != nil {
-		opts = append(opts, WithHTTPClient(cfg.HTTPClient))
+		opts = append(opts, sdk.WithHTTPClient(cfg.HTTPClient))
 	} else {
-		opts = append(opts, WithHTTPClient(&http.Client{
+		opts = append(opts, sdk.WithHTTPClient(&http.Client{
 			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		}))
 	}
 	if cfg.ProjectID != "" {
-		opts = append(opts, WithProjectID(cfg.ProjectID))
+		opts = append(opts, sdk.WithProjectID(cfg.ProjectID))
 	}
 	if cfg.CompanionProject != "" {
-		opts = append(opts, WithCompanionProject(cfg.CompanionProject))
+		opts = append(opts, sdk.WithCompanionProject(cfg.CompanionProject))
 	}
 	if cfg.UserAgent != "" {
-		opts = append(opts, WithUserAgent(cfg.UserAgent))
-	}
-	if len(cfg.Aliases) > 0 {
-		opts = append(opts, WithAliases(cfg.Aliases))
-	}
-	if cfg.Resolver != nil {
-		opts = append(opts, WithResolver(cfg.Resolver))
+		opts = append(opts, sdk.WithUserAgent(cfg.UserAgent))
 	}
 
 	cacheTTL := cfg.ProfileCacheTTL
@@ -181,15 +192,35 @@ func NewProvider(cfg *Config) (*Provider, error) {
 		quotaTTL = DefaultQuotaCacheTTL
 	}
 
-	client := NewClient(cfg.TokenSource, opts...)
+	var aliases map[string]string
+	if len(cfg.Aliases) > 0 {
+		aliases = make(map[string]string, len(cfg.Aliases))
+		maps.Copy(aliases, cfg.Aliases)
+	}
+
+	client := sdk.NewClient(cfg.TokenSource, opts...)
 	return &Provider{
-		client:       client,
-		cacheTTL:     cacheTTL,
-		cached:       make(map[string]profile.Profile),
-		rawProfiles:  cfg.RawProfiles,
-		quotaTTL:     quotaTTL,
-		cachedQuotas: make(map[string]QuotaInfo),
+		client:          client,
+		tokenSource:     cfg.TokenSource,
+		aliases:         aliases,
+		resolver:        cfg.Resolver,
+		availableModels: make(map[string]bool),
+		cacheTTL:        cacheTTL,
+		cached:          make(map[string]profile.Profile),
+		rawProfiles:     cfg.RawProfiles,
+		quotaTTL:        quotaTTL,
 	}, nil
+}
+
+func (p *Provider) currentAccessToken() string {
+	if p.tokenSource == nil {
+		return ""
+	}
+	tok, err := p.tokenSource.Token()
+	if err != nil {
+		return ""
+	}
+	return tok.AccessToken
 }
 
 // SetRawProfiles configures whether ListProfiles returns raw endpoints or compacted profiles.
@@ -207,18 +238,21 @@ func (p *Provider) Name() string {
 	return "antigravity"
 }
 
-// Client returns the underlying Client instance.
-func (p *Provider) Client() *Client {
+// Client returns the underlying SDK client instance.
+func (p *Provider) Client() *sdk.Client {
 	return p.client
 }
 
-// Stream converts request into the Cloud Code wire format, initiates the streaming
-// call, and returns an iterator yielding [message.AssistantChunk] values.
+// Stream converts request into the Cloud Code wire format, resolves aliases and
+// target endpoints, initiates the streaming call, and yields [message.AssistantChunk] values.
 func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.StreamResponse, error) {
 	wireReq, err := toGenerateContentRequest(request)
 	if err != nil {
 		return nil, fmt.Errorf("antigravity: build request: %w", err)
 	}
+
+	p.ensureAvailableModels(ctx)
+	targetModel, resolvedReq := p.resolveModel(request.Model, wireReq)
 
 	var userPromptID string
 	if sess, ok := extractSession(request); ok {
@@ -227,8 +261,8 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 
 	if sw, ok := stream.WriterFromContext(ctx); ok {
 		payload := map[string]any{
-			"model":   request.Model,
-			"request": wireReq,
+			"model":   targetModel,
+			"request": resolvedReq,
 		}
 		if userPromptID != "" {
 			payload["user_prompt_id"] = userPromptID
@@ -245,19 +279,53 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 	span := trace.SpanFromContext(ctx)
 	span.SetAttributes(
 		attribute.String("antigravity.api.type", "stream_generate_content"),
-		attribute.String("antigravity.model", request.Model),
+		attribute.String("antigravity.model", targetModel),
 	)
 
-	return p.client.streamGenerateContent(ctx, request.Model, wireReq, userPromptID)
+	var streamOpts []sdk.StreamOption
+	if userPromptID != "" {
+		streamOpts = append(streamOpts, sdk.WithUserPromptID(userPromptID))
+	}
+	rawStream, err := p.client.StreamGenerateContent(ctx, targetModel, resolvedReq, streamOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return func(yield func(message.AssistantChunk, error) bool) {
+		for env, err := range rawStream {
+			if err != nil {
+				if !yield(message.AssistantChunk{}, err) {
+					return
+				}
+				continue
+			}
+			result := env.Result()
+			if result == nil {
+				continue
+			}
+			chunk, err := toAssistantChunk(result, targetModel)
+			if err != nil {
+				if !yield(message.AssistantChunk{}, fmt.Errorf("antigravity: convert chunk: %w", err)) {
+					return
+				}
+				continue
+			}
+			if !yield(chunk, nil) {
+				return
+			}
+		}
+	}, nil
 }
 
 // SyncProfiles queries the upstream /v1internal:fetchAvailableModels endpoint
 // and updates the cached model catalog immediately.
 func (p *Provider) SyncProfiles(ctx context.Context) error {
-	models, err := p.client.FetchAvailableModels(ctx)
+	rawModels, err := p.client.FetchAvailableModels(ctx)
 	if err != nil {
 		return err
 	}
+	p.recordAvailableModels(rawModels, p.currentAccessToken())
+	models := expandAvailableModels(rawModels)
 
 	p.cachedMu.Lock()
 	defer p.cachedMu.Unlock()
@@ -328,19 +396,20 @@ func (p *Provider) ensureProfiles() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	models, err := p.client.FetchAvailableModels(ctx)
+	rawModels, err := p.client.FetchAvailableModels(ctx)
 	if err != nil {
 		// On error (e.g. offline, expired auth), keep static profiles and continue
 		return
 	}
+	p.recordAvailableModels(rawModels, p.currentAccessToken())
 
-	for _, m := range models {
+	for _, m := range expandAvailableModels(rawModels) {
 		p.cached[m.ID] = toModelProfile(m)
 	}
 	p.lastFetched = time.Now()
 }
 
-func toModelProfile(m AvailableModel) profile.Profile {
+func toModelProfile(m sdk.AvailableModel) profile.Profile {
 	family := "gemini"
 	if strings.Contains(m.ID, "claude") {
 		family = "claude"
@@ -602,90 +671,6 @@ func (p *Provider) SearchProfiles(query string) []profile.Profile {
 // OverrideProfile stores a custom profile for id, shadowing any static entry.
 func (p *Provider) OverrideProfile(id string, prof profile.Profile) {
 	p.overrides.Store(id, prof)
-}
-
-// ListQuotas returns the current quota information for all models exposed by the backend.
-// If QuotaCacheTTL is positive, results are cached up to that duration.
-// If QuotaCacheTTL is negative (e.g. -1), it always queries the backend directly.
-func (p *Provider) ListQuotas(ctx context.Context) (map[string]QuotaInfo, error) {
-	p.cachedQuotasMu.RLock()
-	isFresh := p.quotaTTL > 0 && time.Since(p.lastQuotaFetched) <= p.quotaTTL && len(p.cachedQuotas) > 0
-	if isFresh {
-		res := make(map[string]QuotaInfo, len(p.cachedQuotas))
-		maps.Copy(res, p.cachedQuotas)
-		p.cachedQuotasMu.RUnlock()
-		return res, nil
-	}
-	p.cachedQuotasMu.RUnlock()
-
-	p.cachedQuotasMu.Lock()
-	defer p.cachedQuotasMu.Unlock()
-
-	// Double check under write lock
-	if p.quotaTTL > 0 && time.Since(p.lastQuotaFetched) <= p.quotaTTL && len(p.cachedQuotas) > 0 {
-		res := make(map[string]QuotaInfo, len(p.cachedQuotas))
-		maps.Copy(res, p.cachedQuotas)
-		return res, nil
-	}
-
-	quotas, err := p.client.FetchQuotas(ctx)
-	if err != nil {
-		// If fetch fails but we have cached quotas, fallback to cached
-		if len(p.cachedQuotas) > 0 {
-			res := make(map[string]QuotaInfo, len(p.cachedQuotas))
-			maps.Copy(res, p.cachedQuotas)
-			return res, nil
-		}
-		return nil, err
-	}
-
-	p.cachedQuotas = quotas
-	p.lastQuotaFetched = time.Now()
-
-	res := make(map[string]QuotaInfo, len(quotas))
-	maps.Copy(res, quotas)
-	return res, nil
-}
-
-// GetQuota returns the quota for a specific model name or alias.
-// If the model name is a virtual alias (such as "gemini-3.8-flash" or "gemini-3.8-flash-high"),
-// it resolves the alias to its underlying backend endpoint (e.g. "gemini-3.8-flash-tiered")
-// and returns that endpoint's quota.
-func (p *Provider) GetQuota(ctx context.Context, model string) (QuotaInfo, bool, error) {
-	quotas, err := p.ListQuotas(ctx)
-	if err != nil {
-		return QuotaInfo{}, false, err
-	}
-
-	// 1. Direct match
-	if q, ok := quotas[model]; ok {
-		return q, true, nil
-	}
-
-	// 2. Resolve target model via client's heuristic / alias resolver
-	target := p.client.ResolveTargetModel(model)
-	if target != model {
-		if q, ok := quotas[target]; ok {
-			return q, true, nil
-		}
-	}
-
-	// 3. Fallbacks for base name, tiered, and per-effort suffixes
-	base, _ := parseEffortSuffix(model)
-	for _, candidate := range []string{
-		base,
-		model + "-tiered",
-		base + "-tiered",
-		base + "-high",
-		base + "-medium",
-		base + "-low",
-	} {
-		if q, ok := quotas[candidate]; ok {
-			return q, true, nil
-		}
-	}
-
-	return QuotaInfo{}, false, nil
 }
 
 // CountTokens estimates or computes the token count for the given message list.

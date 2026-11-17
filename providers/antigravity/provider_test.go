@@ -16,6 +16,7 @@ import (
 	"github.com/masterkeysrd/loom/auth"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/providers/antigravity/sdk"
 	"github.com/masterkeysrd/loom/tool"
 	"golang.org/x/oauth2"
 )
@@ -97,7 +98,7 @@ func TestProvider_Stream(t *testing.T) {
 		}
 
 		// Verify body
-		var env RequestEnvelope
+		var env sdk.RequestEnvelope
 		if err := json.NewDecoder(r.Body).Decode(&env); err != nil {
 			t.Errorf("failed to decode request envelope: %v", err)
 		}
@@ -430,11 +431,17 @@ func TestRawVsCompactProfiles(t *testing.T) {
 
 func TestCustomAliasesAndResolver(t *testing.T) {
 	// 1. Test custom Aliases map
-	c := NewClient(auth.StaticTokenSource("dummy"), WithAliases(map[string]string{
-		"fast": "gemini-3.8-flash-low",
-	}))
+	p, err := NewProvider(&Config{
+		TokenSource: auth.StaticTokenSource("dummy"),
+		Aliases: map[string]string{
+			"fast": "gemini-3.8-flash-low",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
 
-	target, req := c.resolveModel("fast", GenerateContentRequest{})
+	target, req := p.resolveModel("fast", sdk.GenerateContentRequest{})
 	if target != "gemini-3.8-flash-tiered" {
 		t.Errorf("expected target 'gemini-3.8-flash-tiered', got %q", target)
 	}
@@ -444,12 +451,18 @@ func TestCustomAliasesAndResolver(t *testing.T) {
 
 	// 2. Test custom Resolver override
 	customResolverCalled := false
-	cCustom := NewClient(auth.StaticTokenSource("dummy"), WithResolver(func(model string, r GenerateContentRequest, avail map[string]bool) (string, GenerateContentRequest) {
-		customResolverCalled = true
-		return "my-custom-backend-model", r
-	}))
+	pCustom, err := NewProvider(&Config{
+		TokenSource: auth.StaticTokenSource("dummy"),
+		Resolver: func(model string, r sdk.GenerateContentRequest, avail map[string]bool) (string, sdk.GenerateContentRequest) {
+			customResolverCalled = true
+			return "my-custom-backend-model", r
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewProvider custom: %v", err)
+	}
 
-	customTarget, _ := cCustom.resolveModel("anything", GenerateContentRequest{})
+	customTarget, _ := pCustom.resolveModel("anything", sdk.GenerateContentRequest{})
 	if !customResolverCalled || customTarget != "my-custom-backend-model" {
 		t.Errorf("expected custom resolver to be called and return 'my-custom-backend-model', got %q", customTarget)
 	}
@@ -469,13 +482,19 @@ func TestQuotas(t *testing.T) {
 
 	ctx := context.Background()
 
-	// 1. ListQuotas
-	quotas, err := p.ListQuotas(ctx)
+	// 1. GetQuotaSnapshot
+	snap, err := p.GetQuotaSnapshot(ctx)
 	if err != nil {
-		t.Fatalf("ListQuotas failed: %v", err)
+		t.Fatalf("GetQuotaSnapshot failed: %v", err)
 	}
-	if len(quotas) == 0 {
-		t.Fatal("expected non-empty quotas")
+	if len(snap.Buckets) == 0 || len(snap.Models) == 0 {
+		t.Fatal("expected non-empty quota snapshot")
+	}
+	if _, ok := snap.Buckets["gemini-3.8-flash-tiered"]; !ok {
+		t.Errorf("expected shared bucket gemini-3.8-flash-tiered in snapshot, got %+v", snap.Buckets)
+	}
+	if buckets, ok := snap.ForModel("gemini-3.8-flash-high"); !ok || len(buckets) != 1 || buckets[0].ID != "gemini-3.8-flash-tiered" {
+		t.Errorf("expected virtual variant to reference tiered bucket, got %+v (ok=%v)", buckets, ok)
 	}
 
 	// 2. Direct model check
@@ -483,8 +502,9 @@ func TestQuotas(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("GetQuota('gemini-2.5-pro') failed: ok=%v, err=%v", ok, err)
 	}
-	if qPro.RemainingFraction != 1.0 {
-		t.Errorf("expected remainingFraction 1.0, got %f", qPro.RemainingFraction)
+	bPro, ok := qPro.Bottleneck()
+	if !ok || bPro.RemainingFraction != 1.0 {
+		t.Errorf("expected remainingFraction 1.0, got %+v (ok=%v)", bPro, ok)
 	}
 
 	// 3. Virtual canonical alias check ("gemini-3.8-flash" -> "gemini-3.8-flash-tiered")
@@ -492,8 +512,9 @@ func TestQuotas(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("GetQuota('gemini-3.8-flash') failed: ok=%v, err=%v", ok, err)
 	}
-	if qFlash.RemainingFraction != 0.804 {
-		t.Errorf("expected remainingFraction 0.804, got %f", qFlash.RemainingFraction)
+	bFlash, ok := qFlash.Bottleneck()
+	if !ok || bFlash.RemainingFraction != 0.804 {
+		t.Errorf("expected remainingFraction 0.804, got %+v (ok=%v)", bFlash, ok)
 	}
 
 	// 4. Virtual effort alias check ("gemini-3.8-flash-high" -> "gemini-3.8-flash-tiered")
@@ -501,14 +522,132 @@ func TestQuotas(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("GetQuota('gemini-3.8-flash-high') failed: ok=%v, err=%v", ok, err)
 	}
-	if qFlashHigh.RemainingFraction != 0.804 {
-		t.Errorf("expected remainingFraction 0.804, got %f", qFlashHigh.RemainingFraction)
+	bFlashHigh, ok := qFlashHigh.Bottleneck()
+	if !ok || bFlashHigh.RemainingFraction != 0.804 {
+		t.Errorf("expected remainingFraction 0.804, got %+v (ok=%v)", bFlashHigh, ok)
 	}
 
 	// 5. Unknown model
 	_, ok, _ = p.GetQuota(ctx, "nonexistent-model")
 	if ok {
 		t.Errorf("expected ok=false for unknown model")
+	}
+}
+
+func TestQuotaSummaryMultiWindow(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1internal:fetchAvailableModels":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"models": map[string]any{
+					"gemini-3.8-flash-tiered": map[string]any{
+						"displayName":   "Gemini 3.8 Flash",
+						"modelProvider": "MODEL_PROVIDER_GOOGLE",
+						"quotaInfo": map[string]any{
+							"remainingFraction": 0.85,
+							"resetTime":         "2026-11-17T19:00:00Z",
+						},
+					},
+					"claude-sonnet-5-5-high": map[string]any{
+						"displayName":   "Claude Sonnet 5.5 (High)",
+						"modelProvider": "MODEL_PROVIDER_ANTHROPIC",
+						"quotaInfo": map[string]any{
+							"remainingFraction": 1.0,
+							"resetTime":         "2026-11-17T21:00:00Z",
+						},
+					},
+				},
+			})
+		case "/v1internal:retrieveUserQuotaSummary":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"groups": []map[string]any{
+					{
+						"displayName": "Gemini Models",
+						"buckets": []map[string]any{
+							{
+								"bucketId":          "gemini-weekly",
+								"window":            "weekly",
+								"remainingFraction": 0.36,
+								"resetTime":         "2026-11-20T22:52:25Z",
+							},
+							{
+								"bucketId":          "gemini-5h",
+								"window":            "5h",
+								"remainingFraction": 0.85,
+								"resetTime":         "2026-11-17T19:00:00Z",
+							},
+						},
+					},
+					{
+						"displayName": "Claude and GPT models",
+						"buckets": []map[string]any{
+							{
+								"bucketId":          "3p-weekly",
+								"window":            "weekly",
+								"remainingFraction": 0.98,
+								"resetTime":         "2026-11-22T06:06:32Z",
+							},
+							{
+								"bucketId":          "3p-5h",
+								"window":            "5h",
+								"remainingFraction": 1.0,
+								"resetTime":         "2026-11-17T21:00:00Z",
+							},
+						},
+					},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	p, err := NewProvider(&Config{
+		TokenSource: auth.StaticTokenSource("dummy"),
+		BaseURL:     server.URL,
+	})
+	if err != nil {
+		t.Fatalf("create provider: %v", err)
+	}
+
+	ctx := context.Background()
+	snap, err := p.GetQuotaSnapshot(ctx)
+	if err != nil {
+		t.Fatalf("GetQuotaSnapshot failed: %v", err)
+	}
+	if len(snap.Buckets) != 4 {
+		t.Fatalf("expected 4 shared window buckets, got %d (%+v)", len(snap.Buckets), snap.Buckets)
+	}
+	if got := snap.Buckets["gemini-weekly"].Window; got != 7*24*time.Hour {
+		t.Fatalf("gemini-weekly Window = %v, want 168h", got)
+	}
+	if got := snap.Buckets["gemini-5h"].Window; got != 5*time.Hour {
+		t.Fatalf("gemini-5h Window = %v, want 5h", got)
+	}
+
+	// Alias resolution must return both [gemini-5h, gemini-weekly] and identify weekly as bottleneck.
+	buckets, ok, err := p.GetQuota(ctx, "gemini-3.8-flash-high")
+	if err != nil || !ok || len(buckets) != 2 {
+		t.Fatalf("GetQuota('gemini-3.8-flash-high') = %+v, ok=%v, err=%v", buckets, ok, err)
+	}
+	if buckets[0].ID != "gemini-5h" || buckets[1].ID != "gemini-weekly" {
+		t.Fatalf("expected ordered [gemini-5h, gemini-weekly], got %+v", buckets)
+	}
+	bottleneck, ok := buckets.Bottleneck()
+	if !ok || bottleneck.ID != "gemini-weekly" || bottleneck.RemainingFraction != 0.36 {
+		t.Fatalf("expected gemini-weekly bottleneck (0.36), got %+v ok=%v", bottleneck, ok)
+	}
+
+	// 3P models resolve to [3p-5h, 3p-weekly].
+	claudeBuckets, ok, err := p.GetQuota(ctx, "claude-sonnet-5-5-high")
+	if err != nil || !ok || len(claudeBuckets) != 2 {
+		t.Fatalf("GetQuota('claude-sonnet-5-5-high') = %+v, ok=%v, err=%v", claudeBuckets, ok, err)
+	}
+	claudeBottleneck, ok := claudeBuckets.Bottleneck()
+	if !ok || claudeBottleneck.ID != "3p-weekly" || claudeBottleneck.RemainingFraction != 0.98 {
+		t.Fatalf("expected 3p-weekly bottleneck (0.98), got %+v ok=%v", claudeBottleneck, ok)
 	}
 }
 
@@ -546,8 +685,8 @@ func TestQuotaCache(t *testing.T) {
 		t.Fatalf("create provider: %v", err)
 	}
 
-	_, _ = pCached.ListQuotas(ctx)
-	_, _ = pCached.ListQuotas(ctx)
+	_, _ = pCached.GetQuotaSnapshot(ctx)
+	_, _ = pCached.GetQuotaSnapshot(ctx)
 	if fetchCount != 1 {
 		t.Errorf("expected 1 fetch with positive QuotaCacheTTL, got %d", fetchCount)
 	}
@@ -563,8 +702,8 @@ func TestQuotaCache(t *testing.T) {
 		t.Fatalf("create direct provider: %v", err)
 	}
 
-	_, _ = pDirect.ListQuotas(ctx)
-	_, _ = pDirect.ListQuotas(ctx)
+	_, _ = pDirect.GetQuotaSnapshot(ctx)
+	_, _ = pDirect.GetQuotaSnapshot(ctx)
 	if fetchCount != 2 {
 		t.Errorf("expected 2 fetches with negative QuotaCacheTTL, got %d", fetchCount)
 	}
@@ -706,12 +845,12 @@ func TestToTools_NullableFieldSanitization(t *testing.T) {
 func TestThoughtSignatureMapping(t *testing.T) {
 	// 1. Verify toAssistantChunk preserves ThoughtSignature in Extras
 	sig := "test-signature-12345"
-	resp := &GenerateContentResponse{
-		Candidates: []*Candidate{
+	resp := &sdk.GenerateContentResponse{
+		Candidates: []*sdk.Candidate{
 			{
-				Content: &Content{
+				Content: &sdk.Content{
 					Role: "model",
-					Parts: []Part{
+					Parts: []sdk.Part{
 						{
 							Thought:          true,
 							Text:             "thinking...",
@@ -722,7 +861,7 @@ func TestThoughtSignatureMapping(t *testing.T) {
 							ThoughtSignature: sig,
 						},
 						{
-							FunctionCall: &FunctionCall{
+							FunctionCall: &sdk.FunctionCall{
 								ID:   "call_1",
 								Name: "my_tool",
 								Args: map[string]any{"a": "b"},
@@ -781,8 +920,8 @@ func TestThoughtSignatureMapping(t *testing.T) {
 		t.Errorf("expected DummyThoughtSignature for tool call without signature, got %q", partsNoSig[0].ThoughtSignature)
 	}
 
-	// 4. Verify Part.UnmarshalJSON handles snake_case thought_signature
-	var p Part
+	// 4. Verify sdk.Part.UnmarshalJSON handles snake_case thought_signature
+	var p sdk.Part
 	if err := json.Unmarshal([]byte(`{"text":"hi","thought_signature":"snake-sig"}`), &p); err != nil {
 		t.Fatalf("UnmarshalJSON failed: %v", err)
 	}
@@ -800,7 +939,9 @@ func TestCountTokens(t *testing.T) {
 		if auth := r.Header.Get("Authorization"); auth != "Bearer token-123" {
 			t.Errorf("expected Authorization 'Bearer token-123', got %q", auth)
 		}
-		var env countTokensEnvelope
+		var env struct {
+			Request sdk.CountTokensRequest `json:"request"`
+		}
 		if err := json.NewDecoder(r.Body).Decode(&env); err != nil {
 			t.Errorf("failed to decode countTokensEnvelope: %v", err)
 		}
@@ -995,7 +1136,7 @@ func TestUserAgent_DefaultAndOverrides(t *testing.T) {
 			return
 		}
 		gotHeaderUA = r.Header.Get("User-Agent")
-		var env RequestEnvelope
+		var env sdk.RequestEnvelope
 		_ = json.NewDecoder(r.Body).Decode(&env)
 		gotBodyUA = env.UserAgent
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -1003,8 +1144,8 @@ func TestUserAgent_DefaultAndOverrides(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cDefault := NewClient(auth.StaticTokenSource("tok"), WithBaseURL(server.URL))
-	stream, err := cDefault.StreamGenerateContent(context.Background(), "gemini-2.5-pro", GenerateContentRequest{})
+	cDefault := sdk.NewClient(auth.StaticTokenSource("tok"), sdk.WithBaseURL(server.URL))
+	stream, err := cDefault.StreamGenerateContent(context.Background(), "gemini-2.5-pro", sdk.GenerateContentRequest{})
 	if err != nil {
 		t.Fatalf("StreamGenerateContent failed: %v", err)
 	}
@@ -1016,15 +1157,15 @@ func TestUserAgent_DefaultAndOverrides(t *testing.T) {
 
 	// ANTIGRAVITY_USER_AGENT env override
 	t.Setenv("ANTIGRAVITY_USER_AGENT", "antigravity/cli/9.9.9 (test/arch)")
-	cEnv := NewClient(auth.StaticTokenSource("tok"), WithBaseURL(server.URL))
-	if cEnv.userAgent != "antigravity/cli/9.9.9 (test/arch)" {
-		t.Errorf("expected env UA override, got %q", cEnv.userAgent)
+	cEnv := sdk.NewClient(auth.StaticTokenSource("tok"), sdk.WithBaseURL(server.URL))
+	if cEnv.UserAgent() != "antigravity/cli/9.9.9 (test/arch)" {
+		t.Errorf("expected env UA override, got %q", cEnv.UserAgent())
 	}
 
 	// Explicit WithUserAgent overrides ANTIGRAVITY_USER_AGENT
-	cExplicit := NewClient(auth.StaticTokenSource("tok"), WithBaseURL(server.URL), WithUserAgent("custom-ua/1.0"))
-	if cExplicit.userAgent != "custom-ua/1.0" {
-		t.Errorf("expected explicit UA override, got %q", cExplicit.userAgent)
+	cExplicit := sdk.NewClient(auth.StaticTokenSource("tok"), sdk.WithBaseURL(server.URL), sdk.WithUserAgent("custom-ua/1.0"))
+	if cExplicit.UserAgent() != "custom-ua/1.0" {
+		t.Errorf("expected explicit UA override, got %q", cExplicit.UserAgent())
 	}
 }
 
@@ -1088,7 +1229,7 @@ func TestLoadCodeAssist_CompanionProjectAndHeaders(t *testing.T) {
 
 		case "/v1internal:streamGenerateContent":
 			gotStreamHeaderProj = r.Header.Get("X-Goog-User-Project")
-			var env RequestEnvelope
+			var env sdk.RequestEnvelope
 			_ = json.NewDecoder(r.Body).Decode(&env)
 			gotStreamProject = env.Project
 
@@ -1228,7 +1369,7 @@ func TestResolveModel_ColdCacheAndNoEffortFallback(t *testing.T) {
 			})
 
 		case "/v1internal:streamGenerateContent":
-			var env RequestEnvelope
+			var env sdk.RequestEnvelope
 			_ = json.NewDecoder(r.Body).Decode(&env)
 			seenModels = append(seenModels, env.Model)
 			lvl := ""
@@ -1376,8 +1517,8 @@ func TestThinkingLevel_NormalizedUppercase(t *testing.T) {
 	}
 
 	// Verify withThinkingLevel normalizes pre-populated lowercase ThinkingLevel without mutating input pointer
-	origTC := &ThinkingConfig{IncludeThoughts: true, ThinkingLevel: "high"}
-	origReq := GenerateContentRequest{GenerationConfig: &GenerationConfig{ThinkingConfig: origTC}}
+	origTC := &sdk.ThinkingConfig{IncludeThoughts: true, ThinkingLevel: "high"}
+	origReq := sdk.GenerateContentRequest{GenerationConfig: &sdk.GenerationConfig{ThinkingConfig: origTC}}
 	updated := withThinkingLevel(origReq, "LOW")
 	if got := updated.GenerationConfig.ThinkingConfig.ThinkingLevel; got != "HIGH" {
 		t.Errorf("expected withThinkingLevel to normalize existing 'high' to 'HIGH', got %q", got)
@@ -1516,8 +1657,9 @@ func TestCompactedPerEffortProfilesAndQuotas(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("expected GetQuota('gemini-4-carbon') to succeed, ok=%v err=%v", ok, err)
 	}
-	if qCarbon.RemainingFraction != 0.65 {
-		t.Errorf("expected remainingFraction 0.65 (default medium target), got %f", qCarbon.RemainingFraction)
+	bCarbon, ok := qCarbon.Bottleneck()
+	if !ok || bCarbon.RemainingFraction != 0.65 {
+		t.Errorf("expected remainingFraction 0.65 (default medium target), got %+v (ok=%v)", bCarbon, ok)
 	}
 
 	// claude-sonnet-5-5 only has quotaInfo on -high (and resolves no-effort to -low which lacks quotaInfo,
@@ -1526,8 +1668,9 @@ func TestCompactedPerEffortProfilesAndQuotas(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("expected GetQuota('claude-sonnet-5-5') to fall back to -high quota, ok=%v err=%v", ok, err)
 	}
-	if qClaude.RemainingFraction != 0.42 {
-		t.Errorf("expected remainingFraction 0.42, got %f", qClaude.RemainingFraction)
+	bClaude, ok := qClaude.Bottleneck()
+	if !ok || bClaude.RemainingFraction != 0.42 {
+		t.Errorf("expected remainingFraction 0.42, got %+v (ok=%v)", bClaude, ok)
 	}
 }
 
@@ -1640,18 +1783,18 @@ func TestSessionExtensionWiring(t *testing.T) {
 func TestTrailingEmptyTextThoughtSignatureRoundTrip(t *testing.T) {
 	// 1. Stream [{"text": "Hello"}, {"text": "", "thoughtSignature": "sig-abc"}]
 	// through toAssistantChunk -> AssistantAggregator -> toAssistantParts
-	c1, err := toAssistantChunk(&GenerateContentResponse{
-		Candidates: []*Candidate{{
-			Content: &Content{Role: "model", Parts: []Part{{Text: "Hello"}}},
+	c1, err := toAssistantChunk(&sdk.GenerateContentResponse{
+		Candidates: []*sdk.Candidate{{
+			Content: &sdk.Content{Role: "model", Parts: []sdk.Part{{Text: "Hello"}}},
 		}},
 	}, "gemini-4-carbon")
 	if err != nil {
 		t.Fatalf("chunk 1 failed: %v", err)
 	}
 
-	c2, err := toAssistantChunk(&GenerateContentResponse{
-		Candidates: []*Candidate{{
-			Content:      &Content{Role: "model", Parts: []Part{{Text: "", ThoughtSignature: "sig-abc"}}},
+	c2, err := toAssistantChunk(&sdk.GenerateContentResponse{
+		Candidates: []*sdk.Candidate{{
+			Content:      &sdk.Content{Role: "model", Parts: []sdk.Part{{Text: "", ThoughtSignature: "sig-abc"}}},
 			FinishReason: "STOP",
 		}},
 	}, "gemini-4-carbon")

@@ -9,6 +9,7 @@ import (
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/providers/antigravity/sdk"
 	"github.com/masterkeysrd/loom/tool"
 )
 
@@ -23,9 +24,9 @@ const (
 )
 
 // toGenerateContentRequest converts a generic [llm.Request] into the wire-format
-// GenerateContentRequest expected by Cloud Code / Antigravity.
-func toGenerateContentRequest(req *llm.Request) (GenerateContentRequest, error) {
-	out := GenerateContentRequest{}
+// sdk.GenerateContentRequest expected by Cloud Code / Antigravity.
+func toGenerateContentRequest(req *llm.Request) (sdk.GenerateContentRequest, error) {
+	out := sdk.GenerateContentRequest{}
 	if sess, ok := extractSession(req); ok && sess.ID != "" {
 		out.SessionID = sess.ID
 	}
@@ -43,7 +44,7 @@ func toGenerateContentRequest(req *llm.Request) (GenerateContentRequest, error) 
 	}
 
 	// 1. Generation Config
-	cfg := &GenerationConfig{}
+	cfg := &sdk.GenerationConfig{}
 	hasConfig := false
 
 	if req.MaxTokens > 0 {
@@ -81,7 +82,7 @@ func toGenerateContentRequest(req *llm.Request) (GenerateContentRequest, error) 
 		hasConfig = true
 	}
 	if req.Thinking != nil {
-		cfg.ThinkingConfig = &ThinkingConfig{
+		cfg.ThinkingConfig = &sdk.ThinkingConfig{
 			IncludeThoughts: true,
 		}
 		if req.Thinking.Budget > 0 {
@@ -105,8 +106,8 @@ func toGenerateContentRequest(req *llm.Request) (GenerateContentRequest, error) 
 			activeToolTurnIdx = -1
 			text := v.Content.Text()
 			if out.SystemInstruction == nil {
-				out.SystemInstruction = &Content{
-					Parts: []Part{{Text: text}},
+				out.SystemInstruction = &sdk.Content{
+					Parts: []sdk.Part{{Text: text}},
 				}
 			} else {
 				out.SystemInstruction.Parts[0].Text += "\n" + text
@@ -118,7 +119,7 @@ func toGenerateContentRequest(req *llm.Request) (GenerateContentRequest, error) 
 			if err != nil {
 				return out, fmt.Errorf("user message at index %d: %w", i, err)
 			}
-			out.Contents = append(out.Contents, Content{
+			out.Contents = append(out.Contents, sdk.Content{
 				Role:  "user",
 				Parts: parts,
 			})
@@ -129,7 +130,7 @@ func toGenerateContentRequest(req *llm.Request) (GenerateContentRequest, error) 
 			if err != nil {
 				return out, fmt.Errorf("assistant message at index %d: %w", i, err)
 			}
-			out.Contents = append(out.Contents, Content{
+			out.Contents = append(out.Contents, sdk.Content{
 				Role:  "model",
 				Parts: parts,
 			})
@@ -143,9 +144,9 @@ func toGenerateContentRequest(req *llm.Request) (GenerateContentRequest, error) 
 			if activeToolTurnIdx != -1 {
 				out.Contents[activeToolTurnIdx].Parts = append(out.Contents[activeToolTurnIdx].Parts, part)
 			} else {
-				out.Contents = append(out.Contents, Content{
+				out.Contents = append(out.Contents, sdk.Content{
 					Role:  "user",
-					Parts: []Part{part},
+					Parts: []sdk.Part{part},
 				})
 				activeToolTurnIdx = len(out.Contents) - 1
 			}
@@ -161,29 +162,29 @@ func toGenerateContentRequest(req *llm.Request) (GenerateContentRequest, error) 
 		if err != nil {
 			return out, fmt.Errorf("convert tools: %w", err)
 		}
-		out.Tools = []Tool{t}
+		out.Tools = []sdk.Tool{t}
 	}
 
 	return out, nil
 }
 
-func toUserParts(content message.Content) ([]Part, error) {
-	var parts []Part
+func toUserParts(content message.Content) ([]sdk.Part, error) {
+	var parts []sdk.Part
 	for _, block := range content {
 		switch v := block.(type) {
 		case *message.TextBlock:
-			parts = append(parts, Part{Text: v.Text})
+			parts = append(parts, sdk.Part{Text: v.Text})
 		case *message.ImageBlock:
 			if len(v.Data) > 0 {
-				parts = append(parts, Part{
-					InlineData: &Blob{
+				parts = append(parts, sdk.Part{
+					InlineData: &sdk.Blob{
 						Data:     base64.StdEncoding.EncodeToString(v.Data),
 						MIMEType: v.MIMEType,
 					},
 				})
 			} else if v.URL != "" {
-				parts = append(parts, Part{
-					FileData: &FileData{
+				parts = append(parts, sdk.Part{
+					FileData: &sdk.FileData{
 						FileURI:  v.URL,
 						MIMEType: v.MIMEType,
 					},
@@ -191,15 +192,15 @@ func toUserParts(content message.Content) ([]Part, error) {
 			}
 		case *message.AudioBlock:
 			if len(v.Data) > 0 {
-				parts = append(parts, Part{
-					InlineData: &Blob{
+				parts = append(parts, sdk.Part{
+					InlineData: &sdk.Blob{
 						Data:     base64.StdEncoding.EncodeToString(v.Data),
 						MIMEType: v.MIMEType,
 					},
 				})
 			} else if v.URL != "" {
-				parts = append(parts, Part{
-					FileData: &FileData{
+				parts = append(parts, sdk.Part{
+					FileData: &sdk.FileData{
 						FileURI:  v.URL,
 						MIMEType: v.MIMEType,
 					},
@@ -207,15 +208,15 @@ func toUserParts(content message.Content) ([]Part, error) {
 			}
 		case *message.VideoBlock:
 			if len(v.Data) > 0 {
-				parts = append(parts, Part{
-					InlineData: &Blob{
+				parts = append(parts, sdk.Part{
+					InlineData: &sdk.Blob{
 						Data:     base64.StdEncoding.EncodeToString(v.Data),
 						MIMEType: v.MIMEType,
 					},
 				})
 			} else if v.URL != "" {
-				parts = append(parts, Part{
-					FileData: &FileData{
+				parts = append(parts, sdk.Part{
+					FileData: &sdk.FileData{
 						FileURI:  v.URL,
 						MIMEType: v.MIMEType,
 					},
@@ -223,15 +224,15 @@ func toUserParts(content message.Content) ([]Part, error) {
 			}
 		case *message.DocumentBlock:
 			if len(v.Data) > 0 {
-				parts = append(parts, Part{
-					InlineData: &Blob{
+				parts = append(parts, sdk.Part{
+					InlineData: &sdk.Blob{
 						Data:     base64.StdEncoding.EncodeToString(v.Data),
 						MIMEType: v.MIMEType,
 					},
 				})
 			} else if v.URL != "" {
-				parts = append(parts, Part{
-					FileData: &FileData{
+				parts = append(parts, sdk.Part{
+					FileData: &sdk.FileData{
 						FileURI:  v.URL,
 						MIMEType: v.MIMEType,
 					},
@@ -246,8 +247,8 @@ func toUserParts(content message.Content) ([]Part, error) {
 	return parts, nil
 }
 
-func toAssistantParts(content message.Content) ([]Part, error) {
-	var parts []Part
+func toAssistantParts(content message.Content) ([]sdk.Part, error) {
+	var parts []sdk.Part
 	var firstFCSeen bool
 	var pendingSig string
 
@@ -270,7 +271,7 @@ func toAssistantParts(content message.Content) ([]Part, error) {
 				attachOrHoldSig(sig)
 				continue
 			}
-			p := Part{Text: v.Text}
+			p := sdk.Part{Text: v.Text}
 			if sig != "" {
 				p.ThoughtSignature = sig
 			} else if pendingSig != "" {
@@ -280,8 +281,8 @@ func toAssistantParts(content message.Content) ([]Part, error) {
 			parts = append(parts, p)
 
 		case *message.ToolCall:
-			p := Part{
-				FunctionCall: &FunctionCall{
+			p := sdk.Part{
+				FunctionCall: &sdk.FunctionCall{
 					ID:   v.ID,
 					Name: v.Name,
 					Args: v.Args,
@@ -308,7 +309,7 @@ func toAssistantParts(content message.Content) ([]Part, error) {
 				attachOrHoldSig(sig)
 				continue
 			}
-			p := Part{
+			p := sdk.Part{
 				Text:    v.Thinking,
 				Thought: true,
 			}
@@ -324,7 +325,7 @@ func toAssistantParts(content message.Content) ([]Part, error) {
 	return parts, nil
 }
 
-func toFunctionResponsePart(msg *message.Tool) (Part, error) {
+func toFunctionResponsePart(msg *message.Tool) (sdk.Part, error) {
 	response := make(map[string]any)
 
 	if len(msg.Content) > 0 {
@@ -347,8 +348,8 @@ func toFunctionResponsePart(msg *message.Tool) (Part, error) {
 		}
 	}
 
-	return Part{
-		FunctionResponse: &FunctionResponse{
+	return sdk.Part{
+		FunctionResponse: &sdk.FunctionResponse{
 			ID:       msg.ToolCallID,
 			Name:     msg.Name,
 			Response: response,
@@ -356,31 +357,31 @@ func toFunctionResponsePart(msg *message.Tool) (Part, error) {
 	}, nil
 }
 
-func toTools(defs []tool.Definition) (Tool, error) {
-	decls := make([]FunctionDeclaration, 0, len(defs))
+func toTools(defs []tool.Definition) (sdk.Tool, error) {
+	decls := make([]sdk.FunctionDeclaration, 0, len(defs))
 	for _, d := range defs {
 		if d.DeferLoading {
-			return Tool{}, fmt.Errorf("antigravity provider does not support deferred tool loading (tool %q)", d.Name)
+			return sdk.Tool{}, fmt.Errorf("antigravity provider does not support deferred tool loading (tool %q)", d.Name)
 		}
 		var params any
 		if d.InputSchema != nil {
 			sanitized, err := sanitizeSchema(d.InputSchema)
 			if err != nil {
-				return Tool{}, fmt.Errorf("tool %q: sanitize input schema: %w", d.Name, err)
+				return sdk.Tool{}, fmt.Errorf("tool %q: sanitize input schema: %w", d.Name, err)
 			}
 			params = sanitized
 		}
-		decls = append(decls, FunctionDeclaration{
+		decls = append(decls, sdk.FunctionDeclaration{
 			Name:        d.Name,
 			Description: d.Description,
 			Parameters:  params,
 		})
 	}
-	return Tool{FunctionDeclarations: decls}, nil
+	return sdk.Tool{FunctionDeclarations: decls}, nil
 }
 
 // toAssistantChunk converts a stream chunk response into an AssistantChunk.
-func toAssistantChunk(resp *GenerateContentResponse, model string) (message.AssistantChunk, error) {
+func toAssistantChunk(resp *sdk.GenerateContentResponse, model string) (message.AssistantChunk, error) {
 	chunk := message.AssistantChunk{
 		Model: model,
 	}
@@ -447,50 +448,50 @@ func toAssistantChunk(resp *GenerateContentResponse, model string) (message.Assi
 }
 
 // ToCountTokensRequest converts a message.MessageList into a CountTokensRequest.
-func ToCountTokensRequest(messages message.MessageList) (CountTokensRequest, error) {
-	var contents []Content
+func ToCountTokensRequest(messages message.MessageList) (sdk.CountTokensRequest, error) {
+	var contents []sdk.Content
 	for i, msg := range messages {
 		switch v := msg.(type) {
 		case *message.System:
 			text := v.Content.Text()
 			if text != "" {
-				contents = append(contents, Content{
+				contents = append(contents, sdk.Content{
 					Role:  "system",
-					Parts: []Part{{Text: text}},
+					Parts: []sdk.Part{{Text: text}},
 				})
 			}
 		case *message.User:
 			parts, err := toUserParts(v.GetContent())
 			if err != nil {
-				return CountTokensRequest{}, fmt.Errorf("user message at index %d: %w", i, err)
+				return sdk.CountTokensRequest{}, fmt.Errorf("user message at index %d: %w", i, err)
 			}
-			contents = append(contents, Content{
+			contents = append(contents, sdk.Content{
 				Role:  "user",
 				Parts: parts,
 			})
 		case *message.Assistant:
 			parts, err := toAssistantParts(v.GetContent())
 			if err != nil {
-				return CountTokensRequest{}, fmt.Errorf("assistant message at index %d: %w", i, err)
+				return sdk.CountTokensRequest{}, fmt.Errorf("assistant message at index %d: %w", i, err)
 			}
-			contents = append(contents, Content{
+			contents = append(contents, sdk.Content{
 				Role:  "model",
 				Parts: parts,
 			})
 		case *message.Tool:
 			part, err := toFunctionResponsePart(v)
 			if err != nil {
-				return CountTokensRequest{}, fmt.Errorf("tool message at index %d: %w", i, err)
+				return sdk.CountTokensRequest{}, fmt.Errorf("tool message at index %d: %w", i, err)
 			}
-			contents = append(contents, Content{
+			contents = append(contents, sdk.Content{
 				Role:  "user",
-				Parts: []Part{part},
+				Parts: []sdk.Part{part},
 			})
 		default:
-			return CountTokensRequest{}, fmt.Errorf("unsupported message type at index %d: %T", i, msg)
+			return sdk.CountTokensRequest{}, fmt.Errorf("unsupported message type at index %d: %T", i, msg)
 		}
 	}
-	return CountTokensRequest{Contents: contents}, nil
+	return sdk.CountTokensRequest{Contents: contents}, nil
 }
 
 // sanitizeSchema converts a standard JSON Schema (such as from jsonschema.For or an MCP server)

@@ -38,11 +38,89 @@ type TokenMetrics struct {
 	// Timing provides a detailed breakdown of durations.
 	Timing TimingMetrics `json:"timing"`
 
+	// Credits provides provider-reported credit, billing unit, or quota consumption.
+	Credits CreditMetrics `json:"credits,omitzero"`
+
 	// CostTier is the label of the applied pricing tier; empty means base pricing.
 	CostTier string `json:"cost_tier,omitempty"`
 
 	// Priced reports whether pricing data was available for the estimate.
 	Priced bool `json:"priced,omitempty"`
+}
+
+// CreditMetrics holds provider-reported billing, credit, or quota-unit consumption
+// for a single generation. Unlike TotalCost/Cost (which are estimated locally from
+// static model profiles), Credits captures the server-reported charge, multiplier,
+// or billing unit when supplied by the provider.
+type CreditMetrics struct {
+	// Amount is the consumed quantity in Unit (e.g. AI credits, premium requests, or USD).
+	Amount float64 `json:"amount,omitempty"`
+
+	// Unit identifies what Amount measures (e.g. "ai_credits", "premium_requests", "usd").
+	Unit string `json:"unit,omitempty"`
+
+	// Multiplier is the billing multiplier applied to the request when reported
+	// separately by the provider (e.g. Copilot model cost multiplier such as 1.0 or 0.33).
+	Multiplier float64 `json:"multiplier,omitempty"`
+
+	// Status reports provider-specific billing status when available
+	// (e.g. "available", "partial", "unavailable").
+	Status string `json:"status,omitempty"`
+
+	// Estimated reports whether Amount is an estimate rather than an authoritative
+	// post-settlement charge.
+	Estimated bool `json:"estimated,omitempty"`
+}
+
+// Add sums two CreditMetrics values. Amounts are summed when both operands share
+// the same Unit or one side has an empty Unit; incompatible non-empty units clear
+// Unit and Amount. Multiplier is kept when equal or when one side is zero.
+func (c CreditMetrics) Add(other CreditMetrics) CreditMetrics {
+	var unit string
+	var amount float64
+	switch {
+	case c.Unit == other.Unit:
+		unit = c.Unit
+		amount = c.Amount + other.Amount
+	case c.Unit == "":
+		unit = other.Unit
+		amount = c.Amount + other.Amount
+	case other.Unit == "":
+		unit = c.Unit
+		amount = c.Amount + other.Amount
+	}
+
+	var multiplier float64
+	switch {
+	case c.Multiplier == other.Multiplier:
+		multiplier = c.Multiplier
+	case c.Multiplier == 0:
+		multiplier = other.Multiplier
+	case other.Multiplier == 0:
+		multiplier = c.Multiplier
+	}
+
+	var status string
+	switch {
+	case c.Status == other.Status:
+		status = c.Status
+	case c.Status == "":
+		status = other.Status
+	case other.Status == "":
+		status = c.Status
+	case c.Status == "unavailable" || other.Status == "unavailable":
+		status = "unavailable"
+	default:
+		status = "partial"
+	}
+
+	return CreditMetrics{
+		Amount:     amount,
+		Unit:       unit,
+		Multiplier: multiplier,
+		Status:     status,
+		Estimated:  c.Estimated || other.Estimated,
+	}
 }
 
 // TokenDetails is a breakdown of token counts.
@@ -107,5 +185,6 @@ func (m TokenMetrics) Add(other TokenMetrics) TokenMetrics {
 			Processing: m.Timing.Processing + other.Timing.Processing,
 			Generation: m.Timing.Generation + other.Timing.Generation,
 		},
+		Credits: m.Credits.Add(other.Credits),
 	}
 }

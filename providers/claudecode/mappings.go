@@ -286,8 +286,8 @@ func areAllToolResults(msgs []message.Message) ([]*message.Tool, bool) {
 	return out, true
 }
 
-func toTokenMetrics(u *protocol.Usage, durationMS int64) *message.TokenMetrics {
-	if u == nil && durationMS <= 0 {
+func toTokenMetrics(u *protocol.Usage, durationMS int64, totalCostUSD float64) *message.TokenMetrics {
+	if u == nil && durationMS <= 0 && totalCostUSD <= 0 {
 		return nil
 	}
 	var inputTokens, outputTokens, cacheRead, cacheWrite, reasoning int
@@ -313,6 +313,13 @@ func toTokenMetrics(u *protocol.Usage, durationMS int64) *message.TokenMetrics {
 	}
 	if durationMS > 0 {
 		m.Timing.Total = time.Duration(durationMS) * time.Millisecond
+	}
+	if totalCostUSD > 0 {
+		m.Credits = message.CreditMetrics{
+			Amount:    totalCostUSD,
+			Unit:      "usd",
+			Estimated: true,
+		}
 	}
 	return m
 }

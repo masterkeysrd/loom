@@ -18,7 +18,7 @@ func TestToTokenMetricsNormalization(t *testing.T) {
 		CacheCreationInputTokens: 200,
 		ThinkingTokens:           15,
 	}
-	m := toTokenMetrics(u, 350)
+	m := toTokenMetrics(u, 350, 0.042)
 	if m == nil {
 		t.Fatal("expected non-nil TokenMetrics")
 	}
@@ -44,6 +44,9 @@ func TestToTokenMetricsNormalization(t *testing.T) {
 	}
 	if m.Timing.Total.Milliseconds() != 350 {
 		t.Fatalf("Timing.Total = %v, want 350ms", m.Timing.Total)
+	}
+	if m.Credits.Amount != 0.042 || m.Credits.Unit != "usd" || !m.Credits.Estimated {
+		t.Fatalf("Credits = %+v, want {Amount:0.042 Unit:usd Estimated:true}", m.Credits)
 	}
 }
 

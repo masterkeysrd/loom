@@ -1092,7 +1092,7 @@ func (s *cliSession) streamTurn(
 				reason = "end_turn"
 			}
 			tok, digest, meta := buildTurnMeta(f.SessionID)
-			metrics := toTokenMetrics(f.Usage, f.DurationMS)
+			metrics := toTokenMetrics(f.Usage, f.DurationMS, f.TotalCostUSD)
 			s.mu.Lock()
 			s.expectedToken = tok
 			s.prefixDigest = digest

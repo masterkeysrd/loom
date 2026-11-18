@@ -631,38 +631,58 @@ func (s *cliSession) sendUserTurn(prompt string) error {
 	})
 }
 
-func (s *cliSession) sendToolResults(toolMsgs []*message.Tool) error {
+func (s *cliSession) sendToolResults(model string, toolMsgs []*message.Tool) error {
+	for _, tm := range toolMsgs {
+		if tm == nil {
+			continue
+		}
+		if err := validateWireContent(model, string(message.RoleTool), tm.Content); err != nil {
+			return err
+		}
+	}
+
 	s.mu.Lock()
 	pending := slicesCopy(s.parkedCalls)
-	s.parkedCalls = nil
-	s.mu.Unlock()
-
 	if len(pending) == 0 {
+		s.mu.Unlock()
 		return errors.New("claudecode: no parked MCP tool calls awaiting results")
 	}
+	s.parkedCalls = nil
+	s.mu.Unlock()
 
 	used := make([]bool, len(pending))
 	responses := make([]*protocol.ControlResponse, 0, len(pending))
 
 	for _, tm := range toolMsgs {
+		if tm == nil {
+			continue
+		}
 		idx := matchPendingMCPCall(pending, used, tm)
 		if idx == -1 {
 			continue
 		}
 		used[idx] = true
-		responses = append(responses, buildMCPToolResultControlResponse(pending[idx], tm))
+		resp, err := buildMCPToolResultControlResponse(model, pending[idx], tm)
+		if err != nil {
+			return err
+		}
+		responses = append(responses, resp)
 	}
 
 	// Fill any unmatched pending MCP calls with an empty/error response so the
 	// CLI never deadlocks waiting for a missing control_response.
 	for i, p := range pending {
 		if !used[i] {
-			responses = append(responses, buildMCPToolResultControlResponse(p, &message.Tool{
+			resp, err := buildMCPToolResultControlResponse(model, p, &message.Tool{
 				ToolCallID: p.ToolCallID,
 				Name:       p.ToolName,
 				IsError:    true,
 				Content:    message.Content{&message.TextBlock{Text: "missing tool result from caller"}},
-			}))
+			})
+			if err != nil {
+				return err
+			}
+			responses = append(responses, resp)
 		}
 	}
 

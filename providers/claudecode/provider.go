@@ -93,6 +93,18 @@ func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.Stream
 		return nil, fmt.Errorf("claudecode: request cannot be nil")
 	}
 
+	if prof, ok := p.GetProfile(request.Model); ok {
+		if !prof.Capabilities.Completion && (prof.Capabilities.Embedding || prof.Capabilities.Decision) {
+			return nil, profile.NewUnsupportedCapabilityError(p.Name(), request.Model, "completion", "model profile does not support completion")
+		}
+		if err := prof.ValidateMessagesModalities(p.Name(), request.Model, request.Messages); err != nil {
+			return nil, err
+		}
+		if err := prof.ValidateToolCallCapability(p.Name(), request.Model, len(request.Tools) > 0); err != nil {
+			return nil, err
+		}
+	}
+
 	plan, err := p.proxy.prepareAndDispatch(ctx, request)
 	if err != nil {
 		return nil, err

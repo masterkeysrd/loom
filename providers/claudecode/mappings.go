@@ -11,6 +11,7 @@ import (
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/providers/claudecode/internal/protocol"
 )
 
@@ -105,15 +106,62 @@ func findLastSessionCheckpoint(convMessages []message.Message) (sessionMeta, int
 	return sessionMeta{}, -1, false
 }
 
+// validateWireContent ensures content contains no media modalities that would be
+// silently dropped by Claude Code CLI text/control-protocol serialization.
+// ThinkingBlock and tool-related blocks remain lenient.
+func validateWireContent(model, role string, content message.Content) error {
+	for _, block := range content {
+		if block == nil {
+			continue
+		}
+		switch block.(type) {
+		case *message.TextBlock, *message.ThinkingBlock,
+			*message.ToolCall, *message.ToolCallChunk,
+			*message.ServerToolCall, *message.ServerToolCallChunk, *message.ServerToolResult,
+			*message.ToolReferenceBlock, *message.ToolDefinitionBlock:
+			continue
+		case *message.ImageBlock:
+			return profile.NewUnsupportedModalityError("claudecode", model, profile.ModalityImage, fmt.Sprintf("%s message image blocks are not supported by claudecode CLI wire format", role))
+		case *message.AudioBlock:
+			return profile.NewUnsupportedModalityError("claudecode", model, profile.ModalityAudio, fmt.Sprintf("%s message audio blocks are not supported by claudecode CLI wire format", role))
+		case *message.VideoBlock:
+			return profile.NewUnsupportedModalityError("claudecode", model, profile.ModalityVideo, fmt.Sprintf("%s message video blocks are not supported by claudecode CLI wire format", role))
+		case *message.DocumentBlock:
+			return profile.NewUnsupportedModalityError("claudecode", model, profile.ModalityPDF, fmt.Sprintf("%s message document blocks are not supported by claudecode CLI wire format", role))
+		default:
+			return fmt.Errorf("claudecode: unsupported content block kind %q in %s message", block.Kind(), role)
+		}
+	}
+	return nil
+}
+
+func validateWireMessages(model string, msgs []message.Message) error {
+	for i, msg := range msgs {
+		if msg == nil {
+			continue
+		}
+		if err := validateWireContent(model, string(msg.Role()), msg.GetContent()); err != nil {
+			return fmt.Errorf("message[%d] (%s): %w", i, msg.Role(), err)
+		}
+	}
+	return nil
+}
+
 // splitSystemAndConversation extracts leading System instructions (for
 // `--system-prompt`) while preserving any mid-conversation messages in order.
-func splitSystemAndConversation(msgs []message.Message) (string, []message.Message) {
+func splitSystemAndConversation(model string, msgs []message.Message) (string, []message.Message, error) {
 	var systemParts []string
 	var conv []message.Message
 	seenNonSystem := false
 
 	for _, msg := range msgs {
+		if msg == nil {
+			continue
+		}
 		if sys, ok := msg.(*message.System); ok && !seenNonSystem {
+			if err := validateWireContent(model, string(message.RoleSystem), sys.Content); err != nil {
+				return "", nil, err
+			}
 			if txt := strings.TrimSpace(sys.Content.Text()); txt != "" {
 				systemParts = append(systemParts, txt)
 			}
@@ -122,7 +170,7 @@ func splitSystemAndConversation(msgs []message.Message) (string, []message.Messa
 		seenNonSystem = true
 		conv = append(conv, msg)
 	}
-	return strings.Join(systemParts, "\n\n"), conv
+	return strings.Join(systemParts, "\n\n"), conv, nil
 }
 
 // computePrefixDigest hashes the canonical conversation prefix plus request
@@ -208,26 +256,38 @@ func computeTurnToken(sessionID, turnNonce, prefixDigest string) string {
 
 // formatUserDeltaPrompt renders one or more trailing non-tool messages into a
 // prompt string for the `user` NDJSON message when resuming/continuing a session.
-func formatUserDeltaPrompt(msgs []message.Message) (string, error) {
+func formatUserDeltaPrompt(model string, msgs []message.Message) (string, error) {
 	if len(msgs) == 1 {
-		if u, ok := msgs[0].(*message.User); ok {
+		if u, ok := msgs[0].(*message.User); ok && u != nil {
+			if err := validateWireContent(model, string(message.RoleUser), u.Content); err != nil {
+				return "", err
+			}
 			return strings.TrimSpace(u.Content.Text()), nil
 		}
 	}
-	return formatMessagesTranscript(msgs), nil
+	return formatMessagesTranscript(model, msgs)
 }
 
 // formatMessagesTranscript renders a slice of Loom messages into a structured
 // prompt for Path C fresh-session recovery (first turn, compaction, cold restore).
-func formatMessagesTranscript(msgs []message.Message) string {
+func formatMessagesTranscript(model string, msgs []message.Message) (string, error) {
 	if len(msgs) == 1 {
-		if u, ok := msgs[0].(*message.User); ok {
-			return u.Content.Text()
+		if u, ok := msgs[0].(*message.User); ok && u != nil {
+			if err := validateWireContent(model, string(message.RoleUser), u.Content); err != nil {
+				return "", err
+			}
+			return u.Content.Text(), nil
 		}
 	}
 
 	var sb strings.Builder
 	for i, m := range msgs {
+		if m == nil {
+			continue
+		}
+		if err := validateWireContent(model, string(m.Role()), m.GetContent()); err != nil {
+			return "", err
+		}
 		if i > 0 {
 			sb.WriteString("\n\n")
 		}
@@ -266,7 +326,7 @@ func formatMessagesTranscript(msgs []message.Message) string {
 			fmt.Fprintf(&sb, "[%s]\n%s", m.Role(), m.GetContent().Text())
 		}
 	}
-	return sb.String()
+	return sb.String(), nil
 }
 
 // areAllToolResults reports whether msgs is non-empty and every message is *message.Tool.

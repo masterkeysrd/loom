@@ -131,16 +131,21 @@ func handleMCPMessage(
 	}
 }
 
-func buildMCPToolResultControlResponse(pending pendingMCPCall, toolMsg *message.Tool) *protocol.ControlResponse {
+func buildMCPToolResultControlResponse(model string, pending pendingMCPCall, toolMsg *message.Tool) (*protocol.ControlResponse, error) {
 	var content []map[string]any
 	if toolMsg != nil {
+		if err := validateWireContent(model, string(message.RoleTool), toolMsg.Content); err != nil {
+			return nil, err
+		}
 		for _, block := range toolMsg.Content {
 			switch b := block.(type) {
 			case *message.TextBlock:
-				content = append(content, map[string]any{
-					"type": "text",
-					"text": b.Text,
-				})
+				if b != nil {
+					content = append(content, map[string]any{
+						"type": "text",
+						"text": b.Text,
+					})
+				}
 			}
 		}
 		if len(content) == 0 {
@@ -167,7 +172,7 @@ func buildMCPToolResultControlResponse(pending pendingMCPCall, toolMsg *message.
 	return protocol.NewMCPSuccessControlResponse(pending.ControlRequestID, pending.JSONRPCID, map[string]any{
 		"content": content,
 		"isError": isErr,
-	})
+	}), nil
 }
 
 func isToolPermitted(toolName string, loomTools []tool.Definition, allowedNative []string) bool {

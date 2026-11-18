@@ -1,11 +1,14 @@
 package loomclaudecode
 
 import (
+	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/providers/claudecode/internal/protocol"
 	"github.com/masterkeysrd/loom/tool"
 )
@@ -58,7 +61,10 @@ func TestSplitSystemAndConversation(t *testing.T) {
 		&message.System{Content: message.Content{&message.TextBlock{Text: "Mid Sys"}}},
 	}
 
-	sys, conv := splitSystemAndConversation(msgs)
+	sys, conv, err := splitSystemAndConversation("sonnet", msgs)
+	if err != nil {
+		t.Fatalf("splitSystemAndConversation: %v", err)
+	}
 	if sys != "Sys 1\n\nSys 2" {
 		t.Fatalf("system = %q, want %q", sys, "Sys 1\n\nSys 2")
 	}
@@ -229,4 +235,153 @@ func indexOf(s, sub string) int {
 		}
 	}
 	return -1
+}
+
+func TestWireModalityValidationRejectsSilentDrops(t *testing.T) {
+	mediaCases := []struct {
+		name  string
+		block message.Block
+		want  profile.Modality
+	}{
+		{
+			name:  "image bytes",
+			block: &message.ImageBlock{Data: []byte{1, 2, 3}, MIMEType: "image/png"},
+			want:  profile.ModalityImage,
+		},
+		{
+			name:  "image url",
+			block: &message.ImageBlock{URL: "https://example.com/img.png"},
+			want:  profile.ModalityImage,
+		},
+		{
+			name:  "empty image",
+			block: &message.ImageBlock{},
+			want:  profile.ModalityImage,
+		},
+		{
+			name:  "audio",
+			block: &message.AudioBlock{Data: []byte{1, 2}, MIMEType: "audio/mp3"},
+			want:  profile.ModalityAudio,
+		},
+		{
+			name:  "video",
+			block: &message.VideoBlock{URL: "https://example.com/vid.mp4", MIMEType: "video/mp4"},
+			want:  profile.ModalityVideo,
+		},
+		{
+			name:  "document pdf",
+			block: &message.DocumentBlock{Data: []byte("%PDF"), MIMEType: "application/pdf"},
+			want:  profile.ModalityPDF,
+		},
+		{
+			name:  "document text/plain",
+			block: &message.DocumentBlock{Data: []byte("hello"), MIMEType: "text/plain"},
+			want:  profile.ModalityPDF,
+		},
+		{
+			name:  "empty document",
+			block: &message.DocumentBlock{},
+			want:  profile.ModalityPDF,
+		},
+	}
+
+	assertModalityErr := func(t *testing.T, err error, want profile.Modality) {
+		t.Helper()
+		if err == nil {
+			t.Fatalf("expected error for modality %s, got nil", want)
+		}
+		if !errors.Is(err, profile.ErrUnsupportedModality) {
+			t.Fatalf("expected ErrUnsupportedModality, got %v", err)
+		}
+		var modErr *profile.UnsupportedModalityError
+		if !errors.As(err, &modErr) || modErr.Modality != want || modErr.Provider != "claudecode" {
+			t.Fatalf("unexpected UnsupportedModalityError: %+v (err=%v)", modErr, err)
+		}
+	}
+
+	for _, tc := range mediaCases {
+		t.Run("splitSystemAndConversation/"+tc.name, func(t *testing.T) {
+			_, _, err := splitSystemAndConversation("sonnet", []message.Message{
+				&message.System{Content: message.Content{&message.TextBlock{Text: "sys"}, tc.block}},
+			})
+			assertModalityErr(t, err, tc.want)
+		})
+
+		t.Run("formatUserDeltaPrompt/"+tc.name, func(t *testing.T) {
+			_, err := formatUserDeltaPrompt("sonnet", []message.Message{
+				&message.User{Content: message.Content{&message.TextBlock{Text: "hi"}, tc.block}},
+			})
+			assertModalityErr(t, err, tc.want)
+		})
+
+		t.Run("formatMessagesTranscript/user/"+tc.name, func(t *testing.T) {
+			_, err := formatMessagesTranscript("sonnet", []message.Message{
+				&message.User{Content: message.Content{tc.block}},
+			})
+			assertModalityErr(t, err, tc.want)
+		})
+
+		t.Run("formatMessagesTranscript/assistant/"+tc.name, func(t *testing.T) {
+			_, err := formatMessagesTranscript("sonnet", []message.Message{
+				&message.User{Content: message.Content{&message.TextBlock{Text: "hi"}}},
+				&message.Assistant{Content: message.Content{&message.TextBlock{Text: "ok"}, tc.block}},
+			})
+			assertModalityErr(t, err, tc.want)
+		})
+
+		t.Run("formatMessagesTranscript/tool/"+tc.name, func(t *testing.T) {
+			_, err := formatMessagesTranscript("sonnet", []message.Message{
+				&message.User{Content: message.Content{&message.TextBlock{Text: "hi"}}},
+				&message.Tool{
+					ToolCallID: "call_1",
+					Name:       "read",
+					Content:    message.Content{&message.TextBlock{Text: "out"}, tc.block},
+				},
+			})
+			assertModalityErr(t, err, tc.want)
+		})
+
+		t.Run("buildMCPToolResultControlResponse/"+tc.name, func(t *testing.T) {
+			_, err := buildMCPToolResultControlResponse("sonnet", pendingMCPCall{
+				ControlRequestID: "ctrl_1",
+				JSONRPCID:        json.RawMessage(`1`),
+				ToolCallID:       "call_1",
+				ToolName:         "read",
+			}, &message.Tool{
+				ToolCallID: "call_1",
+				Name:       "read",
+				Content:    message.Content{&message.TextBlock{Text: "out"}, tc.block},
+			})
+			assertModalityErr(t, err, tc.want)
+		})
+	}
+}
+
+func TestThinkingBlockRemainsLenientOnTranscript(t *testing.T) {
+	msgs := []message.Message{
+		&message.User{Content: message.Content{&message.TextBlock{Text: "q1"}}},
+		&message.Assistant{
+			Content: message.Content{
+				&message.ThinkingBlock{Thinking: "secret chain of thought"},
+				&message.TextBlock{Text: "a1"},
+				&message.ToolCall{ID: "tc_1", Name: "echo", Args: map[string]any{"x": 1}},
+			},
+		},
+		&message.Tool{
+			ToolCallID: "tc_1",
+			Name:       "echo",
+			Content:    message.Content{&message.TextBlock{Text: "ok"}},
+		},
+	}
+
+	transcript, err := formatMessagesTranscript("sonnet", msgs)
+	if err != nil {
+		t.Fatalf("formatMessagesTranscript failed with ThinkingBlock: %v", err)
+	}
+	if containsSubstr(transcript, "secret chain of thought") {
+		t.Fatalf("did not expect thinking block in transcript, got %q", transcript)
+	}
+	if !containsSubstr(transcript, "a1") || !containsSubstr(transcript, "[ToolCall name=echo id=tc_1") {
+		t.Fatalf("expected assistant text and tool call in transcript, got %q", transcript)
+	}
 }

@@ -1630,3 +1630,251 @@ func TestProviderGracefulInterruptOnCancel(t *testing.T) {
 		t.Fatalf("expected graceful CONTROL subtype=interrupt in log:\n%s", joined)
 	}
 }
+
+func TestProviderModalityAndCapabilityValidation(t *testing.T) {
+	t.Run("profile modality and capability rejections without spawning CLI", func(t *testing.T) {
+		p, logFile := newMockProvider(t)
+		p.OverrideProfile("text-only-no-tools", profile.Profile{
+			ID: "text-only-no-tools",
+			Capabilities: profile.Capabilities{
+				Completion: true,
+				ToolCall:   false,
+			},
+			Modalities: profile.Modalities{
+				Inputs:  []profile.Modality{profile.ModalityText},
+				Outputs: []profile.Modality{profile.ModalityText},
+			},
+		})
+		p.OverrideProfile("embed-only", profile.Profile{
+			ID: "embed-only",
+			Capabilities: profile.Capabilities{
+				Completion: false,
+				Embedding:  true,
+			},
+			Modalities: profile.Modalities{
+				Inputs:  []profile.Modality{profile.ModalityText},
+				Outputs: []profile.Modality{profile.ModalityEmbedding},
+			},
+		})
+
+		ctx := context.Background()
+
+		// ToolCall=false must fail with ErrUnsupportedCapability.
+		_, err := p.Stream(ctx, &llm.Request{
+			Model:    "text-only-no-tools",
+			Messages: []message.Message{&message.User{Content: message.Content{&message.TextBlock{Text: "hi"}}}},
+			Tools:    []tool.Definition{{Name: "echo"}},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedCapability) {
+			t.Fatalf("expected ErrUnsupportedCapability for ToolCall=false, got %v", err)
+		}
+
+		// Image on text-only profile must fail with ErrUnsupportedModality.
+		_, err = p.Stream(ctx, &llm.Request{
+			Model: "text-only-no-tools",
+			Messages: []message.Message{
+				&message.User{Content: message.Content{
+					&message.TextBlock{Text: "describe"},
+					&message.ImageBlock{Data: []byte{1, 2, 3}, MIMEType: "image/png"},
+				}},
+			},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedModality) {
+			t.Fatalf("expected ErrUnsupportedModality for image on text-only profile, got %v", err)
+		}
+
+		// Embedding-only profile must fail completion check with ErrUnsupportedCapability.
+		_, err = p.Stream(ctx, &llm.Request{
+			Model:    "embed-only",
+			Messages: []message.Message{&message.User{Content: message.Content{&message.TextBlock{Text: "hi"}}}},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedCapability) {
+			t.Fatalf("expected ErrUnsupportedCapability for Completion=false, got %v", err)
+		}
+
+		if spawns := countPrefix(readLogLines(t, logFile), "SPAWN "); spawns != 0 {
+			t.Fatalf("expected 0 CLI spawns when rejected by profile validation, got %d", spawns)
+		}
+	})
+
+	t.Run("wire-level rejection even when profile allows image/pdf or model is unknown", func(t *testing.T) {
+		p, logFile := newMockProvider(t)
+		p.OverrideProfile("rich-profile", profile.Profile{
+			ID: "rich-profile",
+			Capabilities: profile.Capabilities{
+				Completion: true,
+				ToolCall:   true,
+			},
+			Modalities: profile.Modalities{
+				Inputs:  []profile.Modality{profile.ModalityText, profile.ModalityImage, profile.ModalityPDF},
+				Outputs: []profile.Modality{profile.ModalityText},
+			},
+		})
+
+		ctx := context.Background()
+		cases := []struct {
+			name  string
+			model string
+			msgs  []message.Message
+			want  profile.Modality
+		}{
+			{
+				name:  "system image on unknown model",
+				model: "unlisted-model",
+				msgs: []message.Message{
+					&message.System{Content: message.Content{&message.ImageBlock{URL: "https://example.com/a.png"}}},
+					&message.User{Content: message.Content{&message.TextBlock{Text: "hi"}}},
+				},
+				want: profile.ModalityImage,
+			},
+			{
+				name:  "user image on rich profile",
+				model: "rich-profile",
+				msgs: []message.Message{
+					&message.User{Content: message.Content{&message.ImageBlock{Data: []byte("png"), MIMEType: "image/png"}}},
+				},
+				want: profile.ModalityImage,
+			},
+			{
+				name:  "user document on rich profile",
+				model: "rich-profile",
+				msgs: []message.Message{
+					&message.User{Content: message.Content{&message.DocumentBlock{Data: []byte("%PDF"), MIMEType: "application/pdf"}}},
+				},
+				want: profile.ModalityPDF,
+			},
+			{
+				name:  "user audio on unknown model",
+				model: "unlisted-model",
+				msgs: []message.Message{
+					&message.User{Content: message.Content{&message.AudioBlock{Data: []byte("mp3"), MIMEType: "audio/mp3"}}},
+				},
+				want: profile.ModalityAudio,
+			},
+			{
+				name:  "assistant video on unknown model",
+				model: "unlisted-model",
+				msgs: []message.Message{
+					&message.User{Content: message.Content{&message.TextBlock{Text: "hi"}}},
+					&message.Assistant{Content: message.Content{&message.VideoBlock{URL: "https://example.com/v.mp4"}}},
+					&message.User{Content: message.Content{&message.TextBlock{Text: "next"}}},
+				},
+				want: profile.ModalityVideo,
+			},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				_, err := p.Stream(ctx, &llm.Request{
+					Model:    tc.model,
+					Messages: tc.msgs,
+				})
+				if !errors.Is(err, profile.ErrUnsupportedModality) {
+					t.Fatalf("expected ErrUnsupportedModality, got %v", err)
+				}
+				var modErr *profile.UnsupportedModalityError
+				if !errors.As(err, &modErr) || modErr.Modality != tc.want {
+					t.Fatalf("expected modality %s, got %+v (err=%v)", tc.want, modErr, err)
+				}
+			})
+		}
+
+		if spawns := countPrefix(readLogLines(t, logFile), "SPAWN "); spawns != 0 {
+			t.Fatalf("expected 0 CLI spawns on wire-level modality rejections, got %d", spawns)
+		}
+	})
+
+	t.Run("parked tool result with media block fails cleanly without killing session", func(t *testing.T) {
+		p, logFile := newMockProvider(t)
+		m, err := llm.NewModel(p, "unlisted-model", nil)
+		if err != nil {
+			t.Fatalf("NewModel: %v", err)
+		}
+		echoTool, err := tool.New(
+			"echo_tool",
+			"Echo",
+			"Echoes a message",
+			func(_ context.Context, in struct {
+				Msg string `json:"msg"`
+			}) (string, error) {
+				return "echo:" + in.Msg, nil
+			},
+		)
+		if err != nil {
+			t.Fatalf("tool.New: %v", err)
+		}
+		m = m.BindTools(echoTool)
+
+		ctx := context.Background()
+		u1 := &message.User{Content: message.Content{&message.TextBlock{Text: "please USE_TOOL"}}}
+		a1, err := m.Invoke(ctx, message.MessageList{u1})
+		if err != nil {
+			t.Fatalf("Invoke tool call: %v", err)
+		}
+		tc := a1.ToolCalls()[0]
+
+		// Submitting a Tool message with an ImageBlock must error with ErrUnsupportedModality
+		// without corrupting the parked session.
+		_, err = m.Invoke(ctx, message.MessageList{
+			u1,
+			a1,
+			&message.Tool{
+				ToolCallID: tc.ID,
+				Name:       tc.Name,
+				Content: message.Content{
+					&message.TextBlock{Text: "partial"},
+					&message.ImageBlock{Data: []byte{1, 2}, MIMEType: "image/png"},
+				},
+			},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedModality) {
+			t.Fatalf("expected ErrUnsupportedModality on Tool message image, got %v", err)
+		}
+
+		// Subsequent valid text tool result still completes on the same parked session (1 SPAWN total).
+		a2, err := m.Invoke(ctx, message.MessageList{
+			u1,
+			a1,
+			&message.Tool{
+				ToolCallID: tc.ID,
+				Name:       tc.Name,
+				Content:    message.Content{&message.TextBlock{Text: "echo:ping"}},
+			},
+		})
+		if err != nil {
+			t.Fatalf("valid Tool follow-up failed: %v", err)
+		}
+		if !strings.Contains(a2.Content.Text(), "echo:ping") {
+			t.Fatalf("unexpected tool follow-up answer: %q", a2.Content.Text())
+		}
+		if spawns := countPrefix(readLogLines(t, logFile), "SPAWN "); spawns != 1 {
+			t.Fatalf("expected 1 SPAWN total (parked session preserved), got %d", spawns)
+		}
+	})
+
+	t.Run("unknown model passes through text and historical ThinkingBlock", func(t *testing.T) {
+		p, _ := newMockProvider(t)
+		if _, ok := p.GetProfile("custom-unknown-claude"); ok {
+			t.Fatal("expected custom-unknown-claude to not be in cold profile cache")
+		}
+		m, err := llm.NewModel(p, "custom-unknown-claude", nil)
+		if err != nil {
+			t.Fatalf("NewModel: %v", err)
+		}
+
+		resp, err := m.Invoke(context.Background(), message.MessageList{
+			&message.User{Content: message.Content{&message.TextBlock{Text: "first"}}},
+			&message.Assistant{Content: message.Content{
+				&message.ThinkingBlock{Thinking: "prior reasoning"},
+				&message.TextBlock{Text: "prior answer"},
+			}},
+			&message.User{Content: message.Content{&message.TextBlock{Text: "second"}}},
+		})
+		if err != nil {
+			t.Fatalf("Invoke unknown model with ThinkingBlock failed: %v", err)
+		}
+		if !strings.Contains(resp.Content.Text(), "second") {
+			t.Fatalf("unexpected response text: %q", resp.Content.Text())
+		}
+	})
+}

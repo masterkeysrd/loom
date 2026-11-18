@@ -238,6 +238,7 @@ func (m *sessionManager) dispatchUserOrCompact(
 	ctx context.Context,
 	sess *cliSession,
 	ch chan readEvent,
+	model string,
 	deltaMsgs []message.Message,
 	ext Session,
 	initialCompact compactState,
@@ -259,7 +260,7 @@ func (m *sessionManager) dispatchUserOrCompact(
 		cs = manualCS
 	}
 
-	prompt, err := formatUserDeltaPrompt(deltaMsgs)
+	prompt, err := formatUserDeltaPrompt(model, deltaMsgs)
 	if err != nil {
 		return "", cs, err
 	}
@@ -277,13 +278,20 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 	}
 	m.mu.Unlock()
 
+	if err := validateWireMessages(req.Model, req.Messages); err != nil {
+		return nil, err
+	}
+
 	ext, _ := extractSessionExt(req)
 	syncOnWrite := m.cfg.SyncOnWrite
 	if ext.SyncOnWrite != nil {
 		syncOnWrite = *ext.SyncOnWrite
 	}
 
-	systemPrompt, convMessages := splitSystemAndConversation(req.Messages)
+	systemPrompt, convMessages, err := splitSystemAndConversation(req.Model, req.Messages)
+	if err != nil {
+		return nil, err
+	}
 	allowedNative := resolveAllowedNativeTools(m.cfg, ext)
 	workingDir := m.cfg.WorkingDir
 	if ext.WorkingDir != "" {
@@ -304,7 +312,7 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 			if sess != nil {
 				if toolMsgs, ok := areAllToolResults(deltaMsgs); ok && sess.hasParkedCalls() {
 					ch := sess.beginTurn()
-					if err := sess.sendToolResults(toolMsgs); err != nil {
+					if err := sess.sendToolResults(req.Model, toolMsgs); err != nil {
 						sess.endTurn(ch)
 						m.retireSession(sess)
 						return nil, err
@@ -331,7 +339,7 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 						m.retireSession(sess)
 						return nil, err
 					}
-					prompt, cs, err := m.dispatchUserOrCompact(ctx, sess, ch, deltaMsgs, ext, idleCS)
+					prompt, cs, err := m.dispatchUserOrCompact(ctx, sess, ch, req.Model, deltaMsgs, ext, idleCS)
 					if err != nil {
 						sess.endTurn(ch)
 						m.retireSession(sess)
@@ -396,7 +404,7 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 							m.trackSession(sess)
 
 							ch := sess.beginTurn()
-							prompt, cs, pErr := m.dispatchUserOrCompact(ctx, sess, ch, deltaMsgs, ext, compactState{})
+							prompt, cs, pErr := m.dispatchUserOrCompact(ctx, sess, ch, req.Model, deltaMsgs, ext, compactState{})
 							if pErr != nil {
 								sess.endTurn(ch)
 								m.retireSession(sess)
@@ -457,7 +465,12 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 	m.trackSession(sess)
 
 	ch := sess.beginTurn()
-	prompt := formatMessagesTranscript(convMessages)
+	prompt, err := formatMessagesTranscript(req.Model, convMessages)
+	if err != nil {
+		sess.endTurn(ch)
+		m.retireSession(sess)
+		return nil, err
+	}
 	if err := sess.sendUserTurn(prompt); err != nil {
 		sess.endTurn(ch)
 		m.retireSession(sess)

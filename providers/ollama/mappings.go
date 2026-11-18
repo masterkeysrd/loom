@@ -9,6 +9,7 @@ import (
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/tool"
 	"github.com/ollama/ollama/api"
 )
@@ -90,7 +91,7 @@ func toChatRequest(request *llm.Request) (*api.ChatRequest, error) {
 
 	ollamaRequest.Messages = make([]api.Message, len(request.Messages))
 	for i, msg := range request.Messages {
-		ollamaMsg, err := toAPIMessage(msg)
+		ollamaMsg, err := toAPIMessageWithModel(request.Model, msg)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert message at index %d: %w", i, err)
 		}
@@ -113,6 +114,13 @@ func toChatRequest(request *llm.Request) (*api.ChatRequest, error) {
 
 // toAPIMessage converts a [message.Message] to the Ollama api.Message format.
 func toAPIMessage(msg message.Message) (api.Message, error) {
+	return toAPIMessageWithModel("", msg)
+}
+
+func toAPIMessageWithModel(model string, msg message.Message) (api.Message, error) {
+	if msg == nil {
+		return api.Message{}, fmt.Errorf("message cannot be nil")
+	}
 	ollamaMsg := api.Message{
 		Role: toAPIRole(msg.Role()),
 	}
@@ -134,6 +142,9 @@ func toAPIMessage(msg message.Message) (api.Message, error) {
 	for _, c := range msg.GetContent() {
 		switch v := c.(type) {
 		case *message.TextBlock:
+			if v == nil {
+				continue
+			}
 			text := v.Text
 			if isError && text != "" {
 				text = "Error: " + text
@@ -142,18 +153,26 @@ func toAPIMessage(msg message.Message) (api.Message, error) {
 		case *message.ToolCall:
 			ollamaMsg.ToolCalls = append(ollamaMsg.ToolCalls, toAPIToolCall(v))
 		case *message.ThinkingBlock:
-			thinking.WriteString(v.Thinking)
-		case *message.ImageBlock:
-			if len(v.Data) > 0 {
-				ollamaMsg.Images = append(ollamaMsg.Images, api.ImageData(v.Data))
-			} else if v.URL != "" {
-				// Ollama does not currently support image URLs directly in the Message struct.
-				// For now, we'll only support inline data.
-				return api.Message{}, fmt.Errorf("ollama provider only supports inline image data, not URLs")
+			if v != nil {
+				thinking.WriteString(v.Thinking)
 			}
-		case *message.AudioBlock, *message.VideoBlock, *message.DocumentBlock:
-			// Ollama currently only supports images for multimodal.
-			return api.Message{}, fmt.Errorf("ollama provider does not support %T", c)
+		case *message.ImageBlock:
+			if v == nil || (len(v.Data) == 0 && strings.TrimSpace(v.URL) == "") {
+				return api.Message{}, profile.NewUnsupportedModalityError("ollama", model, profile.ModalityImage, "image block is empty: missing both data and url")
+			}
+			if msg.Role() != message.RoleUser {
+				return api.Message{}, profile.NewUnsupportedModalityError("ollama", model, profile.ModalityImage, fmt.Sprintf("ollama provider does not support image blocks in %s messages", msg.Role()))
+			}
+			if len(v.Data) == 0 {
+				return api.Message{}, profile.NewUnsupportedModalityError("ollama", model, profile.ModalityImage, "ollama provider only supports inline image data, not URLs")
+			}
+			ollamaMsg.Images = append(ollamaMsg.Images, api.ImageData(v.Data))
+		case *message.AudioBlock:
+			return api.Message{}, profile.NewUnsupportedModalityError("ollama", model, profile.ModalityAudio, "ollama provider does not support audio inputs")
+		case *message.VideoBlock:
+			return api.Message{}, profile.NewUnsupportedModalityError("ollama", model, profile.ModalityVideo, "ollama provider does not support video inputs")
+		case *message.DocumentBlock:
+			return api.Message{}, profile.NewUnsupportedModalityError("ollama", model, profile.ModalityPDF, "ollama provider does not support document inputs")
 		default:
 			return api.Message{}, fmt.Errorf("unsupported content type for message with role %s: %T", msg.Role(), c)
 		}

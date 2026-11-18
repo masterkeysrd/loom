@@ -35,10 +35,11 @@ const defaultContextLength = 4096
 // Provider represents the Ollama backend client for
 // handling chat requests for the Loom application.
 type Provider struct {
-	client     *api.Client
-	baseURL    *url.URL
-	discovered sync.Map
-	overrides  sync.Map
+	client            *api.Client
+	baseURL           *url.URL
+	discovered        sync.Map
+	authoritativeCaps sync.Map
+	overrides         sync.Map
 }
 
 func (p *Provider) NewProvider(client *api.Client, baseURL *url.URL) *Provider {
@@ -80,15 +81,23 @@ func (p *Provider) Name() string {
 // call, and returns an iterator that yields [message.AssistantChunk] values as
 // tokens arrive from the Ollama server.
 func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.StreamResponse, error) {
+	if request == nil {
+		return nil, errors.New("ollama: chat request cannot be nil")
+	}
+
 	ollamaRequest, err := toChatRequest(request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert chat request: %w", err)
 	}
 
-	if _, hasCtx := ollamaRequest.Options["num_ctx"]; !hasCtx {
+	if _, hasCtx := ollamaRequest.Options["num_ctx"]; !hasCtx && p.client != nil {
 		if prof, ok := p.GetProfile(request.Model); ok && prof.Limits.Context > 0 {
 			ollamaRequest.Options["num_ctx"] = prof.Limits.Context
 		}
+	}
+
+	if err := p.validateChatProfile(request); err != nil {
+		return nil, err
 	}
 
 	if sw, ok := stream.WriterFromContext(ctx); ok {
@@ -159,6 +168,9 @@ func (p *Provider) ListModels(ctx context.Context) ([]profile.Profile, error) {
 			live = profile.Merge(prev.(profile.Profile), live)
 		}
 		p.discovered.Store(id, live)
+		if len(m.Capabilities) > 0 {
+			p.authoritativeCaps.Store(id, true)
+		}
 
 		result = append(result, p.resolveCatalogEntry(id, live))
 	}
@@ -269,7 +281,47 @@ func (p *Provider) fetchAndCacheProfile(ctx context.Context, id string) (profile
 
 	prof := toModelProfile(id, resp)
 	p.discovered.Store(id, prof)
+	if len(resp.Capabilities) > 0 {
+		p.authoritativeCaps.Store(id, true)
+	}
 	return prof, nil
+}
+
+// lookupAuthoritativeCachedProfile returns a profile only when its capabilities
+// and modalities are explicitly known (via OverrideProfile, staticProfiles, or
+// an Ollama /api/tags or /api/show response with non-empty Capabilities).
+// Older Ollama servers that omit Capabilities are skipped so vision/tool models
+// are not falsely blocked.
+func (p *Provider) lookupAuthoritativeCachedProfile(id string) (profile.Profile, bool) {
+	if p == nil {
+		return profile.Profile{}, false
+	}
+	if v, ok := p.overrides.Load(id); ok {
+		return v.(profile.Profile), true
+	}
+	if m, ok := staticProfiles[id]; ok {
+		return m, true
+	}
+	if auth, _ := p.authoritativeCaps.Load(id); auth == true {
+		if v, ok := p.discovered.Load(id); ok {
+			return v.(profile.Profile), true
+		}
+	}
+	return profile.Profile{}, false
+}
+
+func (p *Provider) validateChatProfile(request *llm.Request) error {
+	prof, ok := p.lookupAuthoritativeCachedProfile(request.Model)
+	if !ok {
+		return nil
+	}
+	if !prof.Capabilities.Completion && (prof.Capabilities.Embedding || prof.Capabilities.Decision) {
+		return profile.NewUnsupportedCapabilityError(p.Name(), request.Model, "completion", "model profile does not support chat completion")
+	}
+	if err := prof.ValidateMessagesModalities(p.Name(), request.Model, request.Messages); err != nil {
+		return err
+	}
+	return prof.ValidateToolCallCapability(p.Name(), request.Model, len(request.Tools) > 0)
 }
 
 func toListModelProfile(m api.ListModelResponse) profile.Profile {

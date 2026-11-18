@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/masterkeysrd/loom/decision"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/ollama/ollama/api"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -26,6 +28,10 @@ func (p *Provider) Evaluate(ctx context.Context, request *decision.Request) (*de
 	}
 	if request == nil {
 		return nil, errors.New("decision request cannot be nil")
+	}
+
+	if err := p.validateDecisionProfile(request); err != nil {
+		return nil, err
 	}
 
 	sysReq, err := toSystemOneRequest(request)
@@ -63,7 +69,79 @@ func (p *Provider) Evaluate(ctx context.Context, request *decision.Request) (*de
 	return toDecisionResponse(sysResp, request)
 }
 
+func (p *Provider) validateDecisionProfile(request *decision.Request) error {
+	prof, ok := p.lookupAuthoritativeCachedProfile(request.Model)
+	if !ok {
+		return nil
+	}
+	if !prof.Capabilities.Decision && (prof.Capabilities.Completion || prof.Capabilities.Embedding || prof.HasInputModalities()) {
+		return profile.NewUnsupportedCapabilityError(p.Name(), request.Model, "decision", "model profile does not support decision evaluation")
+	}
+	if len(request.Input.Images) > 0 && prof.HasInputModalities() && !prof.SupportsInputModality(profile.ModalityImage) {
+		return profile.NewUnsupportedModalityError(p.Name(), request.Model, profile.ModalityImage, "model profile does not list image input modality")
+	}
+	if content := extractStateContent(request.Input.State); len(content) > 0 {
+		if err := prof.ValidateContentModalities(p.Name(), request.Model, content); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func extractStateContent(state any) message.Content {
+	switch v := state.(type) {
+	case message.Content:
+		return v
+	case []message.Block:
+		return message.Content(v)
+	case message.Block:
+		return message.Content{v}
+	case message.Message:
+		if v != nil {
+			return v.GetContent()
+		}
+	case []message.Message:
+		var out message.Content
+		for _, m := range v {
+			if m != nil {
+				out = append(out, m.GetContent()...)
+			}
+		}
+		return out
+	case message.MessageList:
+		var out message.Content
+		for _, m := range v {
+			if m != nil {
+				out = append(out, m.GetContent()...)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+func validateDecisionStateWireModalities(model string, state any) error {
+	for _, block := range extractStateContent(state) {
+		switch b := block.(type) {
+		case *message.ImageBlock:
+			return profile.NewUnsupportedModalityError("ollama", model, profile.ModalityImage, "pass images via decision.Input.Images with inline bytes rather than State")
+		case *message.AudioBlock:
+			return profile.NewUnsupportedModalityError("ollama", model, profile.ModalityAudio, "ollama systemone does not support audio inputs")
+		case *message.VideoBlock:
+			return profile.NewUnsupportedModalityError("ollama", model, profile.ModalityVideo, "ollama systemone does not support video inputs")
+		case *message.DocumentBlock:
+			_ = b
+			return profile.NewUnsupportedModalityError("ollama", model, profile.ModalityPDF, "ollama systemone does not support document inputs")
+		}
+	}
+	return nil
+}
+
 func toSystemOneRequest(request *decision.Request) (*api.SystemOneRequest, error) {
+	if err := validateDecisionStateWireModalities(request.Model, request.Input.State); err != nil {
+		return nil, err
+	}
+
 	// Marshal state
 	var stateRaw json.RawMessage
 	if request.Input.State == nil {
@@ -83,9 +161,13 @@ func toSystemOneRequest(request *decision.Request) (*api.SystemOneRequest, error
 	// Multimodal images
 	var images []api.ImageData
 	for _, img := range request.Input.Images {
-		if len(img.Data) > 0 {
-			images = append(images, api.ImageData(img.Data))
+		if len(img.Data) == 0 {
+			if strings.TrimSpace(img.URL) != "" {
+				return nil, profile.NewUnsupportedModalityError("ollama", request.Model, profile.ModalityImage, "ollama systemone only supports inline image data, not URLs")
+			}
+			return nil, profile.NewUnsupportedModalityError("ollama", request.Model, profile.ModalityImage, "image block is empty: missing both data and url")
 		}
+		images = append(images, api.ImageData(img.Data))
 	}
 
 	// Questions

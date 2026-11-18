@@ -1,13 +1,18 @@
 package loomollama
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"net/http"
 	"testing"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/tool"
+	"github.com/ollama/ollama/api"
 )
 
 func TestToChatRequestStructuredOutput(t *testing.T) {
@@ -200,4 +205,95 @@ func TestToAPITool_DeferredToolFailFast(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected error for deferred tool in toAPITool, got nil")
 	}
+}
+
+func TestOllamaChatModalityAndCapabilityValidation(t *testing.T) {
+	t.Run("wire rejects audio video document empty-image url-image and non-user image", func(t *testing.T) {
+		badMsgs := []message.Message{
+			message.NewUser(&message.ImageBlock{}),
+			message.NewUser(&message.ImageBlock{URL: "https://example.com/a.png"}),
+			&message.System{Content: message.Content{&message.ImageBlock{Data: []byte("png")}}},
+			&message.Assistant{Content: message.Content{&message.ImageBlock{Data: []byte("png")}}},
+			&message.Tool{ToolCallID: "1", Name: "t", Content: message.Content{&message.ImageBlock{Data: []byte("png")}}},
+			message.NewUser(&message.AudioBlock{Data: []byte("wav")}),
+			message.NewUser(&message.VideoBlock{Data: []byte("mp4")}),
+			message.NewUser(&message.DocumentBlock{Data: []byte("pdf")}),
+		}
+
+		for i, msg := range badMsgs {
+			_, err := toChatRequest(&llm.Request{
+				Model:    "gemma3",
+				Messages: []message.Message{msg},
+			})
+			if !errors.Is(err, profile.ErrUnsupportedModality) {
+				t.Fatalf("case %d: expected ErrUnsupportedModality, got: %v", i, err)
+			}
+		}
+	})
+
+	t.Run("stream enforces authoritative /api/show capabilities while allowing legacy no-caps servers", func(t *testing.T) {
+		p := newTestOllamaProvider(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch r.URL.Path {
+			case "/api/show":
+				var req api.ShowRequest
+				_ = json.NewDecoder(r.Body).Decode(&req)
+				switch req.Model {
+				case "text-no-tools":
+					_ = json.NewEncoder(w).Encode(map[string]any{
+						"details":      map[string]any{"family": "llama"},
+						"capabilities": []string{"completion"},
+					})
+				case "legacy-model":
+					// Older Ollama server omitting capabilities slice
+					_ = json.NewEncoder(w).Encode(map[string]any{
+						"details": map[string]any{"family": "llava"},
+					})
+				default:
+					http.NotFound(w, r)
+				}
+			case "/api/chat":
+				_ = json.NewEncoder(w).Encode(api.ChatResponse{
+					Model:   "legacy-model",
+					Message: api.Message{Role: "assistant", Content: "ok"},
+					Done:    true,
+				})
+			default:
+				http.NotFound(w, r)
+			}
+		})
+
+		// 1. Authoritative text-only model rejects ImageBlock
+		_, err := p.Stream(context.Background(), &llm.Request{
+			Model:    "text-no-tools",
+			Messages: []message.Message{message.NewUser(&message.ImageBlock{Data: []byte("png")})},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedModality) {
+			t.Fatalf("expected ErrUnsupportedModality for text-no-tools with image, got: %v", err)
+		}
+
+		// 2. Authoritative non-tools model rejects Tools
+		_, err = p.Stream(context.Background(), &llm.Request{
+			Model:    "text-no-tools",
+			Messages: []message.Message{message.NewUserText("hi")},
+			Tools:    []tool.Definition{{Name: "my_tool"}},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedCapability) {
+			t.Fatalf("expected ErrUnsupportedCapability for text-no-tools with tools, got: %v", err)
+		}
+
+		// 3. Legacy server with empty capabilities slice is NOT falsely blocked
+		stream, err := p.Stream(context.Background(), &llm.Request{
+			Model:    "legacy-model",
+			Messages: []message.Message{message.NewUser(&message.ImageBlock{Data: []byte("png")})},
+		})
+		if err != nil {
+			t.Fatalf("expected legacy model without capabilities array to pass through, got: %v", err)
+		}
+		for _, sErr := range stream {
+			if sErr != nil {
+				t.Fatalf("unexpected stream error: %v", sErr)
+			}
+		}
+	})
 }

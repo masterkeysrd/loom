@@ -3,6 +3,7 @@ package loomollama
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/masterkeysrd/loom/embedding"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/ollama/ollama/api"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -78,8 +80,26 @@ func TestToEmbedRequestErrors(t *testing.T) {
 			Model:  "m",
 			Inputs: []embedding.Input{embedding.Image([]byte("png"), "image/png")},
 		})
-		if err == nil {
-			t.Fatal("expected error for unsupported multimodal image input")
+		if !errors.Is(err, profile.ErrUnsupportedModality) {
+			t.Fatalf("expected ErrUnsupportedModality for unsupported multimodal image input, got: %v", err)
+		}
+	})
+
+	t.Run("chat-only profile rejected for embedding", func(t *testing.T) {
+		p := newTestOllamaProvider(t, func(w http.ResponseWriter, r *http.Request) {
+			http.NotFound(w, r)
+		})
+		p.OverrideProfile("chat-only", profile.Profile{
+			ID:           "chat-only",
+			Capabilities: profile.Capabilities{Completion: true},
+			Modalities:   profile.Modalities{Inputs: []profile.Modality{profile.ModalityText}},
+		})
+		_, err := p.Embed(context.Background(), &embedding.Request{
+			Model:  "chat-only",
+			Inputs: embedding.Texts("hello"),
+		})
+		if !errors.Is(err, profile.ErrUnsupportedCapability) {
+			t.Fatalf("expected ErrUnsupportedCapability, got: %v", err)
 		}
 	})
 }

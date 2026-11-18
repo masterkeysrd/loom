@@ -3,6 +3,7 @@ package loomollama
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/masterkeysrd/loom/decision"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/ollama/ollama/api"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -23,7 +25,6 @@ func TestToSystemOneRequestConversion(t *testing.T) {
 			State: map[string]any{"balance": 150.50, "status": "active"},
 			Images: []message.ImageBlock{
 				{Data: []byte("img-data-1"), MIMEType: "image/png"},
-				{Data: nil, MIMEType: "image/jpeg"}, // should be skipped
 				{Data: []byte("img-data-2"), MIMEType: "image/webp"},
 			},
 		},
@@ -595,6 +596,69 @@ func TestProviderEvaluateErrors(t *testing.T) {
 		_, err := p.Evaluate(context.Background(), req)
 		if err == nil {
 			t.Fatal("expected error on invalid answer json")
+		}
+	})
+}
+
+func TestDecisionModalityAndCapabilityValidation(t *testing.T) {
+	t.Run("rejects empty and URL-only ImageBlock in Input.Images", func(t *testing.T) {
+		for _, img := range []message.ImageBlock{
+			{MIMEType: "image/jpeg"},
+			{URL: "https://example.com/cat.png"},
+		} {
+			_, err := toSystemOneRequest(&decision.Request{
+				Model:     "nimble",
+				Input:     decision.Text("check").WithImages(img),
+				Questions: []decision.Question{decision.Predicate("q", "ok?")},
+			})
+			if !errors.Is(err, profile.ErrUnsupportedModality) {
+				t.Fatalf("expected ErrUnsupportedModality for %+v, got: %v", img, err)
+			}
+		}
+	})
+
+	t.Run("rejects media blocks embedded in Input.State", func(t *testing.T) {
+		_, err := toSystemOneRequest(&decision.Request{
+			Model:     "nimble",
+			Input:     decision.State(message.NewUser(&message.AudioBlock{Data: []byte("wav")})),
+			Questions: []decision.Question{decision.Predicate("q", "ok?")},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedModality) {
+			t.Fatalf("expected ErrUnsupportedModality, got: %v", err)
+		}
+	})
+
+	t.Run("enforces authoritative profile decision and vision capabilities", func(t *testing.T) {
+		p := newTestOllamaProvider(t, func(w http.ResponseWriter, r *http.Request) {
+			http.NotFound(w, r)
+		})
+		p.OverrideProfile("text-decision", profile.Profile{
+			ID:           "text-decision",
+			Capabilities: profile.Capabilities{Decision: true},
+			Modalities:   profile.Modalities{Inputs: []profile.Modality{profile.ModalityText}},
+		})
+		p.OverrideProfile("embed-only", profile.Profile{
+			ID:           "embed-only",
+			Capabilities: profile.Capabilities{Embedding: true},
+			Modalities:   profile.Modalities{Inputs: []profile.Modality{profile.ModalityText}},
+		})
+
+		_, err := p.Evaluate(context.Background(), &decision.Request{
+			Model:     "text-decision",
+			Input:     decision.Text("hi").WithImages(message.ImageBlock{Data: []byte("png")}),
+			Questions: []decision.Question{decision.Predicate("q", "ok?")},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedModality) {
+			t.Fatalf("expected ErrUnsupportedModality for text-only decision model, got: %v", err)
+		}
+
+		_, err = p.Evaluate(context.Background(), &decision.Request{
+			Model:     "embed-only",
+			Input:     decision.Text("hi"),
+			Questions: []decision.Question{decision.Predicate("q", "ok?")},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedCapability) {
+			t.Fatalf("expected ErrUnsupportedCapability for embed-only model, got: %v", err)
 		}
 	})
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/masterkeysrd/loom/embedding"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/ollama/ollama/api"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -23,6 +24,10 @@ func (p *Provider) Embed(ctx context.Context, req *embedding.Request) (*embeddin
 	}
 	if req == nil {
 		return nil, errors.New("ollama: embedding request cannot be nil")
+	}
+
+	if err := p.validateEmbedProfile(req); err != nil {
+		return nil, err
 	}
 
 	embedReq, err := toEmbedRequest(req)
@@ -67,7 +72,7 @@ func toEmbedRequest(req *embedding.Request) (*api.EmbedRequest, error) {
 
 	inputs := make([]string, len(req.Inputs))
 	for i, in := range req.Inputs {
-		text, err := extractOllamaText(in)
+		text, err := extractOllamaText(req.Model, in)
 		if err != nil {
 			return nil, fmt.Errorf("input at index %d: %w", i, err)
 		}
@@ -98,7 +103,28 @@ func toEmbedRequest(req *embedding.Request) (*api.EmbedRequest, error) {
 	return embedReq, nil
 }
 
-func extractOllamaText(in embedding.Input) (string, error) {
+func (p *Provider) validateEmbedProfile(req *embedding.Request) error {
+	prof, ok := p.lookupAuthoritativeCachedProfile(req.Model)
+	if !ok {
+		return nil
+	}
+	if !prof.Capabilities.Embedding && (prof.Capabilities.Completion || prof.Capabilities.Decision || prof.HasInputModalities()) {
+		return profile.NewUnsupportedCapabilityError(p.Name(), req.Model, "embedding", "model profile does not support embeddings")
+	}
+	for i, in := range req.Inputs {
+		var content message.Content
+		if in.Text != "" {
+			content = append(content, &message.TextBlock{Text: in.Text})
+		}
+		content = append(content, in.Parts...)
+		if err := prof.ValidateContentModalities(p.Name(), req.Model, content); err != nil {
+			return fmt.Errorf("input[%d]: %w", i, err)
+		}
+	}
+	return nil
+}
+
+func extractOllamaText(model string, in embedding.Input) (string, error) {
 	var parts []string
 	if in.Text != "" {
 		parts = append(parts, in.Text)
@@ -107,9 +133,17 @@ func extractOllamaText(in embedding.Input) (string, error) {
 	for _, block := range in.Parts {
 		switch b := block.(type) {
 		case *message.TextBlock:
-			if b.Text != "" {
+			if b != nil && b.Text != "" {
 				parts = append(parts, b.Text)
 			}
+		case *message.ImageBlock:
+			return "", profile.NewUnsupportedModalityError("ollama", model, profile.ModalityImage, "ollama embed does not support image inputs")
+		case *message.AudioBlock:
+			return "", profile.NewUnsupportedModalityError("ollama", model, profile.ModalityAudio, "ollama embed does not support audio inputs")
+		case *message.VideoBlock:
+			return "", profile.NewUnsupportedModalityError("ollama", model, profile.ModalityVideo, "ollama embed does not support video inputs")
+		case *message.DocumentBlock:
+			return "", profile.NewUnsupportedModalityError("ollama", model, profile.ModalityPDF, "ollama embed does not support document inputs")
 		default:
 			return "", fmt.Errorf("ollama embed does not support multimodal block type %T", block)
 		}

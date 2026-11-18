@@ -3,6 +3,7 @@ package loomanthropic
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/tool"
 )
 
@@ -159,7 +161,10 @@ func TestToContentBlocksParamsMultimodal(t *testing.T) {
 		},
 	}
 
-	blocks := toContentBlocksParams(content, false)
+	blocks, err := toContentBlocksParams("claude-sonnet-4-6", content, false)
+	if err != nil {
+		t.Fatalf("toContentBlocksParams failed: %v", err)
+	}
 	if len(blocks) != 3 {
 		t.Fatalf("expected 3 blocks, got %d", len(blocks))
 	}
@@ -1281,6 +1286,444 @@ func TestToMessageNewParams_ToolMessage_WithToolDefinitionBlock(t *testing.T) {
 		expectedMsg := `model "claude-sonnet-4-6" does not support mid-conversation inline tool additions`
 		if err.Error() != expectedMsg {
 			t.Errorf("got error %q, want %q", err.Error(), expectedMsg)
+		}
+	})
+}
+
+func TestToMessageNewParams_WireModalityValidation(t *testing.T) {
+	tests := []struct {
+		name         string
+		messages     []message.Message
+		wantModality profile.Modality
+	}{
+		{
+			name: "audio in user message",
+			messages: []message.Message{
+				&message.User{Content: message.Content{&message.AudioBlock{Data: []byte("wav"), MIMEType: "audio/wav"}}},
+			},
+			wantModality: profile.ModalityAudio,
+		},
+		{
+			name: "video in user message",
+			messages: []message.Message{
+				&message.User{Content: message.Content{&message.VideoBlock{Data: []byte("mp4"), MIMEType: "video/mp4"}}},
+			},
+			wantModality: profile.ModalityVideo,
+		},
+		{
+			name: "audio in assistant message",
+			messages: []message.Message{
+				&message.Assistant{Content: message.Content{&message.AudioBlock{URL: "https://example.com/a.mp3"}}},
+			},
+			wantModality: profile.ModalityAudio,
+		},
+		{
+			name: "video in assistant message",
+			messages: []message.Message{
+				&message.Assistant{Content: message.Content{&message.VideoBlock{URL: "https://example.com/v.mp4"}}},
+			},
+			wantModality: profile.ModalityVideo,
+		},
+		{
+			name: "audio in tool message",
+			messages: []message.Message{
+				&message.Assistant{Content: message.Content{&message.ToolCall{ID: "c1", Name: "t"}}},
+				&message.Tool{ToolCallID: "c1", Content: message.Content{&message.AudioBlock{Data: []byte("a")}}},
+			},
+			wantModality: profile.ModalityAudio,
+		},
+		{
+			name: "video in tool message",
+			messages: []message.Message{
+				&message.Assistant{Content: message.Content{&message.ToolCall{ID: "c1", Name: "t"}}},
+				&message.Tool{ToolCallID: "c1", Content: message.Content{&message.VideoBlock{Data: []byte("v")}}},
+			},
+			wantModality: profile.ModalityVideo,
+		},
+		{
+			name: "image in leading system message",
+			messages: []message.Message{
+				&message.System{Content: message.Content{&message.ImageBlock{Data: []byte("img"), MIMEType: "image/png"}}},
+			},
+			wantModality: profile.ModalityImage,
+		},
+		{
+			name: "audio in leading system message",
+			messages: []message.Message{
+				&message.System{Content: message.Content{&message.AudioBlock{Data: []byte("aud")}}},
+			},
+			wantModality: profile.ModalityAudio,
+		},
+		{
+			name: "video in leading system message",
+			messages: []message.Message{
+				&message.System{Content: message.Content{&message.VideoBlock{Data: []byte("vid")}}},
+			},
+			wantModality: profile.ModalityVideo,
+		},
+		{
+			name: "document in leading system message",
+			messages: []message.Message{
+				&message.System{Content: message.Content{&message.DocumentBlock{Data: []byte("pdf"), MIMEType: "application/pdf"}}},
+			},
+			wantModality: profile.ModalityPDF,
+		},
+		{
+			name: "image in mid-conversation system message",
+			messages: []message.Message{
+				message.NewUserText("hi"),
+				&message.System{Content: message.Content{&message.ImageBlock{URL: "https://example.com/img.png"}}},
+			},
+			wantModality: profile.ModalityImage,
+		},
+		{
+			name: "document in mid-conversation system message",
+			messages: []message.Message{
+				message.NewUserText("hi"),
+				&message.System{Content: message.Content{&message.DocumentBlock{Data: []byte("pdf"), MIMEType: "application/pdf"}}},
+			},
+			wantModality: profile.ModalityPDF,
+		},
+		{
+			name: "empty image block in user message",
+			messages: []message.Message{
+				&message.User{Content: message.Content{&message.ImageBlock{MIMEType: "image/png"}}},
+			},
+			wantModality: profile.ModalityImage,
+		},
+		{
+			name: "empty image block in tool message",
+			messages: []message.Message{
+				&message.Assistant{Content: message.Content{&message.ToolCall{ID: "c1", Name: "t"}}},
+				&message.Tool{ToolCallID: "c1", Content: message.Content{&message.ImageBlock{}}},
+			},
+			wantModality: profile.ModalityImage,
+		},
+		{
+			name: "empty document block in user message",
+			messages: []message.Message{
+				&message.User{Content: message.Content{&message.DocumentBlock{MIMEType: "application/pdf"}}},
+			},
+			wantModality: profile.ModalityPDF,
+		},
+		{
+			name: "empty document block in tool message",
+			messages: []message.Message{
+				&message.Assistant{Content: message.Content{&message.ToolCall{ID: "c1", Name: "t"}}},
+				&message.Tool{ToolCallID: "c1", Content: message.Content{&message.DocumentBlock{}}},
+			},
+			wantModality: profile.ModalityPDF,
+		},
+		{
+			name: "unsupported document mime type with data",
+			messages: []message.Message{
+				&message.User{Content: message.Content{&message.DocumentBlock{Data: []byte("zip"), MIMEType: "application/zip"}}},
+			},
+			wantModality: profile.ModalityPDF,
+		},
+		{
+			name: "url document with non-pdf mime type",
+			messages: []message.Message{
+				&message.User{Content: message.Content{&message.DocumentBlock{URL: "https://example.com/notes.txt", MIMEType: "text/plain"}}},
+			},
+			wantModality: profile.ModalityPDF,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := &llm.Request{
+				Model:    "custom-claude-model",
+				Messages: tc.messages,
+			}
+			_, err := toMessageNewParams(req)
+			if err == nil {
+				t.Fatalf("expected error, got nil")
+			}
+			if !errors.Is(err, profile.ErrUnsupportedModality) {
+				t.Fatalf("expected errors.Is(err, profile.ErrUnsupportedModality), got %v", err)
+			}
+			var modErr *profile.UnsupportedModalityError
+			if !errors.As(err, &modErr) {
+				t.Fatalf("expected *profile.UnsupportedModalityError, got %T", err)
+			}
+			if modErr.Modality != tc.wantModality {
+				t.Errorf("Modality = %q, want %q", modErr.Modality, tc.wantModality)
+			}
+		})
+	}
+}
+
+func TestToMessageNewParams_MediaURLAndPlainTextAndThinking(t *testing.T) {
+	req := &llm.Request{
+		Model: "custom-claude-model",
+		Messages: []message.Message{
+			&message.User{
+				Content: message.Content{
+					&message.ImageBlock{URL: "https://example.com/photo.png"},
+					&message.DocumentBlock{URL: "https://example.com/spec.pdf", MIMEType: "application/pdf"},
+					&message.DocumentBlock{Data: []byte("hello plain text"), MIMEType: "text/plain; charset=utf-8"},
+				},
+			},
+			&message.Assistant{
+				Content: message.Content{
+					&message.ThinkingBlock{Thinking: "internal reasoning"},
+					&message.TextBlock{Text: "Here is the answer."},
+					&message.ToolCall{ID: "call_1", Name: "inspect"},
+				},
+			},
+			&message.Tool{
+				ToolCallID: "call_1",
+				Name:       "inspect",
+				Content: message.Content{
+					&message.ImageBlock{URL: "https://example.com/tool-img.jpg"},
+					&message.DocumentBlock{URL: "https://example.com/tool-doc.pdf"},
+					&message.DocumentBlock{Data: []byte("tool text doc"), MIMEType: "text/plain"},
+				},
+			},
+		},
+	}
+
+	params, err := toMessageNewParams(req)
+	if err != nil {
+		t.Fatalf("toMessageNewParams failed: %v", err)
+	}
+
+	if len(params.Messages) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(params.Messages))
+	}
+
+	// Verify user message media serialization
+	userData, err := json.Marshal(params.Messages[0])
+	if err != nil {
+		t.Fatalf("marshal user msg: %v", err)
+	}
+	var userRaw struct {
+		Content []struct {
+			Type   string `json:"type"`
+			Source struct {
+				Type      string `json:"type"`
+				URL       string `json:"url"`
+				Data      string `json:"data"`
+				MediaType string `json:"media_type"`
+			} `json:"source"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(userData, &userRaw); err != nil {
+		t.Fatalf("unmarshal user msg: %v", err)
+	}
+	if len(userRaw.Content) != 3 {
+		t.Fatalf("expected 3 user blocks, got %d", len(userRaw.Content))
+	}
+	if userRaw.Content[0].Type != "image" || userRaw.Content[0].Source.Type != "url" || userRaw.Content[0].Source.URL != "https://example.com/photo.png" {
+		t.Errorf("unexpected image URL block: %+v", userRaw.Content[0])
+	}
+	if userRaw.Content[1].Type != "document" || userRaw.Content[1].Source.Type != "url" || userRaw.Content[1].Source.URL != "https://example.com/spec.pdf" {
+		t.Errorf("unexpected document URL block: %+v", userRaw.Content[1])
+	}
+	if userRaw.Content[2].Type != "document" || userRaw.Content[2].Source.Type != "text" || userRaw.Content[2].Source.MediaType != "text/plain" || userRaw.Content[2].Source.Data != "hello plain text" {
+		t.Errorf("unexpected plain text document block: %+v", userRaw.Content[2])
+	}
+
+	// Verify assistant message leniently skipped ThinkingBlock and preserved text + tool_use
+	if len(params.Messages[1].Content) != 2 {
+		t.Fatalf("expected 2 assistant blocks (ThinkingBlock skipped leniently), got %d", len(params.Messages[1].Content))
+	}
+
+	// Verify tool result message media serialization
+	toolData, err := json.Marshal(params.Messages[2])
+	if err != nil {
+		t.Fatalf("marshal tool msg: %v", err)
+	}
+	var toolRaw struct {
+		Content []struct {
+			Type    string `json:"type"`
+			Content []struct {
+				Type   string `json:"type"`
+				Source struct {
+					Type      string `json:"type"`
+					URL       string `json:"url"`
+					Data      string `json:"data"`
+					MediaType string `json:"media_type"`
+				} `json:"source"`
+			} `json:"content"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(toolData, &toolRaw); err != nil {
+		t.Fatalf("unmarshal tool msg: %v", err)
+	}
+	trBlocks := toolRaw.Content[0].Content
+	if len(trBlocks) != 3 {
+		t.Fatalf("expected 3 tool result blocks, got %d", len(trBlocks))
+	}
+	if trBlocks[0].Type != "image" || trBlocks[0].Source.Type != "url" || trBlocks[0].Source.URL != "https://example.com/tool-img.jpg" {
+		t.Errorf("unexpected tool image URL block: %+v", trBlocks[0])
+	}
+	if trBlocks[1].Type != "document" || trBlocks[1].Source.Type != "url" || trBlocks[1].Source.URL != "https://example.com/tool-doc.pdf" {
+		t.Errorf("unexpected tool document URL block: %+v", trBlocks[1])
+	}
+	if trBlocks[2].Type != "document" || trBlocks[2].Source.Type != "text" || trBlocks[2].Source.MediaType != "text/plain" || trBlocks[2].Source.Data != "tool text doc" {
+		t.Errorf("unexpected tool plain text document block: %+v", trBlocks[2])
+	}
+}
+
+func TestStream_ProfileAndWireValidation(t *testing.T) {
+	newMockProvider := func(t *testing.T, called *bool) *Provider {
+		t.Helper()
+		httpClient := &http.Client{
+			Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+				*called = true
+				return &http.Response{
+					StatusCode: 200,
+					Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+					Body:       io.NopCloser(strings.NewReader("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")),
+				}, nil
+			}),
+		}
+		client := anthropic.NewClient(
+			option.WithAPIKey("test-key"),
+			option.WithHTTPClient(httpClient),
+			option.WithMaxRetries(0),
+		)
+		return NewProvider(&client)
+	}
+
+	t.Run("known profile rejects unsupported audio modality before HTTP call", func(t *testing.T) {
+		called := false
+		p := newMockProvider(t, &called)
+
+		_, err := p.Stream(context.Background(), &llm.Request{
+			Model: "claude-sonnet-4-6",
+			Messages: []message.Message{
+				&message.User{Content: message.Content{&message.AudioBlock{Data: []byte("audio"), MIMEType: "audio/mp3"}}},
+			},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedModality) {
+			t.Fatalf("expected ErrUnsupportedModality, got %v", err)
+		}
+		if called {
+			t.Fatal("expected HTTP transport not to be called on validation error")
+		}
+	})
+
+	t.Run("overridden profile rejects image modality when not supported", func(t *testing.T) {
+		called := false
+		p := newMockProvider(t, &called)
+		p.OverrideProfile("claude-text-only", profile.Profile{
+			ID: "claude-text-only",
+			Capabilities: profile.Capabilities{
+				Completion: true,
+				ToolCall:   true,
+			},
+			Modalities: profile.Modalities{
+				Inputs:  []profile.Modality{profile.ModalityText},
+				Outputs: []profile.Modality{profile.ModalityText},
+			},
+		})
+
+		_, err := p.Stream(context.Background(), &llm.Request{
+			Model: "claude-text-only",
+			Messages: []message.Message{
+				&message.User{Content: message.Content{&message.ImageBlock{Data: []byte("png"), MIMEType: "image/png"}}},
+			},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedModality) {
+			t.Fatalf("expected ErrUnsupportedModality, got %v", err)
+		}
+		if called {
+			t.Fatal("expected HTTP transport not to be called")
+		}
+	})
+
+	t.Run("overridden profile rejects tool_call when ToolCall=false", func(t *testing.T) {
+		called := false
+		p := newMockProvider(t, &called)
+		p.OverrideProfile("claude-no-tools", profile.Profile{
+			ID: "claude-no-tools",
+			Capabilities: profile.Capabilities{
+				Completion: true,
+				ToolCall:   false,
+			},
+			Modalities: profile.Modalities{
+				Inputs:  []profile.Modality{profile.ModalityText},
+				Outputs: []profile.Modality{profile.ModalityText},
+			},
+		})
+
+		_, err := p.Stream(context.Background(), &llm.Request{
+			Model: "claude-no-tools",
+			Messages: []message.Message{
+				message.NewUserText("hello"),
+			},
+			Tools: []tool.Definition{{Name: "calc", Description: "Calculator"}},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedCapability) {
+			t.Fatalf("expected ErrUnsupportedCapability, got %v", err)
+		}
+		if called {
+			t.Fatal("expected HTTP transport not to be called")
+		}
+
+		// Without tools, the same profile succeeds
+		streamRes, err := p.Stream(context.Background(), &llm.Request{
+			Model:    "claude-no-tools",
+			Messages: []message.Message{message.NewUserText("hello")},
+		})
+		if err != nil {
+			t.Fatalf("expected success without tools, got %v", err)
+		}
+		for range streamRes {
+		}
+		if !called {
+			t.Fatal("expected HTTP transport to be called")
+		}
+	})
+
+	t.Run("unknown model skips profile check and passes supported wire modalities", func(t *testing.T) {
+		called := false
+		p := newMockProvider(t, &called)
+
+		streamRes, err := p.Stream(context.Background(), &llm.Request{
+			Model: "custom-unlisted-claude",
+			Messages: []message.Message{
+				&message.System{Content: message.Content{&message.TextBlock{Text: "system"}}},
+				&message.User{Content: message.Content{
+					&message.TextBlock{Text: "describe"},
+					&message.ImageBlock{URL: "https://example.com/a.png"},
+					&message.DocumentBlock{Data: []byte("pdf"), MIMEType: "application/pdf"},
+				}},
+				&message.Assistant{Content: message.Content{
+					&message.ThinkingBlock{Thinking: "hmm"},
+					&message.TextBlock{Text: "ok"},
+				}},
+			},
+			Tools: []tool.Definition{{Name: "lookup", Description: "Lookup"}},
+		})
+		if err != nil {
+			t.Fatalf("expected unknown model pass-through to succeed, got %v", err)
+		}
+		for range streamRes {
+		}
+		if !called {
+			t.Fatal("expected HTTP transport to be called")
+		}
+	})
+
+	t.Run("unknown model still enforces wire-level modality checks", func(t *testing.T) {
+		called := false
+		p := newMockProvider(t, &called)
+
+		_, err := p.Stream(context.Background(), &llm.Request{
+			Model: "custom-unlisted-claude",
+			Messages: []message.Message{
+				&message.User{Content: message.Content{&message.VideoBlock{Data: []byte("mp4"), MIMEType: "video/mp4"}}},
+			},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedModality) {
+			t.Fatalf("expected ErrUnsupportedModality from wire validation, got %v", err)
+		}
+		if called {
+			t.Fatal("expected HTTP transport not to be called")
 		}
 	})
 }

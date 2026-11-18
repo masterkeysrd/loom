@@ -125,6 +125,19 @@ func (p *Provider) SupportsInlineTools(model string) bool {
 // call, and returns an iterator that yields [message.AssistantChunk] values as
 // tokens arrive from the Anthropic server.
 func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.StreamResponse, error) {
+	if request == nil {
+		return nil, fmt.Errorf("failed to convert chat request: request is nil")
+	}
+
+	if prof, ok := p.GetProfile(request.Model); ok {
+		if err := prof.ValidateMessagesModalities(p.Name(), request.Model, request.Messages); err != nil {
+			return nil, err
+		}
+		if err := prof.ValidateToolCallCapability(p.Name(), request.Model, len(request.Tools) > 0); err != nil {
+			return nil, err
+		}
+	}
+
 	body, err := toMessageNewParams(request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert chat request: %w", err)

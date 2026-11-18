@@ -12,11 +12,16 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/packages/param"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/tool"
 )
 
 // toMessageNewParams translates a generic [llm.Request] into an Anthropic-specific request.
 func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error) {
+	if request == nil {
+		return anthropic.MessageNewParams{}, fmt.Errorf("request is nil")
+	}
+
 	anthropicReq := anthropic.MessageNewParams{
 		Model:     anthropic.Model(request.Model),
 		Messages:  make([]anthropic.MessageParam, 0, len(request.Messages)),
@@ -105,6 +110,10 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 	}
 
 	for _, msg := range request.Messages {
+		if msg == nil {
+			continue
+		}
+
 		var cache bool
 		if ext, ok := msg.GetExtensions()[MetadataCache]; ok {
 			if mc, ok := ext.(*MessageCache); ok {
@@ -115,18 +124,35 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 		switch msg := msg.(type) {
 		case *message.System:
 			if len(anthropicReq.Messages) == 0 && !hasToolAdditionBlock(msg.Content) {
-				anthropicReq.System = append(anthropicReq.System, toTextBlocksParams(msg.Content, false)...)
+				sysBlocks, err := toTextBlocksParams(request.Model, msg.Content, false)
+				if err != nil {
+					return anthropic.MessageNewParams{}, err
+				}
+				anthropicReq.System = append(anthropicReq.System, sysBlocks...)
 			} else {
+				for _, b := range msg.Content {
+					if err := unsupportedSystemModalityError(request.Model, b); err != nil {
+						return anthropic.MessageNewParams{}, err
+					}
+				}
 				flushPending()
+				content, err := toContentBlocksParams(request.Model, msg.Content, cache)
+				if err != nil {
+					return anthropic.MessageNewParams{}, err
+				}
 				anthropicReq.Messages = append(anthropicReq.Messages, anthropic.MessageParam{
 					Role:    anthropic.MessageParamRoleSystem,
-					Content: toContentBlocksParams(msg.Content, cache),
+					Content: content,
 				})
 			}
 		case *message.Assistant:
 			flushPending()
+			content, err := toContentBlocksParams(request.Model, msg.Content, cache)
+			if err != nil {
+				return anthropic.MessageNewParams{}, err
+			}
 			anthropicReq.Messages = append(anthropicReq.Messages, anthropic.NewAssistantMessage(
-				toContentBlocksParams(msg.Content, cache)...,
+				content...,
 			))
 
 			for _, block := range msg.ToolCalls() {
@@ -134,8 +160,12 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 			}
 		case *message.User:
 			flushPending()
+			content, err := toContentBlocksParams(request.Model, msg.Content, cache)
+			if err != nil {
+				return anthropic.MessageNewParams{}, err
+			}
 			anthropicReq.Messages = append(anthropicReq.Messages, anthropic.NewUserMessage(
-				toContentBlocksParams(msg.Content, cache)...,
+				content...,
 			))
 		case *message.Tool:
 			foundIdx := -1
@@ -152,7 +182,11 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 			// Consistently use ToolResultBlockParam for all tool outputs.
 			var contentBlocks []anthropic.ToolResultBlockParamContentUnion
 			if len(msg.Content) > 0 {
-				contentBlocks = toToolResultContent(msg.Content)
+				var err error
+				contentBlocks, err = toToolResultContent(request.Model, msg.Content)
+				if err != nil {
+					return anthropic.MessageNewParams{}, err
+				}
 			} else if msg.StructuredContent != nil {
 				data, _ := msg.CanonicalStructuredContent()
 				contentBlocks = []anthropic.ToolResultBlockParamContentUnion{
@@ -272,11 +306,14 @@ func toMessageNewParams(request *llm.Request) (anthropic.MessageNewParams, error
 	return anthropicReq, nil
 }
 
-func toTextBlocksParams(content message.Content, cache bool) []anthropic.TextBlockParam {
+func toTextBlocksParams(model string, content message.Content, cache bool) ([]anthropic.TextBlockParam, error) {
 	blocks := make([]anthropic.TextBlockParam, 0, len(content))
 	for i, block := range content {
 		switch block := block.(type) {
 		case *message.TextBlock:
+			if block == nil {
+				continue
+			}
 			param := anthropic.TextBlockParam{
 				Text: block.Text,
 			}
@@ -284,23 +321,46 @@ func toTextBlocksParams(content message.Content, cache bool) []anthropic.TextBlo
 				param.CacheControl = anthropic.NewCacheControlEphemeralParam()
 			}
 			blocks = append(blocks, param)
+		case *message.ImageBlock, *message.AudioBlock, *message.VideoBlock, *message.DocumentBlock:
+			return nil, unsupportedSystemModalityError(model, block)
 		}
 	}
 
-	return blocks
+	return blocks, nil
 }
 
-func toContentBlocksParams(content message.Content, cache bool) []anthropic.ContentBlockParamUnion {
+func unsupportedSystemModalityError(model string, block message.Block) error {
+	var mod profile.Modality
+	switch block.(type) {
+	case *message.ImageBlock:
+		mod = profile.ModalityImage
+	case *message.AudioBlock:
+		mod = profile.ModalityAudio
+	case *message.VideoBlock:
+		mod = profile.ModalityVideo
+	case *message.DocumentBlock:
+		mod = profile.ModalityPDF
+	default:
+		return nil
+	}
+	return profile.NewUnsupportedModalityError("anthropic", model, mod, "system prompt only supports text blocks")
+}
+
+func toContentBlocksParams(model string, content message.Content, cache bool) ([]anthropic.ContentBlockParamUnion, error) {
 	blocks := make([]anthropic.ContentBlockParamUnion, 0, len(content))
 	for i, block := range content {
+		isLast := cache && i == len(content)-1
 		var b anthropic.ContentBlockParamUnion
 		var set bool
 		switch block := block.(type) {
 		case *message.TextBlock:
+			if block == nil {
+				continue
+			}
 			tb := anthropic.TextBlockParam{
 				Text: block.Text,
 			}
-			if cache && i == len(content)-1 {
+			if isLast {
 				tb.CacheControl = anthropic.NewCacheControlEphemeralParam()
 			}
 			b = anthropic.ContentBlockParamUnion{
@@ -308,44 +368,27 @@ func toContentBlocksParams(content message.Content, cache bool) []anthropic.Cont
 			}
 			set = true
 		case *message.ImageBlock:
-			if len(block.Data) > 0 {
-				mimeType := block.MIMEType
-				if mimeType == "" {
-					mimeType = "image/jpeg"
-				}
-				ib := anthropic.ImageBlockParam{
-					Source: anthropic.ImageBlockParamSourceUnion{
-						OfBase64: &anthropic.Base64ImageSourceParam{
-							Data:      base64.StdEncoding.EncodeToString(block.Data),
-							MediaType: anthropic.Base64ImageSourceMediaType(mimeType),
-						},
-					},
-				}
-				if cache && i == len(content)-1 {
-					ib.CacheControl = anthropic.NewCacheControlEphemeralParam()
-				}
-				b = anthropic.ContentBlockParamUnion{
-					OfImage: &ib,
-				}
-				set = true
+			ib, err := toImageBlockParam(model, block, isLast)
+			if err != nil {
+				return nil, err
 			}
+			b = anthropic.ContentBlockParamUnion{
+				OfImage: &ib,
+			}
+			set = true
 		case *message.DocumentBlock:
-			if len(block.Data) > 0 {
-				db := anthropic.DocumentBlockParam{
-					Source: anthropic.DocumentBlockParamSourceUnion{
-						OfBase64: &anthropic.Base64PDFSourceParam{
-							Data: base64.StdEncoding.EncodeToString(block.Data),
-						},
-					},
-				}
-				if cache && i == len(content)-1 {
-					db.CacheControl = anthropic.NewCacheControlEphemeralParam()
-				}
-				b = anthropic.ContentBlockParamUnion{
-					OfDocument: &db,
-				}
-				set = true
+			db, err := toDocumentBlockParam(model, block, isLast)
+			if err != nil {
+				return nil, err
 			}
+			b = anthropic.ContentBlockParamUnion{
+				OfDocument: &db,
+			}
+			set = true
+		case *message.AudioBlock:
+			return nil, profile.NewUnsupportedModalityError("anthropic", model, profile.ModalityAudio, "anthropic does not support audio input")
+		case *message.VideoBlock:
+			return nil, profile.NewUnsupportedModalityError("anthropic", model, profile.ModalityVideo, "anthropic does not support video input")
 		case *message.ToolCall:
 			if block.Args == nil {
 				block.Args = make(map[string]any)
@@ -460,7 +503,7 @@ func toContentBlocksParams(content message.Content, cache bool) []anthropic.Cont
 		}
 	}
 
-	return blocks
+	return blocks, nil
 }
 
 func toolDefinitionToAdditionParam(block *message.ToolDefinitionBlock, cache bool) anthropic.ContentBlockParamUnion {
@@ -568,45 +611,152 @@ func toAssistantChunk(event anthropic.MessageStreamEventUnion) (message.Assistan
 	return chunk, nil
 }
 
-func toToolResultContent(content message.Content) []anthropic.ToolResultBlockParamContentUnion {
+func toImageBlockParam(model string, block *message.ImageBlock, cache bool) (anthropic.ImageBlockParam, error) {
+	if block == nil {
+		return anthropic.ImageBlockParam{}, profile.NewUnsupportedModalityError("anthropic", model, profile.ModalityImage, "image block is nil")
+	}
+
+	var source anthropic.ImageBlockParamSourceUnion
+	switch {
+	case len(block.Data) > 0:
+		mimeType := block.MIMEType
+		if mimeType == "" {
+			mimeType = "image/jpeg"
+		}
+		source = anthropic.ImageBlockParamSourceUnion{
+			OfBase64: &anthropic.Base64ImageSourceParam{
+				Data:      base64.StdEncoding.EncodeToString(block.Data),
+				MediaType: anthropic.Base64ImageSourceMediaType(mimeType),
+			},
+		}
+	case strings.TrimSpace(block.URL) != "":
+		source = anthropic.ImageBlockParamSourceUnion{
+			OfURL: &anthropic.URLImageSourceParam{
+				URL: block.URL,
+			},
+		}
+	default:
+		return anthropic.ImageBlockParam{}, profile.NewUnsupportedModalityError(
+			"anthropic",
+			model,
+			profile.ModalityImage,
+			"image block has neither data nor url",
+		)
+	}
+
+	ib := anthropic.ImageBlockParam{
+		Source: source,
+	}
+	if cache {
+		ib.CacheControl = anthropic.NewCacheControlEphemeralParam()
+	}
+	return ib, nil
+}
+
+func toDocumentBlockParam(model string, block *message.DocumentBlock, cache bool) (anthropic.DocumentBlockParam, error) {
+	if block == nil {
+		return anthropic.DocumentBlockParam{}, profile.NewUnsupportedModalityError("anthropic", model, profile.ModalityPDF, "document block is nil")
+	}
+
+	mime := normalizeMIME(block.MIMEType)
+	var source anthropic.DocumentBlockParamSourceUnion
+
+	switch {
+	case len(block.Data) > 0:
+		switch mime {
+		case "", "application/pdf":
+			source = anthropic.DocumentBlockParamSourceUnion{
+				OfBase64: &anthropic.Base64PDFSourceParam{
+					Data: base64.StdEncoding.EncodeToString(block.Data),
+				},
+			}
+		case "text/plain":
+			source = anthropic.DocumentBlockParamSourceUnion{
+				OfText: &anthropic.PlainTextSourceParam{
+					Data: string(block.Data),
+				},
+			}
+		default:
+			return anthropic.DocumentBlockParam{}, profile.NewUnsupportedModalityError(
+				"anthropic",
+				model,
+				profile.ModalityPDF,
+				fmt.Sprintf("unsupported document MIME type %q (supported: application/pdf, text/plain)", block.MIMEType),
+			)
+		}
+	case strings.TrimSpace(block.URL) != "":
+		if mime != "" && mime != "application/pdf" {
+			return anthropic.DocumentBlockParam{}, profile.NewUnsupportedModalityError(
+				"anthropic",
+				model,
+				profile.ModalityPDF,
+				fmt.Sprintf("URL document source only supports application/pdf, got %q", block.MIMEType),
+			)
+		}
+		source = anthropic.DocumentBlockParamSourceUnion{
+			OfURL: &anthropic.URLPDFSourceParam{
+				URL: block.URL,
+			},
+		}
+	default:
+		return anthropic.DocumentBlockParam{}, profile.NewUnsupportedModalityError(
+			"anthropic",
+			model,
+			profile.ModalityPDF,
+			"document block has neither data nor url",
+		)
+	}
+
+	db := anthropic.DocumentBlockParam{
+		Source: source,
+	}
+	if cache {
+		db.CacheControl = anthropic.NewCacheControlEphemeralParam()
+	}
+	return db, nil
+}
+
+func normalizeMIME(mimeType string) string {
+	mt := strings.ToLower(strings.TrimSpace(mimeType))
+	if idx := strings.IndexByte(mt, ';'); idx >= 0 {
+		mt = strings.TrimSpace(mt[:idx])
+	}
+	return mt
+}
+
+func toToolResultContent(model string, content message.Content) ([]anthropic.ToolResultBlockParamContentUnion, error) {
 	blocks := make([]anthropic.ToolResultBlockParamContentUnion, 0, len(content))
 	for _, block := range content {
 		switch block := block.(type) {
 		case *message.TextBlock:
+			if block == nil {
+				continue
+			}
 			blocks = append(blocks, anthropic.ToolResultBlockParamContentUnion{
 				OfText: &anthropic.TextBlockParam{
 					Text: block.Text,
 				},
 			})
 		case *message.ImageBlock:
-			if len(block.Data) > 0 {
-				mimeType := block.MIMEType
-				if mimeType == "" {
-					mimeType = "image/jpeg"
-				}
-				blocks = append(blocks, anthropic.ToolResultBlockParamContentUnion{
-					OfImage: &anthropic.ImageBlockParam{
-						Source: anthropic.ImageBlockParamSourceUnion{
-							OfBase64: &anthropic.Base64ImageSourceParam{
-								Data:      base64.StdEncoding.EncodeToString(block.Data),
-								MediaType: anthropic.Base64ImageSourceMediaType(mimeType),
-							},
-						},
-					},
-				})
+			ib, err := toImageBlockParam(model, block, false)
+			if err != nil {
+				return nil, err
 			}
+			blocks = append(blocks, anthropic.ToolResultBlockParamContentUnion{
+				OfImage: &ib,
+			})
 		case *message.DocumentBlock:
-			if len(block.Data) > 0 {
-				blocks = append(blocks, anthropic.ToolResultBlockParamContentUnion{
-					OfDocument: &anthropic.DocumentBlockParam{
-						Source: anthropic.DocumentBlockParamSourceUnion{
-							OfBase64: &anthropic.Base64PDFSourceParam{
-								Data: base64.StdEncoding.EncodeToString(block.Data),
-							},
-						},
-					},
-				})
+			db, err := toDocumentBlockParam(model, block, false)
+			if err != nil {
+				return nil, err
 			}
+			blocks = append(blocks, anthropic.ToolResultBlockParamContentUnion{
+				OfDocument: &db,
+			})
+		case *message.AudioBlock:
+			return nil, profile.NewUnsupportedModalityError("anthropic", model, profile.ModalityAudio, "anthropic does not support audio input")
+		case *message.VideoBlock:
+			return nil, profile.NewUnsupportedModalityError("anthropic", model, profile.ModalityVideo, "anthropic does not support video input")
 		case *message.ToolReferenceBlock:
 			blocks = append(blocks, anthropic.ToolResultBlockParamContentUnion{
 				OfToolReference: &anthropic.ToolReferenceBlockParam{
@@ -615,7 +765,7 @@ func toToolResultContent(content message.Content) []anthropic.ToolResultBlockPar
 			})
 		}
 	}
-	return blocks
+	return blocks, nil
 }
 
 // fromToolSearchToolResultBlock converts an Anthropic ToolSearchToolResultBlock into a *message.ServerToolResult.

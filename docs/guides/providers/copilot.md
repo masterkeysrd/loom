@@ -150,5 +150,6 @@ go run ./examples/copilot --debug --endpoint http://localhost:11434/v1 --model q
 ## 7. Limitations
 
 - Sampling and context parameters not exposed by the Copilot SDK (`Temperature`, `TopP`, `TopK`, `PresencePenalty`, `FrequencyPenalty`, `Stop`, `MaxTokens`, `ContextWindow`) are ignored (except BYOK `ProviderConfig.MaxPromptTokens` / `MaxOutputTokens`).
+- Inline `ImageBlock` data (`len(Data) > 0`) is supported on the active `User` prompt (via `AttachmentBlob`) and `Tool` results (via `ToolBinaryResult`); URL-only/empty images, historical transcript media, and `AudioBlock`/`VideoBlock`/`DocumentBlock` inputs fail fast with `profile.ErrUnsupportedModality`.
 - `ResponseSchema` and `ThinkingConfig` (`ReasoningEffort`) are forwarded when supported.
 - Dynamic `ModelInfo` entries report billing multipliers and AI-credit prices rather than USD token pricing; `Profile.Pricing` and long-context tiers are filled from generated `models.dev` reference data (`profiles.gen.go`) when the model ID matches, and remain zero for custom/BYOK or uncatalogued IDs unless overridden via `OverrideProfile`.

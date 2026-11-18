@@ -33,14 +33,17 @@ The most common block type, used for simple text.
 block := &message.TextBlock{Text: "Hello!"}
 ```
 
-### Multimodal Blocks (Images, Documents)
-You can attach images, PDFs, or other media to a user message.
+### Multimodal Blocks (Images, Audio, Video, Documents)
+You can attach images (`ImageBlock`), audio (`AudioBlock`), video (`VideoBlock`), or documents/PDFs (`DocumentBlock`) to messages.
 
 ```go
 imageMsg := message.NewUserImage(imageData, "image/png")
 // OR via URL
 imageMsg := message.NewUserImageURL("https://example.com/photo.jpg")
 ```
+
+> [!IMPORTANT]
+> **Strict Modality Validation (Zero Silent Drops):** Loom never silently ignores or drops media blocks (`ImageBlock`, `AudioBlock`, `VideoBlock`, `DocumentBlock`). If a known model profile does not list the modality in `Modalities.Inputs`, or if the target provider's wire protocol does not support that block type, role, or source mode (e.g., URL vs. inline bytes), the call fails immediately before spending tokens with an error matching `errors.Is(err, profile.ErrUnsupportedModality)`. Historical `*message.ThinkingBlock` items on prior `Assistant` turns remain lenient across providers.
 
 ### Thinking Blocks
 Some models (like Claude 3.5 or Gemini 2.0) can return their internal reasoning. Loom surfaces this as a `ThinkingBlock`.

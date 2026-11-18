@@ -170,6 +170,7 @@ go run ./examples/claudecode --debug --endpoint http://localhost:11434 --model q
 ## 7. Limitations
 
 - Sampling parameters not exposed by the `claude` CLI (`Temperature`, `TopP`, `TopK`, `PresencePenalty`, `FrequencyPenalty`, `Stop`, `ContextWindow`) are ignored; `Thinking.Effort` maps to `--effort <level>` (`low`, `medium`, `high`, `xhigh`, `max`).
+- Multimodal media blocks (`ImageBlock`, `AudioBlock`, `VideoBlock`, `DocumentBlock`) are not transported over the `claude` CLI `stream-json` prompt/MCP bridge and fail fast with `profile.ErrUnsupportedModality` instead of being dropped; use [`providers/anthropic`](anthropic.md) for multimodal image/PDF inputs.
 - Model swaps and permission-mode changes on sequential warm turns reuse the live session via `control_request` (`set_model`, `set_permission_mode`), and context cancellation issues an `interrupt` control request before shutdown.
 - `ListModels` / `GetModel` discover models dynamically from the CLI's `initialize` handshake (matching `providers/copilot`, so `ListProfiles` / `GetProfile` return cached discovered models + overrides without spawning eagerly) and enrich matched IDs with limits, pricing, and modalities from `providers/anthropic`.
 - When using a Claude Pro/Max subscription (`CLAUDE_CODE_OAUTH_TOKEN` or local login), reported dollar estimates are informational; token usage (`Input`, `Output`, `CacheRead`, `CacheWrite`) is still reported in Loom telemetry and Studio.

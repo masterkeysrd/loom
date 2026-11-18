@@ -239,3 +239,26 @@ When a provider also reports server-side billing or quota-unit consumption on a 
 - **Middleware**: cost is attached *after* the middleware chain. Middleware that needs it should use `llm.RuntimeFromContext(ctx)` and call `rt.Profile.Estimate(...)`.
 - **Injecting a profile**: `model.WithProfile(p)` returns a clone that uses `p` for cost estimation and `Runtime.Profile`. `WithProfile(nil)` clears it. `ModelConfig` defaults derived from the profile are not recomputed. `embedding.Model` and `decision.Model` have the same setter.
 - `EstimateCost` and `TierPricing.TierLimit` were removed; use `Estimate` and `TierPricing.Condition`.
+
+## 10. Strict Modality & Capability Validation
+
+All built-in providers (`openai`, `anthropic`, `genai`, `ollama`, `copilot`, `claudecode`, `antigravity`, and `typesafe`) enforce strict validation across `llm`, `embedding`, and `decision` requests so unsupported attachments are **never silently dropped**:
+
+1. **Profile & Capability Gate (When Known)**: When `provider.GetProfile(model)` resolves an authoritative `profile.Profile`, Loom validates message/input modalities against `Modalities.Inputs` and tool definitions against `Capabilities.ToolCall` (as well as `Completion`, `Embedding`, or `Decision` workload flags). Unknown or custom model IDs with no catalog profile skip this step automatically.
+2. **Wire-Protocol Gate (Always Enforced)**: Every provider's message mapper validates `System`, `User`, `Assistant`, `Tool`, `embedding.Input`, and `decision.Input` blocks—rejecting unsupported block types, unsupported roles (e.g., images inside `System` prompts), empty media blocks, or unsupported delivery modes (e.g., URL-only audio where inline bytes are required). Historical `*message.ThinkingBlock` items remain lenient on replay.
+
+```go
+import (
+    "errors"
+
+    "github.com/masterkeysrd/loom/profile"
+)
+
+resp, err := model.Invoke(ctx, messages)
+if errors.Is(err, profile.ErrUnsupportedModality) {
+    // Handle unsupported image/audio/video/document modality or URL source
+}
+if errors.Is(err, profile.ErrUnsupportedCapability) {
+    // Handle unsupported capability (e.g., tools bound to a non-tool model)
+}
+```

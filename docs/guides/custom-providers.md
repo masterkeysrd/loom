@@ -124,7 +124,7 @@ func (p *MyCustomProvider) Stream(ctx context.Context, req *llm.Request) (llm.St
 Most of the work in creating a provider involves mapping between Loom's block-based message system and the provider's specific message format (e.g., Anthropic's `ContentBlock` vs OpenAI's `ToolCall`).
 
 ### Key Mapping Areas:
-- **Multimodal Content**: Mapping `message.ImageBlock` to the provider's base64 or URL format.
+- **Multimodal Content & Strict Validation**: Map supported media blocks (`ImageBlock`, `AudioBlock`, `VideoBlock`, `DocumentBlock`) to your provider's base64 or URL wire format, and **never silently drop** unsupported media blocks, roles, or empty attachments. Validate against known model profiles using `prof.ValidateMessagesModalities` / `prof.ValidateToolCallCapability` and return `profile.NewUnsupportedModalityError(...)` (`profile.ErrUnsupportedModality`) for any media block your wire protocol cannot represent. Keep historical `*message.ThinkingBlock` blocks lenient if your backend does not accept prior reasoning blocks on replay.
 - **Tool Definitions**: Translating `tool.Definition` into the provider's JSON schema format.
 - **Tool Calls**: Capturing tool call IDs and arguments from the stream.
 

@@ -115,6 +115,24 @@ func TestShouldUseResponsesAPI(t *testing.T) {
 		t.Errorf("expected gpt-6 with tools to auto-route to Responses API")
 	}
 
+	// 8b. Model-based auto-routing: gpt-6.2 family (astra/sol) with tools
+	for _, m := range []string{"gpt-6.2-astra", "gpt-6.2-sol"} {
+		reqNoTools := &llm.Request{Model: m}
+		use, _ := defaultProv.shouldUseResponsesAPI(reqNoTools)
+		if use {
+			t.Errorf("expected %s without tools to default to chat completions", m)
+		}
+
+		reqWithTools := &llm.Request{
+			Model: m,
+			Tools: []tool.Definition{{Name: "test_tool"}},
+		}
+		use, _ = defaultProv.shouldUseResponsesAPI(reqWithTools)
+		if !use {
+			t.Errorf("expected %s with tools to auto-route to Responses API", m)
+		}
+	}
+
 	// 9. Explicit provider-level APIModeChatCompletions overrides model preference
 	chatOnlyProv := &Provider{defaultAPIMode: APIModeChatCompletions}
 	use, _ = chatOnlyProv.shouldUseResponsesAPI(&llm.Request{Model: "gpt-5.4-pro"})
@@ -523,6 +541,8 @@ func TestModelSupportsToolSearch(t *testing.T) {
 		"gpt-5.6-sol",
 		"gpt-6-sol",
 		"gpt-6.1-terra",
+		"gpt-6.2-astra",
+		"gpt-6.2-sol",
 	}
 	for _, m := range supported {
 		if !modelSupportsToolSearch(m) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -500,4 +501,95 @@ func TestProvider_GetProfile_GPT6LunaDecisionOverride(t *testing.T) {
 	if !profile.Capabilities.Decision {
 		t.Error("expected gpt-6-luna Decision capability to be true via staticProfileOverrides")
 	}
+}
+
+func TestValidateDecisionModalities(t *testing.T) {
+	client := openai.NewClient(option.WithAPIKey("test"))
+	p := NewProvider(&client)
+	ctx := context.Background()
+
+	t.Run("wire_empty_image_rejected", func(t *testing.T) {
+		_, err := toDecisionNewParams(&decision.Request{
+			Model:     "custom-decision-model",
+			Input:     decision.Text("check").WithImages(message.ImageBlock{}),
+			Questions: []decision.Question{decision.Predicate("q", "q")},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedModality) {
+			t.Fatalf("expected ErrUnsupportedModality, got %v", err)
+		}
+	})
+
+	t.Run("known_text_only_profile_rejects_images", func(t *testing.T) {
+		_, err := p.Evaluate(ctx, &decision.Request{
+			Model:     "gpt-3.5-turbo",
+			Input:     decision.Text("check").WithImages(message.ImageBlock{URL: "https://example.com/a.png"}),
+			Questions: []decision.Question{decision.Predicate("q", "q")},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedModality) {
+			t.Fatalf("expected ErrUnsupportedModality, got %v", err)
+		}
+	})
+
+	t.Run("known_profile_rejects_unsupported_modality_in_message_state", func(t *testing.T) {
+		_, err := p.Evaluate(ctx, &decision.Request{
+			Model: "gpt-6-luna",
+			Input: decision.State(message.NewUser(&message.AudioBlock{Data: []byte("aud"), MIMEType: "audio/wav"})),
+			Questions: []decision.Question{
+				decision.Predicate("q", "q"),
+			},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedModality) {
+			t.Fatalf("expected ErrUnsupportedModality for message.Message state, got %v", err)
+		}
+
+		_, err = p.Evaluate(ctx, &decision.Request{
+			Model: "gpt-6-luna",
+			Input: decision.State([]message.Message{
+				message.NewUser(&message.VideoBlock{Data: []byte("vid"), MIMEType: "video/mp4"}),
+			}),
+			Questions: []decision.Question{
+				decision.Predicate("q", "q"),
+			},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedModality) {
+			t.Fatalf("expected ErrUnsupportedModality for []message.Message state, got %v", err)
+		}
+
+		_, err = p.Evaluate(ctx, &decision.Request{
+			Model: "gpt-6-luna",
+			Input: decision.State(message.Content{
+				&message.AudioBlock{Data: []byte("aud"), MIMEType: "audio/wav"},
+			}),
+			Questions: []decision.Question{
+				decision.Predicate("q", "q"),
+			},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedModality) {
+			t.Fatalf("expected ErrUnsupportedModality for message.Content state, got %v", err)
+		}
+	})
+
+	t.Run("known_profile_accepts_supported_image_in_message_state", func(t *testing.T) {
+		req := &decision.Request{
+			Model: "gpt-6-luna",
+			Input: decision.State(message.NewUser(&message.ImageBlock{URL: "https://example.com/a.png"})),
+			Questions: []decision.Question{
+				decision.Predicate("q", "q"),
+			},
+		}
+		if err := p.validateDecisionRequestProfile(req); err != nil {
+			t.Fatalf("expected gpt-6-luna to allow image in message state, got %v", err)
+		}
+	})
+
+	t.Run("unknown_model_passthrough_on_profile_check", func(t *testing.T) {
+		req := &decision.Request{
+			Model:     "custom-decision-model",
+			Input:     decision.Text("check").WithImages(message.ImageBlock{URL: "https://example.com/a.png"}),
+			Questions: []decision.Question{decision.Predicate("q", "q")},
+		}
+		if err := p.validateDecisionRequestProfile(req); err != nil {
+			t.Fatalf("expected unknown model profile check to pass through, got %v", err)
+		}
+	})
 }

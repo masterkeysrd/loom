@@ -9,6 +9,7 @@ import (
 
 	"github.com/masterkeysrd/loom/decision"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/stream"
 	"github.com/openai/openai-go/v3"
 	"go.opentelemetry.io/otel/attribute"
@@ -24,6 +25,10 @@ func (p *Provider) Evaluate(ctx context.Context, request *decision.Request) (*de
 	}
 	if request == nil {
 		return nil, fmt.Errorf("decision: request cannot be nil")
+	}
+
+	if err := p.validateDecisionRequestProfile(request); err != nil {
+		return nil, err
 	}
 
 	params, err := toDecisionNewParams(request)
@@ -106,14 +111,14 @@ func toDecisionNewParams(request *decision.Request) (openai.DecisionNewParams, e
 					mediaType = "image/png"
 				}
 				imageURL = "data:" + mediaType + ";base64," + base64.StdEncoding.EncodeToString(img.Data)
+			} else {
+				return openai.DecisionNewParams{}, profile.NewUnsupportedModalityError("openai", request.Model, profile.ModalityImage, "image block is empty: missing both data and url")
 			}
-			if imageURL != "" {
-				parts = append(parts, openai.DecisionInputPartUnionParam{
-					OfInputImage: &openai.DecisionInputImageParam{
-						ImageURL: imageURL,
-					},
-				})
-			}
+			parts = append(parts, openai.DecisionInputPartUnionParam{
+				OfInputImage: &openai.DecisionInputImageParam{
+					ImageURL: imageURL,
+				},
+			})
 		}
 		params.Input = openai.DecisionNewParamsInputUnion{
 			OfDecisionInputMessageArray: []openai.DecisionInputMessageParam{
@@ -301,4 +306,49 @@ func toDecisionResponse(request *decision.Request, res *openai.Decision) *decisi
 			},
 		},
 	}
+}
+
+func (p *Provider) validateDecisionRequestProfile(request *decision.Request) error {
+	if p == nil || request == nil {
+		return nil
+	}
+	prof, ok := p.GetProfile(request.Model)
+	if !ok {
+		return nil
+	}
+	if len(request.Input.Images) > 0 && prof.HasInputModalities() && !prof.SupportsInputModality(profile.ModalityImage) {
+		return profile.NewUnsupportedModalityError(p.Name(), request.Model, profile.ModalityImage, "model profile does not list image input modality")
+	}
+	return validateDecisionStateModalities(p.Name(), request.Model, prof, request.Input.State)
+}
+
+func validateDecisionStateModalities(providerName, model string, prof profile.Profile, state any) error {
+	if state == nil || !prof.HasInputModalities() {
+		return nil
+	}
+	switch s := state.(type) {
+	case string:
+		if s != "" && !prof.SupportsInputModality(profile.ModalityText) {
+			return profile.NewUnsupportedModalityError(providerName, model, profile.ModalityText, "model profile does not list text input modality")
+		}
+	case message.Message:
+		if s != nil {
+			return prof.ValidateContentModalities(providerName, model, s.GetContent())
+		}
+	case []message.Message:
+		return prof.ValidateMessagesModalities(providerName, model, s)
+	case message.Content:
+		return prof.ValidateContentModalities(providerName, model, s)
+	case []message.Block:
+		return prof.ValidateContentModalities(providerName, model, message.Content(s))
+	case message.Block:
+		if s != nil {
+			return prof.ValidateContentModalities(providerName, model, message.Content{s})
+		}
+	default:
+		if !prof.SupportsInputModality(profile.ModalityText) {
+			return profile.NewUnsupportedModalityError(providerName, model, profile.ModalityText, "model profile does not list text input modality")
+		}
+	}
+	return nil
 }

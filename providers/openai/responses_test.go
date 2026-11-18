@@ -1,11 +1,15 @@
 package loomopenai
 
 import (
+	"context"
+	"encoding/base64"
+	"errors"
 	"testing"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/tool"
 )
 
@@ -900,4 +904,149 @@ func TestToResponseNewParams_ToolDefinitionBlock(t *testing.T) {
 	if !found {
 		t.Errorf("expected inline_calc in additional_tools input items")
 	}
+}
+
+func TestModalityValidation_ResponsesAPIWire(t *testing.T) {
+	mediaBlocks := []struct {
+		name  string
+		block message.Block
+	}{
+		{"image", &message.ImageBlock{URL: "https://example.com/a.png"}},
+		{"audio", &message.AudioBlock{Data: []byte("aud"), MIMEType: "audio/wav"}},
+		{"video", &message.VideoBlock{Data: []byte("vid"), MIMEType: "video/mp4"}},
+		{"document", &message.DocumentBlock{URL: "https://example.com/a.pdf"}},
+	}
+
+	for _, tc := range mediaBlocks {
+		t.Run("system_initial/"+tc.name, func(t *testing.T) {
+			_, err := toResponseNewParams(&llm.Request{
+				Model: "gpt-4o",
+				Messages: []message.Message{
+					message.NewSystem(&message.TextBlock{Text: "sys"}, tc.block),
+				},
+			}, ResponsesOptions{})
+			if !errors.Is(err, profile.ErrUnsupportedModality) {
+				t.Fatalf("expected ErrUnsupportedModality, got %v", err)
+			}
+		})
+
+		t.Run("system_mid_conversation/"+tc.name, func(t *testing.T) {
+			_, err := toResponseNewParams(&llm.Request{
+				Model: "gpt-4o",
+				Messages: []message.Message{
+					message.NewUserText("hi"),
+					message.NewSystem(&message.TextBlock{Text: "sys"}, tc.block),
+				},
+			}, ResponsesOptions{})
+			if !errors.Is(err, profile.ErrUnsupportedModality) {
+				t.Fatalf("expected ErrUnsupportedModality, got %v", err)
+			}
+		})
+
+		t.Run("assistant/"+tc.name, func(t *testing.T) {
+			_, err := toResponseNewParams(&llm.Request{
+				Model: "gpt-4o",
+				Messages: []message.Message{
+					&message.Assistant{Content: message.Content{&message.TextBlock{Text: "hi"}, tc.block}},
+				},
+			}, ResponsesOptions{})
+			if !errors.Is(err, profile.ErrUnsupportedModality) {
+				t.Fatalf("expected ErrUnsupportedModality, got %v", err)
+			}
+		})
+
+		t.Run("tool/"+tc.name, func(t *testing.T) {
+			_, err := toResponseNewParams(&llm.Request{
+				Model: "gpt-4o",
+				Messages: []message.Message{
+					&message.Tool{
+						ToolCallID: "call_1",
+						Content:    message.Content{&message.TextBlock{Text: "ok"}, tc.block},
+					},
+				},
+			}, ResponsesOptions{})
+			if !errors.Is(err, profile.ErrUnsupportedModality) {
+				t.Fatalf("expected ErrUnsupportedModality, got %v", err)
+			}
+		})
+	}
+
+	userRejections := []struct {
+		name  string
+		block message.Block
+	}{
+		{"audio", &message.AudioBlock{Data: []byte("aud"), MIMEType: "audio/wav"}},
+		{"video", &message.VideoBlock{Data: []byte("vid"), MIMEType: "video/mp4"}},
+		{"empty_image", &message.ImageBlock{}},
+		{"empty_document", &message.DocumentBlock{}},
+	}
+
+	for _, tc := range userRejections {
+		t.Run("user/"+tc.name, func(t *testing.T) {
+			_, err := toResponseNewParams(&llm.Request{
+				Model: "gpt-4o",
+				Messages: []message.Message{
+					message.NewUser(&message.TextBlock{Text: "hi"}, tc.block),
+				},
+			}, ResponsesOptions{})
+			if !errors.Is(err, profile.ErrUnsupportedModality) {
+				t.Fatalf("expected ErrUnsupportedModality, got %v", err)
+			}
+		})
+	}
+
+	t.Run("user_audio_alongside_tool_reference", func(t *testing.T) {
+		_, err := toResponseNewParams(&llm.Request{
+			Model: "gpt-5.4",
+			Messages: []message.Message{
+				message.NewUser(
+					&message.ToolReferenceBlock{ToolName: "lookup"},
+					&message.AudioBlock{Data: []byte("aud"), MIMEType: "audio/wav"},
+				),
+			},
+		}, ResponsesOptions{})
+		if !errors.Is(err, profile.ErrUnsupportedModality) {
+			t.Fatalf("expected ErrUnsupportedModality even with ToolReferenceBlock, got %v", err)
+		}
+	})
+
+	t.Run("user_inline_document_data_mapped", func(t *testing.T) {
+		rawPDF := []byte("%PDF-1.4")
+		params, err := toResponseNewParams(&llm.Request{
+			Model: "gpt-4o",
+			Messages: []message.Message{
+				message.NewUser(&message.DocumentBlock{Data: rawPDF, MIMEType: "application/pdf"}),
+			},
+		}, ResponsesOptions{})
+		if err != nil {
+			t.Fatalf("expected inline document data to succeed, got %v", err)
+		}
+		items := params.Input.OfInputItemList
+		if len(items) != 1 || items[0].OfInputMessage == nil || len(items[0].OfInputMessage.Content) != 1 {
+			t.Fatalf("expected 1 input message with 1 content part, got %+v", items)
+		}
+		filePart := items[0].OfInputMessage.Content[0].OfInputFile
+		if filePart == nil || filePart.FileData.Value != base64.StdEncoding.EncodeToString(rawPDF) {
+			t.Fatalf("expected FileData to carry base64 PDF, got %+v", filePart)
+		}
+	})
+
+	t.Run("responses_provider_unknown_model_passthrough", func(t *testing.T) {
+		p := &Provider{defaultAPIMode: APIModeResponses}
+		resp, err := p.Stream(context.Background(), &llm.Request{
+			Model: "custom-responses-model",
+			Messages: []message.Message{
+				message.NewUser(
+					&message.ImageBlock{URL: "https://example.com/a.png"},
+					&message.DocumentBlock{URL: "https://example.com/a.pdf"},
+				),
+			},
+		})
+		if err != nil {
+			t.Fatalf("expected unknown model pass-through to succeed, got %v", err)
+		}
+		if resp == nil {
+			t.Fatal("expected non-nil stream response")
+		}
+	})
 }

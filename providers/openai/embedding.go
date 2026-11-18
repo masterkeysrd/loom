@@ -7,6 +7,7 @@ import (
 
 	"github.com/masterkeysrd/loom/embedding"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/stream"
 	"github.com/openai/openai-go/v3"
 	"go.opentelemetry.io/otel/attribute"
@@ -22,6 +23,10 @@ func (p *Provider) Embed(ctx context.Context, request *embedding.Request) (*embe
 	}
 	if request == nil {
 		return nil, fmt.Errorf("embedding: request cannot be nil")
+	}
+
+	if err := p.validateEmbeddingRequestProfile(request); err != nil {
+		return nil, err
 	}
 
 	params, err := toEmbeddingNewParams(request)
@@ -66,7 +71,7 @@ func toEmbeddingNewParams(request *embedding.Request) (openai.EmbeddingNewParams
 
 	texts := make([]string, len(request.Inputs))
 	for i, in := range request.Inputs {
-		txt, err := extractOpenAIText(in)
+		txt, err := extractOpenAITextWithModel(request.Model, in)
 		if err != nil {
 			return openai.EmbeddingNewParams{}, fmt.Errorf("input at index %d: %w", i, err)
 		}
@@ -93,7 +98,34 @@ func toEmbeddingNewParams(request *embedding.Request) (openai.EmbeddingNewParams
 	return params, nil
 }
 
+func (p *Provider) validateEmbeddingRequestProfile(request *embedding.Request) error {
+	if p == nil || request == nil {
+		return nil
+	}
+	prof, ok := p.GetProfile(request.Model)
+	if !ok {
+		return nil
+	}
+	if !prof.Capabilities.Embedding && (prof.HasInputModalities() || prof.Capabilities.Completion || prof.Capabilities.Decision) {
+		return profile.NewUnsupportedCapabilityError(p.Name(), request.Model, "embedding", "model profile has Embedding=false")
+	}
+	for i, in := range request.Inputs {
+		content := in.Parts
+		if in.Text != "" {
+			content = append(message.Content{&message.TextBlock{Text: in.Text}}, in.Parts...)
+		}
+		if err := prof.ValidateContentModalities(p.Name(), request.Model, content); err != nil {
+			return fmt.Errorf("input at index %d: %w", i, err)
+		}
+	}
+	return nil
+}
+
 func extractOpenAIText(in embedding.Input) (string, error) {
+	return extractOpenAITextWithModel("", in)
+}
+
+func extractOpenAITextWithModel(model string, in embedding.Input) (string, error) {
 	var parts []string
 	if in.Text != "" {
 		parts = append(parts, in.Text)
@@ -102,11 +134,19 @@ func extractOpenAIText(in embedding.Input) (string, error) {
 	for _, block := range in.Parts {
 		switch b := block.(type) {
 		case *message.TextBlock:
-			if b.Text != "" {
+			if b != nil && b.Text != "" {
 				parts = append(parts, b.Text)
 			}
+		case *message.ImageBlock:
+			return "", profile.NewUnsupportedModalityError("openai", model, profile.ModalityImage, "openai embeddings API only supports text inputs")
+		case *message.AudioBlock:
+			return "", profile.NewUnsupportedModalityError("openai", model, profile.ModalityAudio, "openai embeddings API only supports text inputs")
+		case *message.VideoBlock:
+			return "", profile.NewUnsupportedModalityError("openai", model, profile.ModalityVideo, "openai embeddings API only supports text inputs")
+		case *message.DocumentBlock:
+			return "", profile.NewUnsupportedModalityError("openai", model, profile.ModalityPDF, "openai embeddings API only supports text inputs")
 		default:
-			return "", fmt.Errorf("openai embeddings do not support multimodal block type %T", block)
+			return "", fmt.Errorf("openai embeddings do not support block type %T", block)
 		}
 	}
 

@@ -3,6 +3,7 @@ package loomopenai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -226,4 +227,62 @@ func TestProvider_Embed_Errors(t *testing.T) {
 	}); err == nil {
 		t.Error("expected error on server 500")
 	}
+}
+
+func TestValidateEmbeddingModalitiesAndCapabilities(t *testing.T) {
+	client := openai.NewClient(option.WithAPIKey("test"))
+	p := NewProvider(&client)
+	ctx := context.Background()
+
+	mediaBlocks := []struct {
+		name  string
+		block message.Block
+	}{
+		{"image", &message.ImageBlock{Data: []byte("img"), MIMEType: "image/png"}},
+		{"audio", &message.AudioBlock{Data: []byte("aud"), MIMEType: "audio/wav"}},
+		{"video", &message.VideoBlock{Data: []byte("vid"), MIMEType: "video/mp4"}},
+		{"document", &message.DocumentBlock{Data: []byte("pdf"), MIMEType: "application/pdf"}},
+	}
+
+	for _, tc := range mediaBlocks {
+		t.Run("wire/"+tc.name, func(t *testing.T) {
+			_, err := toEmbeddingNewParams(&embedding.Request{
+				Model:  "custom-embed-model",
+				Inputs: []embedding.Input{embedding.Multimodal(tc.block)},
+			})
+			if !errors.Is(err, profile.ErrUnsupportedModality) {
+				t.Fatalf("expected ErrUnsupportedModality, got %v", err)
+			}
+		})
+
+		t.Run("known_embedding_model/"+tc.name, func(t *testing.T) {
+			_, err := p.Embed(ctx, &embedding.Request{
+				Model:  "text-embedding-3-small",
+				Inputs: []embedding.Input{embedding.Multimodal(tc.block)},
+			})
+			if !errors.Is(err, profile.ErrUnsupportedModality) {
+				t.Fatalf("expected ErrUnsupportedModality, got %v", err)
+			}
+		})
+
+		t.Run("unknown_embedding_model_wire_fallback/"+tc.name, func(t *testing.T) {
+			_, err := p.Embed(ctx, &embedding.Request{
+				Model:  "custom-embed-model",
+				Inputs: []embedding.Input{embedding.Multimodal(tc.block)},
+			})
+			if !errors.Is(err, profile.ErrUnsupportedModality) {
+				t.Fatalf("expected ErrUnsupportedModality, got %v", err)
+			}
+		})
+	}
+
+	t.Run("known_non_embedding_model_rejected", func(t *testing.T) {
+		_, err := p.Embed(ctx, &embedding.Request{
+			Model:  "gpt-4o",
+			Inputs: embedding.Texts("hello"),
+		})
+		if !errors.Is(err, profile.ErrUnsupportedCapability) {
+			t.Fatalf("expected ErrUnsupportedCapability, got %v", err)
+		}
+	})
 }

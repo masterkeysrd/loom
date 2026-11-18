@@ -162,7 +162,13 @@ func hasDeferredTools(req *llm.Request) bool {
 }
 
 func hasToolReferenceBlock(req *llm.Request) bool {
+	if req == nil {
+		return false
+	}
 	for _, msg := range req.Messages {
+		if msg == nil {
+			continue
+		}
 		for _, block := range msg.GetContent() {
 			if _, ok := block.(*message.ToolReferenceBlock); ok {
 				return true
@@ -184,6 +190,9 @@ func hasToolDefinitionBlock(req *llm.Request) bool {
 		return false
 	}
 	for _, msg := range req.Messages {
+		if msg == nil {
+			continue
+		}
 		for _, block := range msg.GetContent() {
 			if _, ok := block.(*message.ToolDefinitionBlock); ok {
 				return true
@@ -244,6 +253,13 @@ func (p *Provider) shouldUseResponsesAPI(req *llm.Request) (bool, ResponsesOptio
 // call, and returns an iterator that yields [message.AssistantChunk] values as
 // tokens arrive from the OpenAI server.
 func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.StreamResponse, error) {
+	if request == nil {
+		return nil, fmt.Errorf("openai: request cannot be nil")
+	}
+	if err := p.validateChatRequestProfile(request); err != nil {
+		return nil, err
+	}
+
 	if useResponses, opts := p.shouldUseResponsesAPI(request); useResponses {
 		return p.streamResponses(ctx, request, opts)
 	}
@@ -336,4 +352,24 @@ func (p *Provider) SearchProfiles(query string) []profile.Profile {
 // OverrideProfile stores a custom profile for id.
 func (p *Provider) OverrideProfile(id string, prof profile.Profile) {
 	p.overrides.Store(id, prof)
+}
+
+func (p *Provider) validateChatRequestProfile(request *llm.Request) error {
+	if p == nil || request == nil {
+		return nil
+	}
+	prof, ok := p.GetProfile(request.Model)
+	if !ok {
+		return nil
+	}
+	if !prof.Capabilities.Completion && (prof.Capabilities.Embedding || prof.Capabilities.Decision) {
+		return profile.NewUnsupportedCapabilityError(p.Name(), request.Model, "completion", "model profile has Completion=false")
+	}
+	if err := prof.ValidateMessagesModalities(p.Name(), request.Model, request.Messages); err != nil {
+		return err
+	}
+	if err := prof.ValidateToolCallCapability(p.Name(), request.Model, len(request.Tools) > 0); err != nil {
+		return err
+	}
+	return nil
 }

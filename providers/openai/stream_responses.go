@@ -10,6 +10,7 @@ import (
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/stream"
 	"github.com/masterkeysrd/loom/tool"
 	"github.com/openai/openai-go/v3"
@@ -363,6 +364,9 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 	seenNonSystem := false
 	for _, msg := range request.Messages {
 		if sys, ok := msg.(*message.System); ok {
+			if err := validateNoMediaBlocks(request.Model, "system messages", sys.Content); err != nil {
+				return responses.ResponseNewParams{}, err
+			}
 			refNames := extractToolReferences(sys.Content)
 			inlineDefs := extractToolDefinitions(sys.Content)
 			if !seenNonSystem && len(refNames) == 0 && len(inlineDefs) == 0 {
@@ -433,12 +437,12 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 			hasUserContent := false
 			for _, b := range m.Content {
 				switch b.(type) {
-				case *message.TextBlock, *message.ImageBlock, *message.DocumentBlock:
+				case *message.TextBlock, *message.ImageBlock, *message.AudioBlock, *message.VideoBlock, *message.DocumentBlock:
 					hasUserContent = true
 				}
 			}
 			if hasUserContent || (len(refNames) == 0 && len(inlineDefs) == 0) {
-				userItem, err := toResponseUserInputItem(m)
+				userItem, err := toResponseUserInputItemWithModel(request.Model, m)
 				if err != nil {
 					return responses.ResponseNewParams{}, err
 				}
@@ -456,6 +460,10 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 			}
 
 		case *message.Assistant:
+			if err := validateNoMediaBlocks(request.Model, "assistant messages", m.Content); err != nil {
+				return responses.ResponseNewParams{}, err
+			}
+
 			// Include reasoning encrypted_content if present (critical when store: false)
 			for _, block := range m.Content {
 				if tb, ok := block.(*message.ThinkingBlock); ok {
@@ -545,7 +553,11 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 			}
 
 		case *message.Tool:
-			outputStr := ensureValidContent(toToolString(m))
+			toolStr, err := toToolStringWithModel(request.Model, m)
+			if err != nil {
+				return responses.ResponseNewParams{}, err
+			}
+			outputStr := ensureValidContent(toolStr)
 			inputItems = append(inputItems, responses.ResponseInputItemUnionParam{
 				OfFunctionCallOutput: &responses.ResponseInputItemFunctionCallOutputParam{
 					CallID: openai.String(m.ToolCallID),
@@ -755,35 +767,52 @@ func extractResponseID(msg message.Message) string {
 }
 
 func toResponseUserInputItem(m *message.User) (responses.ResponseInputItemUnionParam, error) {
+	return toResponseUserInputItemWithModel("", m)
+}
+
+func toResponseUserInputItemWithModel(model string, m *message.User) (responses.ResponseInputItemUnionParam, error) {
 	var contentList []responses.ResponseInputContentUnionParam
 	for _, block := range m.Content {
 		switch b := block.(type) {
 		case *message.TextBlock:
-			contentList = append(contentList, responses.ResponseInputContentParamOfInputText(b.Text))
+			if b != nil {
+				contentList = append(contentList, responses.ResponseInputContentParamOfInputText(b.Text))
+			}
 		case *message.ImageBlock:
+			if b == nil || (b.URL == "" && len(b.Data) == 0) {
+				return responses.ResponseInputItemUnionParam{}, profile.NewUnsupportedModalityError("openai", model, profile.ModalityImage, "image block is empty: missing both data and url")
+			}
 			url := b.URL
-			if url == "" && len(b.Data) > 0 {
+			if url == "" {
 				mime := b.MIMEType
 				if mime == "" {
 					mime = "image/jpeg"
 				}
 				url = fmt.Sprintf("data:%s;base64,%s", mime, base64.StdEncoding.EncodeToString(b.Data))
 			}
-			if url != "" {
-				contentList = append(contentList, responses.ResponseInputContentUnionParam{
-					OfInputImage: &responses.ResponseInputImageParam{
-						ImageURL: openai.String(url),
-					},
-				})
-			}
+			contentList = append(contentList, responses.ResponseInputContentUnionParam{
+				OfInputImage: &responses.ResponseInputImageParam{
+					ImageURL: openai.String(url),
+				},
+			})
+		case *message.AudioBlock:
+			return responses.ResponseInputItemUnionParam{}, profile.NewUnsupportedModalityError("openai", model, profile.ModalityAudio, "openai responses API user messages do not support audio inputs")
+		case *message.VideoBlock:
+			return responses.ResponseInputItemUnionParam{}, profile.NewUnsupportedModalityError("openai", model, profile.ModalityVideo, "openai responses API does not support video inputs")
 		case *message.DocumentBlock:
-			if b.URL != "" {
-				contentList = append(contentList, responses.ResponseInputContentUnionParam{
-					OfInputFile: &responses.ResponseInputFileParam{
-						FileURL: openai.String(b.URL),
-					},
-				})
+			if b == nil || (b.URL == "" && len(b.Data) == 0) {
+				return responses.ResponseInputItemUnionParam{}, profile.NewUnsupportedModalityError("openai", model, profile.ModalityPDF, "document block is empty: missing both data and url")
 			}
+			fileParam := responses.ResponseInputFileParam{}
+			if b.URL != "" {
+				fileParam.FileURL = openai.String(b.URL)
+			}
+			if len(b.Data) > 0 {
+				fileParam.FileData = openai.String(base64.StdEncoding.EncodeToString(b.Data))
+			}
+			contentList = append(contentList, responses.ResponseInputContentUnionParam{
+				OfInputFile: &fileParam,
+			})
 		}
 	}
 

@@ -8,43 +8,60 @@ import (
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/shared"
 )
 
 func toUserMessageParam(m *message.User) (openai.ChatCompletionMessageParamUnion, error) {
+	return toUserMessageParamWithModel("", m)
+}
+
+func toUserMessageParamWithModel(model string, m *message.User) (openai.ChatCompletionMessageParamUnion, error) {
 	var parts []openai.ChatCompletionContentPartUnionParam
 	for _, block := range m.Content {
 		switch b := block.(type) {
 		case *message.TextBlock:
-			parts = append(parts, openai.TextContentPart(b.Text))
+			if b != nil {
+				parts = append(parts, openai.TextContentPart(b.Text))
+			}
 		case *message.ImageBlock:
+			if b == nil || (b.URL == "" && len(b.Data) == 0) {
+				return openai.ChatCompletionMessageParamUnion{}, profile.NewUnsupportedModalityError("openai", model, profile.ModalityImage, "image block is empty: missing both data and url")
+			}
 			url := b.URL
-			if url == "" && len(b.Data) > 0 {
+			if url == "" {
 				mimeType := b.MIMEType
 				if mimeType == "" {
 					mimeType = "image/jpeg"
 				}
 				url = fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(b.Data))
 			}
-			if url != "" {
-				parts = append(parts, openai.ImageContentPart(openai.ChatCompletionContentPartImageImageURLParam{
-					URL: url,
-				}))
-			}
+			parts = append(parts, openai.ImageContentPart(openai.ChatCompletionContentPartImageImageURLParam{
+				URL: url,
+			}))
 		case *message.AudioBlock:
-			if len(b.Data) > 0 {
-				format := "wav" // default
-				if strings.Contains(b.MIMEType, "mp3") {
-					format = "mp3"
-				}
-				parts = append(parts, openai.InputAudioContentPart(openai.ChatCompletionContentPartInputAudioInputAudioParam{
-					Data:   base64.StdEncoding.EncodeToString(b.Data),
-					Format: format,
-				}))
+			if b == nil || (b.URL == "" && len(b.Data) == 0) {
+				return openai.ChatCompletionMessageParamUnion{}, profile.NewUnsupportedModalityError("openai", model, profile.ModalityAudio, "audio block is empty: missing both data and url")
 			}
+			if len(b.Data) == 0 {
+				return openai.ChatCompletionMessageParamUnion{}, profile.NewUnsupportedModalityError("openai", model, profile.ModalityAudio, "openai chat completions input_audio requires inline data and does not support audio URLs")
+			}
+			format := "wav" // default
+			if strings.Contains(b.MIMEType, "mp3") {
+				format = "mp3"
+			}
+			parts = append(parts, openai.InputAudioContentPart(openai.ChatCompletionContentPartInputAudioInputAudioParam{
+				Data:   base64.StdEncoding.EncodeToString(b.Data),
+				Format: format,
+			}))
+		case *message.VideoBlock:
+			return openai.ChatCompletionMessageParamUnion{}, profile.NewUnsupportedModalityError("openai", model, profile.ModalityVideo, "openai chat completions API does not support video inputs")
 		case *message.DocumentBlock:
+			if b == nil || (b.URL == "" && len(b.Data) == 0) {
+				return openai.ChatCompletionMessageParamUnion{}, profile.NewUnsupportedModalityError("openai", model, profile.ModalityPDF, "document block is empty: missing both data and url")
+			}
 			fileParam := openai.ChatCompletionContentPartFileFileParam{}
 			if b.URL != "" {
 				fileParam.FileID = openai.String(b.URL)
@@ -52,9 +69,7 @@ func toUserMessageParam(m *message.User) (openai.ChatCompletionMessageParamUnion
 			if len(b.Data) > 0 {
 				fileParam.FileData = openai.String(base64.StdEncoding.EncodeToString(b.Data))
 			}
-			if !param.IsOmitted(fileParam.FileID) || !param.IsOmitted(fileParam.FileData) {
-				parts = append(parts, openai.FileContentPart(fileParam))
-			}
+			parts = append(parts, openai.FileContentPart(fileParam))
 		}
 	}
 
@@ -176,17 +191,23 @@ func toChatCompletionNewParams(request *llm.Request) (openai.ChatCompletionNewPa
 		switch m := msg.(type) {
 		case *message.System:
 			flushPending()
+			if err := validateNoMediaBlocks(request.Model, "system messages", m.Content); err != nil {
+				return openai.ChatCompletionNewParams{}, err
+			}
 			messages = append(messages, openai.SystemMessage(m.Content.Text()))
 		case *message.User:
 			flushPending()
-			userMsg, err := toUserMessageParam(m)
+			userMsg, err := toUserMessageParamWithModel(request.Model, m)
 			if err != nil {
 				return openai.ChatCompletionNewParams{}, err
 			}
 			messages = append(messages, userMsg)
 		case *message.Assistant:
 			flushPending()
-			assistantMsg := toAssistantMessageParam(m)
+			assistantMsg, err := toAssistantMessageParamWithModel(request.Model, m)
+			if err != nil {
+				return openai.ChatCompletionNewParams{}, err
+			}
 			// Track tool calls to ensure they are answered
 			for _, tc := range assistantMsg.ToolCalls {
 				if tc.OfFunction != nil {
@@ -209,7 +230,11 @@ func toChatCompletionNewParams(request *llm.Request) (openai.ChatCompletionNewPa
 				pendingIDs = append(pendingIDs[:foundIdx], pendingIDs[foundIdx+1:]...)
 			}
 
-			messages = append(messages, openai.ToolMessage(ensureValidContent(toToolString(m)), m.ToolCallID))
+			toolStr, err := toToolStringWithModel(request.Model, m)
+			if err != nil {
+				return openai.ChatCompletionNewParams{}, err
+			}
+			messages = append(messages, openai.ToolMessage(ensureValidContent(toolStr), m.ToolCallID))
 		}
 	}
 	flushPending()
@@ -253,7 +278,31 @@ func toChatCompletionNewParams(request *llm.Request) (openai.ChatCompletionNewPa
 	return params, nil
 }
 
-func toAssistantMessageParam(m *message.Assistant) openai.ChatCompletionAssistantMessageParam {
+func validateNoMediaBlocks(model, roleDesc string, content message.Content) error {
+	for _, block := range content {
+		switch block.(type) {
+		case *message.ImageBlock:
+			return profile.NewUnsupportedModalityError("openai", model, profile.ModalityImage, fmt.Sprintf("openai %s do not support image blocks", roleDesc))
+		case *message.AudioBlock:
+			return profile.NewUnsupportedModalityError("openai", model, profile.ModalityAudio, fmt.Sprintf("openai %s do not support audio blocks", roleDesc))
+		case *message.VideoBlock:
+			return profile.NewUnsupportedModalityError("openai", model, profile.ModalityVideo, fmt.Sprintf("openai %s do not support video blocks", roleDesc))
+		case *message.DocumentBlock:
+			return profile.NewUnsupportedModalityError("openai", model, profile.ModalityPDF, fmt.Sprintf("openai %s do not support document blocks", roleDesc))
+		}
+	}
+	return nil
+}
+
+func toAssistantMessageParam(m *message.Assistant) (openai.ChatCompletionAssistantMessageParam, error) {
+	return toAssistantMessageParamWithModel("", m)
+}
+
+func toAssistantMessageParamWithModel(model string, m *message.Assistant) (openai.ChatCompletionAssistantMessageParam, error) {
+	if err := validateNoMediaBlocks(model, "assistant messages", m.Content); err != nil {
+		return openai.ChatCompletionAssistantMessageParam{}, err
+	}
+
 	content := m.Content.Text()
 	assistantMsg := openai.ChatCompletionAssistantMessageParam{}
 	if content != "" {
@@ -291,55 +340,34 @@ func toAssistantMessageParam(m *message.Assistant) openai.ChatCompletionAssistan
 		}
 	}
 
-	return assistantMsg
+	return assistantMsg, nil
 }
 
-func toToolString(m *message.Tool) string {
+func toToolString(m *message.Tool) (string, error) {
+	return toToolStringWithModel("", m)
+}
+
+func toToolStringWithModel(model string, m *message.Tool) (string, error) {
 	if len(m.Content) > 0 {
+		if err := validateNoMediaBlocks(model, "tool messages", m.Content); err != nil {
+			return "", err
+		}
+
 		var sb strings.Builder
 		if m.IsError {
 			sb.WriteString("Error: ")
 		}
 
 		sb.WriteString(m.Content.Text())
-
-		for _, block := range m.Content {
-			switch b := block.(type) {
-			case *message.ImageBlock:
-				if b.URL != "" {
-					fmt.Fprintf(&sb, "\n[Image URL: %s]", b.URL)
-				} else {
-					sb.WriteString("\n[Image attached]")
-				}
-			case *message.AudioBlock:
-				if b.URL != "" {
-					fmt.Fprintf(&sb, "\n[Audio URL: %s]", b.URL)
-				} else {
-					sb.WriteString("\n[Audio attached]")
-				}
-			case *message.VideoBlock:
-				if b.URL != "" {
-					fmt.Fprintf(&sb, "\n[Video URL: %s]", b.URL)
-				} else {
-					sb.WriteString("\n[Video attached]")
-				}
-			case *message.DocumentBlock:
-				if b.URL != "" {
-					fmt.Fprintf(&sb, "\n[Document URL: %s]", b.URL)
-				} else {
-					sb.WriteString("\n[Document attached]")
-				}
-			}
-		}
-		return sb.String()
+		return sb.String(), nil
 	}
 
 	if m.StructuredContent != nil {
 		data, _ := m.CanonicalStructuredContent()
-		return string(data)
+		return string(data), nil
 	}
 
-	return ""
+	return "", nil
 }
 
 func ensureValidContent(content string) string {

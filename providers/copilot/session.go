@@ -297,7 +297,7 @@ func (s *copilotSession) makeToolHandler() copilot.ToolHandler {
 	}
 }
 
-func (s *copilotSession) sendToolResults(toolMsgs []*message.Tool) error {
+func (s *copilotSession) sendToolResults(toolMsgs []*message.Tool, prepared []copilot.ToolResult) error {
 	s.mu.Lock()
 	pending := slices.Clone(s.parkedCalls)
 	s.parkedCalls = nil
@@ -311,19 +311,28 @@ func (s *copilotSession) sendToolResults(toolMsgs []*message.Tool) error {
 	deliveries := make([]copilot.ToolResult, len(pending))
 	delivered := make([]bool, len(pending))
 
-	for _, tm := range toolMsgs {
+	for i, tm := range toolMsgs {
 		idx := matchPendingToolCall(pending, used, tm)
 		if idx < 0 {
 			continue
 		}
 		used[idx] = true
 		delivered[idx] = true
-		deliveries[idx] = toToolResult(tm)
+		if i < len(prepared) {
+			deliveries[idx] = prepared[i]
+		} else {
+			res, err := toToolResult(tm, s.model)
+			if err != nil {
+				return err
+			}
+			deliveries[idx] = res
+		}
 	}
 
 	for i := range pending {
 		if !delivered[i] {
-			deliveries[i] = toToolResult(nil)
+			fallback, _ := toToolResult(nil, s.model)
+			deliveries[i] = fallback
 		}
 		select {
 		case pending[i].respCh <- deliveries[i]:

@@ -23,6 +23,7 @@ import (
 	"github.com/masterkeysrd/loom/graph"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/stream"
 	"github.com/masterkeysrd/loom/tool"
 )
@@ -347,12 +348,17 @@ func runMockCopilotCLI() {
 
 		case "session.send":
 			var p struct {
-				SessionID      string `json:"sessionId"`
-				Prompt         string `json:"prompt"`
-				ResponseFormat any    `json:"responseFormat"`
+				SessionID      string            `json:"sessionId"`
+				Prompt         string            `json:"prompt"`
+				Attachments    []json.RawMessage `json:"attachments"`
+				ResponseFormat any               `json:"responseFormat"`
 			}
 			_ = json.Unmarshal(req.Params, &p)
 			appendLog("SEND:" + p.SessionID + ":" + p.Prompt)
+			if len(p.Attachments) > 0 {
+				attBytes, _ := json.Marshal(p.Attachments)
+				appendLog("ATTACHMENTS:" + string(attBytes))
+			}
 			if p.ResponseFormat != nil {
 				rfBytes, _ := json.Marshal(p.ResponseFormat)
 				appendLog("RESPONSE_FORMAT:" + string(rfBytes))
@@ -1156,6 +1162,197 @@ func TestCopilotManualCompactAndIdleSyncOnWrite(t *testing.T) {
 		}
 		if cnt := countLogPrefix(readMockLog(t, logPath), "CREATE:"); cnt != 2 {
 			t.Fatalf("expected 2 creates after history edit fallback, got %d", cnt)
+		}
+	})
+}
+
+func TestCopilotModalityAndCapabilityValidation(t *testing.T) {
+	pngBytes := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+
+	t.Run("profile override rejects unsupported modality and tool_call without spawning CLI", func(t *testing.T) {
+		p, logPath := newTestProvider(t, "basic")
+		p.OverrideProfile("text-only", profile.Profile{
+			ID:   "text-only",
+			Name: "Text Only",
+			Capabilities: profile.Capabilities{
+				Completion: true,
+				ToolCall:   false,
+			},
+			Modalities: profile.Modalities{
+				Inputs:  []profile.Modality{profile.ModalityText},
+				Outputs: []profile.Modality{profile.ModalityText},
+			},
+		})
+		p.OverrideProfile("embed-only", profile.Profile{
+			ID:   "embed-only",
+			Name: "Embed Only",
+			Capabilities: profile.Capabilities{
+				Completion: false,
+				Embedding:  true,
+			},
+			Modalities: profile.Modalities{
+				Inputs: []profile.Modality{profile.ModalityText},
+			},
+		})
+
+		ctx := context.Background()
+
+		// Image input rejected by profile.
+		_, err := p.Stream(ctx, &llm.Request{
+			Model: "text-only",
+			Messages: []message.Message{
+				message.NewUser(&message.ImageBlock{Data: pngBytes, MIMEType: "image/png"}),
+			},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedModality) {
+			t.Fatalf("expected ErrUnsupportedModality, got %v", err)
+		}
+
+		// Tools rejected by profile.
+		_, err = p.Stream(ctx, &llm.Request{
+			Model:    "text-only",
+			Messages: []message.Message{message.NewUser(&message.TextBlock{Text: "hi"})},
+			Tools: []tool.Definition{{
+				Name:        "echo_tool",
+				Description: "echo",
+				InputSchema: &jsonschema.Schema{Type: "object"},
+			}},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedCapability) {
+			t.Fatalf("expected ErrUnsupportedCapability for tool_call, got %v", err)
+		}
+
+		// Non-completion profile rejected.
+		_, err = p.Stream(ctx, &llm.Request{
+			Model:    "embed-only",
+			Messages: []message.Message{message.NewUser(&message.TextBlock{Text: "hi"})},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedCapability) {
+			t.Fatalf("expected ErrUnsupportedCapability for completion, got %v", err)
+		}
+
+		if log := readMockLog(t, logPath); log != "" {
+			t.Fatalf("expected zero CLI spawns on profile rejection, got log:\n%s", log)
+		}
+	})
+
+	t.Run("discovered profile enforces vision modality", func(t *testing.T) {
+		p, _ := newTestProvider(t, "basic", WithOnListModels(func(context.Context) ([]copilot.ModelInfo, error) {
+			return []copilot.ModelInfo{
+				{
+					ID:   "custom-no-vision",
+					Name: "Custom No Vision",
+					Capabilities: copilot.ModelCapabilities{
+						Supports: copilot.ModelSupports{Vision: false},
+					},
+				},
+			}, nil
+		}))
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if _, err := p.ListModels(ctx); err != nil {
+			t.Fatalf("ListModels: %v", err)
+		}
+		_, err := p.Stream(ctx, &llm.Request{
+			Model: "custom-no-vision",
+			Messages: []message.Message{
+				message.NewUser(&message.ImageBlock{Data: pngBytes, MIMEType: "image/png"}),
+			},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedModality) {
+			t.Fatalf("expected ErrUnsupportedModality from discovered profile, got %v", err)
+		}
+	})
+
+	t.Run("unlisted model passes through inline user images across fresh and warm turns, rejects unsupported wire modalities", func(t *testing.T) {
+		p, logPath := newTestProvider(t, "basic")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		// Confirm model is unknown on cold cache.
+		if _, ok := p.GetProfile("unlisted-vision-model"); ok {
+			t.Fatal("expected unlisted-vision-model to be absent from cold profile cache")
+		}
+
+		// Wire-level errors fail before creating any session.
+		for _, req := range []*llm.Request{
+			{
+				Model: "unlisted-vision-model",
+				Messages: []message.Message{
+					message.NewSystem(&message.TextBlock{Text: "sys"}, &message.ImageBlock{Data: pngBytes, MIMEType: "image/png"}),
+					message.NewUser(&message.TextBlock{Text: "hi"}),
+				},
+			},
+			{
+				Model:    "unlisted-vision-model",
+				Messages: []message.Message{message.NewUser(&message.AudioBlock{Data: []byte("wav"), MIMEType: "audio/wav"})},
+			},
+			{
+				Model:    "unlisted-vision-model",
+				Messages: []message.Message{message.NewUser(&message.VideoBlock{Data: []byte("mp4"), MIMEType: "video/mp4"})},
+			},
+			{
+				Model:    "unlisted-vision-model",
+				Messages: []message.Message{message.NewUser(&message.DocumentBlock{Data: []byte("%PDF"), MIMEType: "application/pdf"})},
+			},
+			{
+				Model:    "unlisted-vision-model",
+				Messages: []message.Message{message.NewUser(&message.ImageBlock{})},
+			},
+			{
+				Model:    "unlisted-vision-model",
+				Messages: []message.Message{message.NewUser(&message.ImageBlock{URL: "https://example.com/a.png", MIMEType: "image/png"})},
+			},
+		} {
+			if _, err := p.Stream(ctx, req); !errors.Is(err, profile.ErrUnsupportedModality) {
+				t.Fatalf("expected ErrUnsupportedModality, got %v", err)
+			}
+		}
+		if cnt := countLogPrefix(readMockLog(t, logPath), "CREATE:"); cnt != 0 {
+			t.Fatalf("expected 0 session creates for invalid wire modalities, got %d", cnt)
+		}
+
+		// Valid inline image on fresh turn sends AttachmentBlob over JSON-RPC.
+		m, err := llm.NewModel(p, "unlisted-vision-model", nil)
+		if err != nil {
+			t.Fatalf("NewModel: %v", err)
+		}
+		r1, err := m.Invoke(ctx, []message.Message{
+			message.NewUser(
+				&message.TextBlock{Text: "look at this"},
+				&message.ImageBlock{Data: pngBytes, MIMEType: "image/png"},
+			),
+		})
+		if err != nil {
+			t.Fatalf("Invoke fresh image: %v", err)
+		}
+
+		// Warm follow-up turn with another inline image reuses the same session.
+		_, err = m.Invoke(ctx, []message.Message{
+			message.NewUser(
+				&message.TextBlock{Text: "look at this"},
+				&message.ImageBlock{Data: pngBytes, MIMEType: "image/png"},
+			),
+			r1,
+			message.NewUser(
+				&message.TextBlock{Text: "and this"},
+				&message.ImageBlock{Data: pngBytes, MIMEType: "image/png"},
+			),
+		})
+		if err != nil {
+			t.Fatalf("Invoke warm image: %v", err)
+		}
+
+		log := readMockLog(t, logPath)
+		if cnt := countLogPrefix(log, "CREATE:"); cnt != 1 {
+			t.Fatalf("expected 1 session create across fresh+warm image turns, got %d", cnt)
+		}
+		if cnt := countLogPrefix(log, "ATTACHMENTS:"); cnt != 2 {
+			t.Fatalf("expected 2 ATTACHMENTS entries in log, got %d\nlog:\n%s", cnt, log)
+		}
+		if !strings.Contains(log, `"type":"blob"`) || !strings.Contains(log, `"mimeType":"image/png"`) {
+			t.Fatalf("expected blob image/png attachment in log:\n%s", log)
 		}
 	})
 }

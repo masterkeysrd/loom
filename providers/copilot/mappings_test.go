@@ -1,6 +1,8 @@
 package loomcopilot
 
 import (
+	"encoding/base64"
+	"errors"
 	"slices"
 	"testing"
 	"time"
@@ -297,4 +299,194 @@ func TestMapThinkingToReasoningEffort(t *testing.T) {
 	if got := mapThinkingToReasoningEffort(&llm.ThinkingConfig{Enabled: true}); got != "medium" {
 		t.Fatalf("expected medium, got %q", got)
 	}
+}
+
+func TestWireModalityValidationAndAttachments(t *testing.T) {
+	pngBytes := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+	expectedB64 := base64.StdEncoding.EncodeToString(pngBytes)
+
+	t.Run("leading system rejects all media blocks", func(t *testing.T) {
+		cases := []struct {
+			name     string
+			block    message.Block
+			modality profile.Modality
+		}{
+			{"image", &message.ImageBlock{Data: pngBytes, MIMEType: "image/png"}, profile.ModalityImage},
+			{"audio", &message.AudioBlock{Data: []byte("wav"), MIMEType: "audio/wav"}, profile.ModalityAudio},
+			{"video", &message.VideoBlock{Data: []byte("mp4"), MIMEType: "video/mp4"}, profile.ModalityVideo},
+			{"document", &message.DocumentBlock{Data: []byte("%PDF"), MIMEType: "application/pdf"}, profile.ModalityPDF},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				_, _, err := splitSystemAndConversationChecked("gpt-5", []message.Message{
+					message.NewSystem(&message.TextBlock{Text: "sys"}, tc.block),
+					message.NewUser(&message.TextBlock{Text: "hi"}),
+				})
+				if !errors.Is(err, profile.ErrUnsupportedModality) {
+					t.Fatalf("expected ErrUnsupportedModality, got %v", err)
+				}
+			})
+		}
+	})
+
+	t.Run("user single message maps inline image to AttachmentBlob", func(t *testing.T) {
+		msg := message.NewUser(
+			&message.TextBlock{Text: "describe"},
+			&message.ImageBlock{Data: pngBytes, MIMEType: "image/png"},
+		)
+		prompt, atts, err := formatUserDeltaPrompt("gpt-5", []message.Message{msg})
+		if err != nil {
+			t.Fatalf("formatUserDeltaPrompt: %v", err)
+		}
+		if prompt != "describe" {
+			t.Fatalf("unexpected prompt: %q", prompt)
+		}
+		if len(atts) != 1 {
+			t.Fatalf("expected 1 attachment, got %d", len(atts))
+		}
+		blob, ok := atts[0].(*copilot.AttachmentBlob)
+		if !ok {
+			t.Fatalf("expected *copilot.AttachmentBlob, got %T", atts[0])
+		}
+		if blob.Data == nil || *blob.Data != expectedB64 || blob.MIMEType != "image/png" {
+			t.Fatalf("unexpected blob attachment: %+v", blob)
+		}
+
+		// Also verify mime detection fallback when MIMEType is empty.
+		_, atts2, err := formatMessagesTranscript("gpt-5", []message.Message{
+			message.NewUser(&message.ImageBlock{Data: pngBytes}),
+		})
+		if err != nil {
+			t.Fatalf("formatMessagesTranscript: %v", err)
+		}
+		if len(atts2) != 1 || atts2[0].(*copilot.AttachmentBlob).MIMEType != "image/png" {
+			t.Fatalf("expected inferred image/png mime, got %+v", atts2)
+		}
+	})
+
+	t.Run("user rejects empty or url-only image and non-image media", func(t *testing.T) {
+		cases := []struct {
+			name  string
+			block message.Block
+		}{
+			{"empty image", &message.ImageBlock{}},
+			{"url-only image", &message.ImageBlock{URL: "https://example.com/img.png", MIMEType: "image/png"}},
+			{"audio", &message.AudioBlock{Data: []byte("wav"), MIMEType: "audio/wav"}},
+			{"video", &message.VideoBlock{Data: []byte("mp4"), MIMEType: "video/mp4"}},
+			{"document", &message.DocumentBlock{Data: []byte("%PDF"), MIMEType: "application/pdf"}},
+			{"plain-text document", &message.DocumentBlock{Data: []byte("hello"), MIMEType: "text/plain"}},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				_, _, err := formatUserDeltaPrompt("gpt-5", []message.Message{
+					message.NewUser(&message.TextBlock{Text: "hi"}, tc.block),
+				})
+				if !errors.Is(err, profile.ErrUnsupportedModality) {
+					t.Fatalf("expected ErrUnsupportedModality for %s, got %v", tc.name, err)
+				}
+			})
+		}
+	})
+
+	t.Run("transcript allows thinking and final user image, rejects historical media", func(t *testing.T) {
+		// Lenient ThinkingBlock on assistant + inline image on final user turn.
+		prompt, atts, err := formatMessagesTranscript("gpt-5", []message.Message{
+			message.NewUser(&message.TextBlock{Text: "turn 1"}),
+			&message.Assistant{
+				Content: message.Content{
+					&message.ThinkingBlock{Thinking: "internal thought"},
+					&message.TextBlock{Text: "answer 1"},
+				},
+			},
+			message.NewUser(
+				&message.TextBlock{Text: "turn 2"},
+				&message.ImageBlock{Data: pngBytes, MIMEType: "image/png"},
+			),
+		})
+		if err != nil {
+			t.Fatalf("expected thinking + final user image to succeed, got %v", err)
+		}
+		if len(atts) != 1 {
+			t.Fatalf("expected 1 attachment on final user turn, got %d", len(atts))
+		}
+		if prompt == "" {
+			t.Fatal("expected non-empty transcript prompt")
+		}
+
+		// Historical user image must error rather than drop or misattribute.
+		_, _, err = formatMessagesTranscript("gpt-5", []message.Message{
+			message.NewUser(&message.ImageBlock{Data: pngBytes, MIMEType: "image/png"}),
+			&message.Assistant{Content: message.Content{&message.TextBlock{Text: "answer 1"}}},
+			message.NewUser(&message.TextBlock{Text: "turn 2"}),
+		})
+		if !errors.Is(err, profile.ErrUnsupportedModality) {
+			t.Fatalf("expected ErrUnsupportedModality for historical user image, got %v", err)
+		}
+
+		// Assistant media must error.
+		_, _, err = formatMessagesTranscript("gpt-5", []message.Message{
+			&message.Assistant{Content: message.Content{&message.ImageBlock{Data: pngBytes, MIMEType: "image/png"}}},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedModality) {
+			t.Fatalf("expected ErrUnsupportedModality for assistant image, got %v", err)
+		}
+
+		// Mid-conversation system media must error.
+		_, _, err = formatMessagesTranscript("gpt-5", []message.Message{
+			message.NewUser(&message.TextBlock{Text: "hi"}),
+			message.NewSystem(&message.AudioBlock{Data: []byte("a"), MIMEType: "audio/mp3"}),
+		})
+		if !errors.Is(err, profile.ErrUnsupportedModality) {
+			t.Fatalf("expected ErrUnsupportedModality for mid-conversation system audio, got %v", err)
+		}
+
+		// Historical tool media in transcript must error.
+		_, _, err = formatMessagesTranscript("gpt-5", []message.Message{
+			&message.Tool{
+				ToolCallID: "c1",
+				Name:       "screenshot",
+				Content:    message.Content{&message.ImageBlock{Data: pngBytes, MIMEType: "image/png"}},
+			},
+		})
+		if !errors.Is(err, profile.ErrUnsupportedModality) {
+			t.Fatalf("expected ErrUnsupportedModality for historical tool image, got %v", err)
+		}
+	})
+
+	t.Run("toToolResult maps inline image and rejects unsupported modalities", func(t *testing.T) {
+		res, err := toToolResult(&message.Tool{
+			ToolCallID: "c1",
+			Name:       "screenshot",
+			Content: message.Content{
+				&message.TextBlock{Text: "ok"},
+				&message.ImageBlock{Data: pngBytes, MIMEType: "image/png"},
+			},
+		}, "gpt-5")
+		if err != nil {
+			t.Fatalf("toToolResult inline image: %v", err)
+		}
+		if res.TextResultForLLM != "ok" || len(res.BinaryResultsForLLM) != 1 {
+			t.Fatalf("unexpected tool result: %+v", res)
+		}
+		if res.BinaryResultsForLLM[0].Data != expectedB64 || res.BinaryResultsForLLM[0].MIMEType != "image/png" || res.BinaryResultsForLLM[0].Type != "image" {
+			t.Fatalf("unexpected binary result: %+v", res.BinaryResultsForLLM[0])
+		}
+
+		for _, blk := range []message.Block{
+			&message.ImageBlock{},
+			&message.ImageBlock{URL: "https://example.com/a.png"},
+			&message.AudioBlock{Data: []byte("wav"), MIMEType: "audio/wav"},
+			&message.VideoBlock{Data: []byte("mp4"), MIMEType: "video/mp4"},
+			&message.DocumentBlock{Data: []byte("%PDF"), MIMEType: "application/pdf"},
+		} {
+			_, err := toToolResult(&message.Tool{
+				ToolCallID: "c1",
+				Name:       "t",
+				Content:    message.Content{blk},
+			}, "gpt-5")
+			if !errors.Is(err, profile.ErrUnsupportedModality) {
+				t.Fatalf("expected ErrUnsupportedModality for %T, got %v", blk, err)
+			}
+		}
+	})
 }

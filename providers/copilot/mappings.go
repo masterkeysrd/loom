@@ -2,9 +2,11 @@ package loomcopilot
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 	"time"
@@ -13,6 +15,7 @@ import (
 	"github.com/github/copilot-sdk/go/rpc"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/tool"
 )
 
@@ -115,12 +118,23 @@ func findLastSessionCheckpoint(convMessages []message.Message) (sessionMeta, int
 // splitSystemAndConversation extracts leading System instructions while
 // preserving any mid-conversation messages in order.
 func splitSystemAndConversation(msgs []message.Message) (string, []message.Message) {
+	sys, conv, _ := splitSystemAndConversationChecked("", msgs)
+	return sys, conv
+}
+
+func splitSystemAndConversationChecked(model string, msgs []message.Message) (string, []message.Message, error) {
 	var systemParts []string
 	var conv []message.Message
 	seenNonSystem := false
 
 	for _, msg := range msgs {
+		if msg == nil {
+			continue
+		}
 		if sys, ok := msg.(*message.System); ok && !seenNonSystem {
+			if _, err := extractAttachmentsOrRejectMedia(model, message.RoleSystem, sys.Content, false); err != nil {
+				return "", nil, err
+			}
 			if txt := strings.TrimSpace(sys.Content.Text()); txt != "" {
 				systemParts = append(systemParts, txt)
 			}
@@ -129,7 +143,7 @@ func splitSystemAndConversation(msgs []message.Message) (string, []message.Messa
 		seenNonSystem = true
 		conv = append(conv, msg)
 	}
-	return strings.Join(systemParts, "\n\n"), conv
+	return strings.Join(systemParts, "\n\n"), conv, nil
 }
 
 // computePrefixDigest hashes the canonical conversation prefix plus structural
@@ -219,37 +233,98 @@ func computeTurnToken(sessionID, turnNonce, prefixDigest string) string {
 	return hex.EncodeToString(h.Sum(nil))[:24]
 }
 
-func formatUserDeltaPrompt(msgs []message.Message) string {
-	if len(msgs) == 1 {
-		if u, ok := msgs[0].(*message.User); ok {
-			return strings.TrimSpace(u.Content.Text())
+func extractAttachmentsOrRejectMedia(model string, role message.Role, content message.Content, allowInlineImage bool) ([]copilot.Attachment, error) {
+	var attachments []copilot.Attachment
+	for _, block := range content {
+		if block == nil {
+			continue
+		}
+		switch b := block.(type) {
+		case *message.ImageBlock:
+			if b == nil || (len(b.Data) == 0 && b.URL == "") {
+				return nil, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityImage, fmt.Sprintf("empty image block in %s message", role))
+			}
+			if !allowInlineImage {
+				return nil, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityImage, fmt.Sprintf("copilot does not support image blocks in %s messages", role))
+			}
+			if len(b.Data) == 0 {
+				return nil, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityImage, "copilot requires inline image bytes; URL-only images are not supported")
+			}
+			mimeType := strings.TrimSpace(b.MIMEType)
+			if mimeType == "" {
+				mimeType = http.DetectContentType(b.Data)
+			}
+			encoded := base64.StdEncoding.EncodeToString(b.Data)
+			attachments = append(attachments, &copilot.AttachmentBlob{
+				Data:     &encoded,
+				MIMEType: mimeType,
+			})
+		case *message.AudioBlock:
+			return nil, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityAudio, fmt.Sprintf("copilot does not support audio blocks in %s messages", role))
+		case *message.VideoBlock:
+			return nil, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityVideo, fmt.Sprintf("copilot does not support video blocks in %s messages", role))
+		case *message.DocumentBlock:
+			return nil, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityPDF, fmt.Sprintf("copilot does not support document blocks in %s messages", role))
 		}
 	}
-	return formatMessagesTranscript(msgs)
+	return attachments, nil
 }
 
-func formatMessagesTranscript(msgs []message.Message) string {
+func formatUserDeltaPrompt(model string, msgs []message.Message) (string, []copilot.Attachment, error) {
 	if len(msgs) == 1 {
 		if u, ok := msgs[0].(*message.User); ok {
-			return u.Content.Text()
+			attachments, err := extractAttachmentsOrRejectMedia(model, message.RoleUser, u.Content, true)
+			if err != nil {
+				return "", nil, err
+			}
+			return strings.TrimSpace(u.Content.Text()), attachments, nil
+		}
+	}
+	return formatMessagesTranscript(model, msgs)
+}
+
+func formatMessagesTranscript(model string, msgs []message.Message) (string, []copilot.Attachment, error) {
+	if len(msgs) == 1 {
+		if u, ok := msgs[0].(*message.User); ok {
+			attachments, err := extractAttachmentsOrRejectMedia(model, message.RoleUser, u.Content, true)
+			if err != nil {
+				return "", nil, err
+			}
+			return u.Content.Text(), attachments, nil
 		}
 	}
 
 	var sb strings.Builder
+	var attachments []copilot.Attachment
 	for i, m := range msgs {
+		if m == nil {
+			continue
+		}
 		if i > 0 {
 			sb.WriteString("\n\n")
 		}
 		switch msg := m.(type) {
 		case *message.System:
+			if _, err := extractAttachmentsOrRejectMedia(model, message.RoleSystem, msg.Content, false); err != nil {
+				return "", nil, err
+			}
 			sb.WriteString("[System]\n")
 			sb.WriteString(msg.Content.Text())
 		case *message.User:
+			isFinalMsg := i == len(msgs)-1
+			atts, err := extractAttachmentsOrRejectMedia(model, message.RoleUser, msg.Content, isFinalMsg)
+			if err != nil {
+				return "", nil, err
+			}
+			attachments = append(attachments, atts...)
 			if len(msgs) > 1 {
 				sb.WriteString("[User]\n")
 			}
 			sb.WriteString(msg.Content.Text())
 		case *message.Assistant:
+			if _, err := extractAttachmentsOrRejectMedia(model, message.RoleAssistant, msg.Content, false); err != nil {
+				return "", nil, err
+			}
 			sb.WriteString("[Assistant]\n")
 			if txt := msg.Content.Text(); txt != "" {
 				sb.WriteString(txt)
@@ -259,6 +334,9 @@ func formatMessagesTranscript(msgs []message.Message) string {
 				fmt.Fprintf(&sb, "\n[ToolCall name=%s id=%s args=%s]", tc.Name, tc.ID, string(argsJSON))
 			}
 		case *message.Tool:
+			if _, err := extractAttachmentsOrRejectMedia(model, message.RoleTool, msg.Content, false); err != nil {
+				return "", nil, err
+			}
 			status := "ok"
 			if msg.IsError {
 				status = "error"
@@ -272,10 +350,13 @@ func formatMessagesTranscript(msgs []message.Message) string {
 			fmt.Fprintf(&sb, "[ToolResult name=%s id=%s status=%s]\n%s",
 				msg.Name, msg.ToolCallID, status, body)
 		default:
+			if _, err := extractAttachmentsOrRejectMedia(model, m.Role(), m.GetContent(), false); err != nil {
+				return "", nil, err
+			}
 			fmt.Fprintf(&sb, "[%s]\n%s", m.Role(), m.GetContent().Text())
 		}
 	}
-	return sb.String()
+	return sb.String(), attachments, nil
 }
 
 func areAllToolResults(msgs []message.Message) ([]*message.Tool, bool) {
@@ -369,9 +450,10 @@ func buildCopilotTools(defs []tool.Definition, handler copilot.ToolHandler) ([]c
 	return out, nil
 }
 
-func buildMessageOptions(req *llm.Request, prompt string) (copilot.MessageOptions, error) {
+func buildMessageOptions(req *llm.Request, prompt string, attachments []copilot.Attachment) (copilot.MessageOptions, error) {
 	opts := copilot.MessageOptions{
-		Prompt: prompt,
+		Prompt:      prompt,
+		Attachments: attachments,
 	}
 	if req == nil {
 		return opts, nil
@@ -414,21 +496,62 @@ func mapThinkingToReasoningEffort(t *llm.ThinkingConfig) string {
 	return ""
 }
 
-func toToolResult(tm *message.Tool) copilot.ToolResult {
+func prepareToolResults(model string, toolMsgs []*message.Tool) ([]copilot.ToolResult, error) {
+	out := make([]copilot.ToolResult, len(toolMsgs))
+	for i, tm := range toolMsgs {
+		res, err := toToolResult(tm, model)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = res
+	}
+	return out, nil
+}
+
+func toToolResult(tm *message.Tool, model string) (copilot.ToolResult, error) {
 	if tm == nil {
 		return copilot.ToolResult{
 			TextResultForLLM: "missing tool result from caller",
 			ResultType:       "failure",
 			Error:            "missing tool result from caller",
-		}
+		}, nil
 	}
 	var sb strings.Builder
+	var binaryResults []copilot.ToolBinaryResult
 	for _, block := range tm.Content {
-		if tb, ok := block.(*message.TextBlock); ok && tb.Text != "" {
-			if sb.Len() > 0 {
-				sb.WriteByte('\n')
+		if block == nil {
+			continue
+		}
+		switch b := block.(type) {
+		case *message.TextBlock:
+			if b != nil && b.Text != "" {
+				if sb.Len() > 0 {
+					sb.WriteByte('\n')
+				}
+				sb.WriteString(b.Text)
 			}
-			sb.WriteString(tb.Text)
+		case *message.ImageBlock:
+			if b == nil || (len(b.Data) == 0 && b.URL == "") {
+				return copilot.ToolResult{}, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityImage, "empty image block in tool result")
+			}
+			if len(b.Data) == 0 {
+				return copilot.ToolResult{}, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityImage, "copilot tool results require inline image bytes; URL-only images are not supported")
+			}
+			mimeType := strings.TrimSpace(b.MIMEType)
+			if mimeType == "" {
+				mimeType = http.DetectContentType(b.Data)
+			}
+			binaryResults = append(binaryResults, copilot.ToolBinaryResult{
+				Data:     base64.StdEncoding.EncodeToString(b.Data),
+				MIMEType: mimeType,
+				Type:     "image",
+			})
+		case *message.AudioBlock:
+			return copilot.ToolResult{}, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityAudio, "copilot does not support audio blocks in tool results")
+		case *message.VideoBlock:
+			return copilot.ToolResult{}, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityVideo, "copilot does not support video blocks in tool results")
+		case *message.DocumentBlock:
+			return copilot.ToolResult{}, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityPDF, "copilot does not support document blocks in tool results")
 		}
 	}
 	text := sb.String()
@@ -446,15 +569,17 @@ func toToolResult(tm *message.Tool) copilot.ToolResult {
 			errMsg = "tool execution failed"
 		}
 		return copilot.ToolResult{
-			TextResultForLLM: text,
-			ResultType:       "failure",
-			Error:            errMsg,
-		}
+			TextResultForLLM:    text,
+			BinaryResultsForLLM: binaryResults,
+			ResultType:          "failure",
+			Error:               errMsg,
+		}, nil
 	}
 	return copilot.ToolResult{
-		TextResultForLLM: text,
-		ResultType:       "success",
-	}
+		TextResultForLLM:    text,
+		BinaryResultsForLLM: binaryResults,
+		ResultType:          "success",
+	}, nil
 }
 
 func toArgsMap(v any) map[string]any {

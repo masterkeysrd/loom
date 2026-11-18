@@ -283,7 +283,10 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 		syncOnWrite = *ext.SyncOnWrite
 	}
 
-	systemPrompt, convMessages := splitSystemAndConversation(req.Messages)
+	systemPrompt, convMessages, err := splitSystemAndConversationChecked(req.Model, req.Messages)
+	if err != nil {
+		return nil, err
+	}
 	allowedNative := resolveAllowedNativeTools(m.cfg, ext)
 	workingDir := m.cfg.WorkingDir
 	if ext.WorkingDir != "" {
@@ -302,6 +305,11 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 			}
 			if sess != nil {
 				if toolMsgs, ok := areAllToolResults(deltaMsgs); ok && sess.hasParkedCalls() {
+					preparedResults, err := prepareToolResults(req.Model, toolMsgs)
+					if err != nil {
+						m.retireSession(sess)
+						return nil, err
+					}
 					q := sess.beginTurn()
 					return &routePlan{
 						route:         "parked_tool",
@@ -314,14 +322,14 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 						compact:       idleCS,
 						sendFn: func() (compactState, error) {
 							sess.tracef("[tool.deliver] session=%s count=%d", sess.id, len(toolMsgs))
-							return idleCS, sess.sendToolResults(toolMsgs)
+							return idleCS, sess.sendToolResults(toolMsgs, preparedResults)
 						},
 					}, nil
 				}
 
 				if _, isTools := areAllToolResults(deltaMsgs); !isTools && !sess.hasParkedCalls() && (len(deltaMsgs) > 0 || ext.Compact) {
-					q := sess.beginTurn()
 					if len(deltaMsgs) == 0 && ext.Compact {
+						q := sess.beginTurn()
 						return &routePlan{
 							route:         "warm_user",
 							session:       sess,
@@ -335,13 +343,17 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 						}, nil
 					}
 
-					prompt := formatUserDeltaPrompt(deltaMsgs)
-					msgOpts, err := buildMessageOptions(req, prompt)
+					prompt, attachments, err := formatUserDeltaPrompt(req.Model, deltaMsgs)
 					if err != nil {
-						sess.endTurn(q)
 						m.retireSession(sess)
 						return nil, err
 					}
+					msgOpts, err := buildMessageOptions(req, prompt, attachments)
+					if err != nil {
+						m.retireSession(sess)
+						return nil, err
+					}
+					q := sess.beginTurn()
 
 					return &routePlan{
 						route:         "warm_user",
@@ -361,7 +373,7 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 								}
 								cs = mCS
 							}
-							sess.tracef("[send] session=%s route=warm_user len=%d", sess.id, len(msgOpts.Prompt))
+							sess.tracef("[send] session=%s route=warm_user len=%d attachments=%d", sess.id, len(msgOpts.Prompt), len(msgOpts.Attachments))
 							_, serr := sess.sdkSession.Send(ctx, msgOpts)
 							return cs, serr
 						},
@@ -386,6 +398,15 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 	}
 
 	// Path C: Create a fresh Copilot SDK session seeded from Request.Messages.
+	prompt, attachments, err := formatMessagesTranscript(req.Model, convMessages)
+	if err != nil {
+		return nil, err
+	}
+	msgOpts, err := buildMessageOptions(req, prompt, attachments)
+	if err != nil {
+		return nil, err
+	}
+
 	client, err := m.ensureClient(ctx)
 	if err != nil {
 		return nil, err
@@ -437,13 +458,6 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 	m.trackSession(wrapper)
 
 	q := wrapper.beginTurn()
-	prompt := formatMessagesTranscript(convMessages)
-	msgOpts, err := buildMessageOptions(req, prompt)
-	if err != nil {
-		wrapper.endTurn(q)
-		m.retireSession(wrapper)
-		return nil, err
-	}
 
 	return &routePlan{
 		route:         "fresh",
@@ -454,7 +468,7 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 		ext:           ext,
 		workingDir:    workingDir,
 		sendFn: func() (compactState, error) {
-			wrapper.tracef("[send] session=%s route=fresh len=%d", wrapper.id, len(msgOpts.Prompt))
+			wrapper.tracef("[send] session=%s route=fresh len=%d attachments=%d", wrapper.id, len(msgOpts.Prompt), len(msgOpts.Attachments))
 			_, serr := sdkSess.Send(ctx, msgOpts)
 			return compactState{}, serr
 		},

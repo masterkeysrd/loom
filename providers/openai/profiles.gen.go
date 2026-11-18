@@ -1802,6 +1802,128 @@ var staticProfiles = map[string]profile.Profile{
 			},
 		},
 	},
+	"gpt-6.2-astra": {
+		ID:          "gpt-6.2-astra",
+		Name:        "GPT-6.2 Astra",
+		Description: "A frontier reasoning model for coding, computer use, and professional work such as slides, spreadsheets, and documents.",
+		Family:      "gpt-astra",
+		Knowledge:   "2026-05-18",
+		ReleaseDate: "2026-11-17",
+		LastUpdated: "2026-11-17",
+		Capabilities: profile.Capabilities{
+			Completion:  true,
+			Decision:    false,
+			Embedding:   false,
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []profile.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: profile.Limits{
+			Context: 1050000,
+			Output:  128000,
+		},
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityPDF,
+			},
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: profile.Pricing{
+			Input:      8,
+			Output:     40,
+			CacheRead:  0.4,
+			CacheWrite: 10,
+			TieredLimits: []profile.TierPricing{
+				{
+					Label:      "context>272000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
+					Input:      16,
+					Output:     60,
+					CacheRead:  0.8,
+					CacheWrite: 20,
+				},
+			},
+		},
+	},
+	"gpt-6.2-sol": {
+		ID:          "gpt-6.2-sol",
+		Name:        "GPT-6.2 Sol",
+		Description: "An efficient reasoning model for everyday work, multistep agentic workflows, and coding.",
+		Family:      "gpt-sol",
+		Knowledge:   "2026-06-01",
+		ReleaseDate: "2026-11-17",
+		LastUpdated: "2026-11-17",
+		Capabilities: profile.Capabilities{
+			Completion:  true,
+			Decision:    false,
+			Embedding:   false,
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []profile.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: profile.Limits{
+			Context: 1050000,
+			Output:  128000,
+		},
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityPDF,
+			},
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: profile.Pricing{
+			Input:      2,
+			Output:     10,
+			CacheRead:  0.1,
+			CacheWrite: 2.5,
+			TieredLimits: []profile.TierPricing{
+				{
+					Label:      "context>272000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
+					Input:      4,
+					Output:     15,
+					CacheRead:  0.2,
+					CacheWrite: 5,
+				},
+			},
+		},
+	},
 	"gpt-daybreak-blue-latest": {
 		ID:          "gpt-daybreak-blue-latest",
 		Name:        "Daybreak Blue",

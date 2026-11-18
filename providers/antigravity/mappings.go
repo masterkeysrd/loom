@@ -9,6 +9,7 @@ import (
 
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/providers/antigravity/sdk"
 	"github.com/masterkeysrd/loom/tool"
 )
@@ -27,6 +28,9 @@ const (
 // sdk.GenerateContentRequest expected by Cloud Code / Antigravity.
 func toGenerateContentRequest(req *llm.Request) (sdk.GenerateContentRequest, error) {
 	out := sdk.GenerateContentRequest{}
+	if req == nil {
+		return out, fmt.Errorf("request cannot be nil")
+	}
 	if sess, ok := extractSession(req); ok && sess.ID != "" {
 		out.SessionID = sess.ID
 	}
@@ -104,7 +108,13 @@ func toGenerateContentRequest(req *llm.Request) (sdk.GenerateContentRequest, err
 		switch v := msg.(type) {
 		case *message.System:
 			activeToolTurnIdx = -1
-			text := v.Content.Text()
+			if v == nil {
+				return out, fmt.Errorf("system message at index %d: nil message", i)
+			}
+			text, err := extractPlainText(v.GetContent(), req.Model, "system")
+			if err != nil {
+				return out, fmt.Errorf("system message at index %d: %w", i, err)
+			}
 			if out.SystemInstruction == nil {
 				out.SystemInstruction = &sdk.Content{
 					Parts: []sdk.Part{{Text: text}},
@@ -115,7 +125,10 @@ func toGenerateContentRequest(req *llm.Request) (sdk.GenerateContentRequest, err
 
 		case *message.User:
 			activeToolTurnIdx = -1
-			parts, err := toUserParts(v.GetContent())
+			if v == nil {
+				return out, fmt.Errorf("user message at index %d: nil message", i)
+			}
+			parts, err := toUserParts(v.GetContent(), req.Model)
 			if err != nil {
 				return out, fmt.Errorf("user message at index %d: %w", i, err)
 			}
@@ -126,7 +139,10 @@ func toGenerateContentRequest(req *llm.Request) (sdk.GenerateContentRequest, err
 
 		case *message.Assistant:
 			activeToolTurnIdx = -1
-			parts, err := toAssistantParts(v.GetContent())
+			if v == nil {
+				return out, fmt.Errorf("assistant message at index %d: nil message", i)
+			}
+			parts, err := toAssistantPartsForModel(v.GetContent(), req.Model)
 			if err != nil {
 				return out, fmt.Errorf("assistant message at index %d: %w", i, err)
 			}
@@ -136,7 +152,10 @@ func toGenerateContentRequest(req *llm.Request) (sdk.GenerateContentRequest, err
 			})
 
 		case *message.Tool:
-			part, err := toFunctionResponsePart(v)
+			if v == nil {
+				return out, fmt.Errorf("tool message at index %d: nil message", i)
+			}
+			part, err := toFunctionResponsePart(v, req.Model)
 			if err != nil {
 				return out, fmt.Errorf("tool message at index %d: %w", i, err)
 			}
@@ -168,76 +187,110 @@ func toGenerateContentRequest(req *llm.Request) (sdk.GenerateContentRequest, err
 	return out, nil
 }
 
-func toUserParts(content message.Content) ([]sdk.Part, error) {
+func mediaBlockModality(block message.Block) (mod profile.Modality, label string, ok bool) {
+	switch block.(type) {
+	case *message.ImageBlock:
+		return profile.ModalityImage, "image", true
+	case *message.AudioBlock:
+		return profile.ModalityAudio, "audio", true
+	case *message.VideoBlock:
+		return profile.ModalityVideo, "video", true
+	case *message.DocumentBlock:
+		return profile.ModalityPDF, "document", true
+	default:
+		return "", "", false
+	}
+}
+
+func extractPlainText(content message.Content, model, role string) (string, error) {
+	var sb strings.Builder
+	first := true
+	for _, block := range content {
+		switch v := block.(type) {
+		case *message.TextBlock:
+			if v == nil {
+				continue
+			}
+			if !first {
+				sb.WriteString("\n")
+			}
+			sb.WriteString(v.Text)
+			first = false
+		default:
+			if mod, label, ok := mediaBlockModality(block); ok {
+				return "", profile.NewUnsupportedModalityError("antigravity", model, mod, fmt.Sprintf("%s messages do not support %s content", role, label))
+			}
+			return "", fmt.Errorf("unsupported block type in %s content: %T", role, block)
+		}
+	}
+	return sb.String(), nil
+}
+
+func mediaPart(model string, modality profile.Modality, data []byte, url, mimeType string) (sdk.Part, error) {
+	if len(data) > 0 {
+		return sdk.Part{
+			InlineData: &sdk.Blob{
+				Data:     base64.StdEncoding.EncodeToString(data),
+				MIMEType: mimeType,
+			},
+		}, nil
+	}
+	if url != "" {
+		return sdk.Part{
+			FileData: &sdk.FileData{
+				FileURI:  url,
+				MIMEType: mimeType,
+			},
+		}, nil
+	}
+	return sdk.Part{}, profile.NewUnsupportedModalityError("antigravity", model, modality, "media block has neither inline data nor URL")
+}
+
+func toUserParts(content message.Content, model string) ([]sdk.Part, error) {
 	var parts []sdk.Part
 	for _, block := range content {
 		switch v := block.(type) {
 		case *message.TextBlock:
+			if v == nil {
+				continue
+			}
 			parts = append(parts, sdk.Part{Text: v.Text})
 		case *message.ImageBlock:
-			if len(v.Data) > 0 {
-				parts = append(parts, sdk.Part{
-					InlineData: &sdk.Blob{
-						Data:     base64.StdEncoding.EncodeToString(v.Data),
-						MIMEType: v.MIMEType,
-					},
-				})
-			} else if v.URL != "" {
-				parts = append(parts, sdk.Part{
-					FileData: &sdk.FileData{
-						FileURI:  v.URL,
-						MIMEType: v.MIMEType,
-					},
-				})
+			if v == nil {
+				return nil, profile.NewUnsupportedModalityError("antigravity", model, profile.ModalityImage, "nil image block")
 			}
+			part, err := mediaPart(model, profile.ModalityImage, v.Data, v.URL, v.MIMEType)
+			if err != nil {
+				return nil, err
+			}
+			parts = append(parts, part)
 		case *message.AudioBlock:
-			if len(v.Data) > 0 {
-				parts = append(parts, sdk.Part{
-					InlineData: &sdk.Blob{
-						Data:     base64.StdEncoding.EncodeToString(v.Data),
-						MIMEType: v.MIMEType,
-					},
-				})
-			} else if v.URL != "" {
-				parts = append(parts, sdk.Part{
-					FileData: &sdk.FileData{
-						FileURI:  v.URL,
-						MIMEType: v.MIMEType,
-					},
-				})
+			if v == nil {
+				return nil, profile.NewUnsupportedModalityError("antigravity", model, profile.ModalityAudio, "nil audio block")
 			}
+			part, err := mediaPart(model, profile.ModalityAudio, v.Data, v.URL, v.MIMEType)
+			if err != nil {
+				return nil, err
+			}
+			parts = append(parts, part)
 		case *message.VideoBlock:
-			if len(v.Data) > 0 {
-				parts = append(parts, sdk.Part{
-					InlineData: &sdk.Blob{
-						Data:     base64.StdEncoding.EncodeToString(v.Data),
-						MIMEType: v.MIMEType,
-					},
-				})
-			} else if v.URL != "" {
-				parts = append(parts, sdk.Part{
-					FileData: &sdk.FileData{
-						FileURI:  v.URL,
-						MIMEType: v.MIMEType,
-					},
-				})
+			if v == nil {
+				return nil, profile.NewUnsupportedModalityError("antigravity", model, profile.ModalityVideo, "nil video block")
 			}
+			part, err := mediaPart(model, profile.ModalityVideo, v.Data, v.URL, v.MIMEType)
+			if err != nil {
+				return nil, err
+			}
+			parts = append(parts, part)
 		case *message.DocumentBlock:
-			if len(v.Data) > 0 {
-				parts = append(parts, sdk.Part{
-					InlineData: &sdk.Blob{
-						Data:     base64.StdEncoding.EncodeToString(v.Data),
-						MIMEType: v.MIMEType,
-					},
-				})
-			} else if v.URL != "" {
-				parts = append(parts, sdk.Part{
-					FileData: &sdk.FileData{
-						FileURI:  v.URL,
-						MIMEType: v.MIMEType,
-					},
-				})
+			if v == nil {
+				return nil, profile.NewUnsupportedModalityError("antigravity", model, profile.ModalityPDF, "nil document block")
 			}
+			part, err := mediaPart(model, profile.ModalityPDF, v.Data, v.URL, v.MIMEType)
+			if err != nil {
+				return nil, err
+			}
+			parts = append(parts, part)
 		case *message.ThinkingBlock:
 			// Do not send thinking blocks back in user content
 		default:
@@ -248,6 +301,10 @@ func toUserParts(content message.Content) ([]sdk.Part, error) {
 }
 
 func toAssistantParts(content message.Content) ([]sdk.Part, error) {
+	return toAssistantPartsForModel(content, "")
+}
+
+func toAssistantPartsForModel(content message.Content, model string) ([]sdk.Part, error) {
 	var parts []sdk.Part
 	var firstFCSeen bool
 	var pendingSig string
@@ -266,6 +323,9 @@ func toAssistantParts(content message.Content) ([]sdk.Part, error) {
 	for _, block := range content {
 		switch v := block.(type) {
 		case *message.TextBlock:
+			if v == nil {
+				continue
+			}
 			sig, _ := v.Extras[ThoughtSignatureKey].(string)
 			if v.Text == "" {
 				attachOrHoldSig(sig)
@@ -281,6 +341,9 @@ func toAssistantParts(content message.Content) ([]sdk.Part, error) {
 			parts = append(parts, p)
 
 		case *message.ToolCall:
+			if v == nil {
+				return nil, fmt.Errorf("nil tool call block in assistant content")
+			}
 			p := sdk.Part{
 				FunctionCall: &sdk.FunctionCall{
 					ID:   v.ID,
@@ -304,6 +367,9 @@ func toAssistantParts(content message.Content) ([]sdk.Part, error) {
 			parts = append(parts, p)
 
 		case *message.ThinkingBlock:
+			if v == nil {
+				continue
+			}
 			sig, _ := v.Extras[ThoughtSignatureKey].(string)
 			if v.Thinking == "" {
 				attachOrHoldSig(sig)
@@ -319,17 +385,23 @@ func toAssistantParts(content message.Content) ([]sdk.Part, error) {
 			parts = append(parts, p)
 
 		default:
+			if mod, label, ok := mediaBlockModality(block); ok {
+				return nil, profile.NewUnsupportedModalityError("antigravity", model, mod, fmt.Sprintf("assistant messages do not support %s content", label))
+			}
 			return nil, fmt.Errorf("unsupported block type in assistant content: %T", block)
 		}
 	}
 	return parts, nil
 }
 
-func toFunctionResponsePart(msg *message.Tool) (sdk.Part, error) {
+func toFunctionResponsePart(msg *message.Tool, model string) (sdk.Part, error) {
 	response := make(map[string]any)
 
 	if len(msg.Content) > 0 {
-		text := msg.Content.Text()
+		text, err := extractPlainText(msg.Content, model, "tool")
+		if err != nil {
+			return sdk.Part{}, err
+		}
 		if msg.IsError {
 			response["error"] = text
 		} else {
@@ -341,11 +413,7 @@ func toFunctionResponsePart(msg *message.Tool) (sdk.Part, error) {
 	}
 
 	if msg.IsError && response["error"] == nil {
-		if text := msg.Content.Text(); text != "" {
-			response["error"] = text
-		} else {
-			response["error"] = "unknown error"
-		}
+		response["error"] = "unknown error"
 	}
 
 	return sdk.Part{
@@ -453,7 +521,13 @@ func ToCountTokensRequest(messages message.MessageList) (sdk.CountTokensRequest,
 	for i, msg := range messages {
 		switch v := msg.(type) {
 		case *message.System:
-			text := v.Content.Text()
+			if v == nil {
+				return sdk.CountTokensRequest{}, fmt.Errorf("system message at index %d: nil message", i)
+			}
+			text, err := extractPlainText(v.GetContent(), "", "system")
+			if err != nil {
+				return sdk.CountTokensRequest{}, fmt.Errorf("system message at index %d: %w", i, err)
+			}
 			if text != "" {
 				contents = append(contents, sdk.Content{
 					Role:  "system",
@@ -461,7 +535,10 @@ func ToCountTokensRequest(messages message.MessageList) (sdk.CountTokensRequest,
 				})
 			}
 		case *message.User:
-			parts, err := toUserParts(v.GetContent())
+			if v == nil {
+				return sdk.CountTokensRequest{}, fmt.Errorf("user message at index %d: nil message", i)
+			}
+			parts, err := toUserParts(v.GetContent(), "")
 			if err != nil {
 				return sdk.CountTokensRequest{}, fmt.Errorf("user message at index %d: %w", i, err)
 			}
@@ -470,7 +547,10 @@ func ToCountTokensRequest(messages message.MessageList) (sdk.CountTokensRequest,
 				Parts: parts,
 			})
 		case *message.Assistant:
-			parts, err := toAssistantParts(v.GetContent())
+			if v == nil {
+				return sdk.CountTokensRequest{}, fmt.Errorf("assistant message at index %d: nil message", i)
+			}
+			parts, err := toAssistantPartsForModel(v.GetContent(), "")
 			if err != nil {
 				return sdk.CountTokensRequest{}, fmt.Errorf("assistant message at index %d: %w", i, err)
 			}
@@ -479,7 +559,10 @@ func ToCountTokensRequest(messages message.MessageList) (sdk.CountTokensRequest,
 				Parts: parts,
 			})
 		case *message.Tool:
-			part, err := toFunctionResponsePart(v)
+			if v == nil {
+				return sdk.CountTokensRequest{}, fmt.Errorf("tool message at index %d: nil message", i)
+			}
+			part, err := toFunctionResponsePart(v, "")
 			if err != nil {
 				return sdk.CountTokensRequest{}, fmt.Errorf("tool message at index %d: %w", i, err)
 			}

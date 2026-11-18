@@ -246,6 +246,14 @@ func (p *Provider) Client() *sdk.Client {
 // Stream converts request into the Cloud Code wire format, resolves aliases and
 // target endpoints, initiates the streaming call, and yields [message.AssistantChunk] values.
 func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.StreamResponse, error) {
+	if request == nil {
+		return nil, fmt.Errorf("antigravity: request cannot be nil")
+	}
+
+	if err := p.validateRequestProfile(request); err != nil {
+		return nil, err
+	}
+
 	wireReq, err := toGenerateContentRequest(request)
 	if err != nil {
 		return nil, fmt.Errorf("antigravity: build request: %w", err)
@@ -504,6 +512,35 @@ func (p *Provider) collectCachedProfiles() []profile.Profile {
 func (p *Provider) ListProfiles() []profile.Profile {
 	p.ensureProfiles()
 	return p.collectCachedProfiles()
+}
+
+func (p *Provider) validateRequestProfile(request *llm.Request) error {
+	prof, ok := p.lookupProfileForRequest(request.Model)
+	if !ok {
+		return nil
+	}
+	if !prof.Capabilities.Completion && (prof.Capabilities.Embedding || prof.Capabilities.Decision) {
+		return profile.NewUnsupportedCapabilityError(p.Name(), request.Model, "completion", "model profile does not support chat completion")
+	}
+	if err := prof.ValidateMessagesModalities(p.Name(), request.Model, request.Messages); err != nil {
+		return err
+	}
+	if err := prof.ValidateToolCallCapability(p.Name(), request.Model, len(request.Tools) > 0); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (p *Provider) lookupProfileForRequest(model string) (profile.Profile, bool) {
+	if prof, ok := p.lookupCachedProfile(model); ok {
+		return prof, true
+	}
+	if p.aliases != nil {
+		if target, ok := p.aliases[model]; ok && target != model {
+			return p.lookupCachedProfile(target)
+		}
+	}
+	return profile.Profile{}, false
 }
 
 // GetProfile returns the profile for the given model ID, checking overrides,

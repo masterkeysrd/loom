@@ -110,8 +110,22 @@ var models = map[string]profile.Profile{
 	},
 }
 
+// OverrideProfile stores a custom profile for id, shadowing any static entry
+// with the same ID.
+func (p *Provider) OverrideProfile(id string, prof profile.Profile) {
+	if p == nil {
+		return
+	}
+	p.overrides.Store(id, prof)
+}
+
 // GetProfile looks up and returns the model profile for the given model ID.
 func (p *Provider) GetProfile(id string) (profile.Profile, bool) {
+	if p != nil {
+		if v, ok := p.overrides.Load(id); ok {
+			return v.(profile.Profile), true
+		}
+	}
 	prof, ok := models[id]
 	return prof, ok
 }

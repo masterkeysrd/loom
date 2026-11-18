@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/masterkeysrd/loom/decision"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	loomtypesafe "github.com/masterkeysrd/loom/providers/typesafe"
 )
 
@@ -657,6 +659,9 @@ func TestEvaluateRejectsImages(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when images provided, got nil")
 	}
+	if !errors.Is(err, profile.ErrUnsupportedModality) {
+		t.Errorf("expected errors.Is(err, profile.ErrUnsupportedModality) to be true, got: %v", err)
+	}
 	if !strings.Contains(err.Error(), "typesafe provider does not support image inputs") {
 		t.Errorf("expected error containing 'typesafe provider does not support image inputs', got: %v", err)
 	}
@@ -856,6 +861,354 @@ func TestEvaluateEdgeCases(t *testing.T) {
 		}
 		if !ans.Passed(0.9) {
 			t.Errorf("expected Passed(0.9) to be true, probability is %f", ans.Probability)
+		}
+	})
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
+func newMockOKClient(calls *atomic.Int32) *http.Client {
+	return &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if calls != nil {
+				calls.Add(1)
+			}
+			body := `{"model":"jev-latest","answers":{"ok":{"type":"noul","noul":0.9,"confidence":0.95}}}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(body)),
+			}, nil
+		}),
+	}
+}
+
+func TestProfileOverrides(t *testing.T) {
+	p, err := loomtypesafe.NewProvider(loomtypesafe.WithAPIKey("test-key"))
+	if err != nil {
+		t.Fatalf("failed to create provider: %v", err)
+	}
+
+	custom := profile.Profile{
+		ID:   loomtypesafe.ModelJevLatest,
+		Name: "Custom Jev",
+		Modalities: profile.Modalities{
+			Inputs:  []profile.Modality{profile.ModalityText},
+			Outputs: []profile.Modality{profile.ModalityText},
+		},
+		Capabilities: profile.Capabilities{
+			Decision: false,
+		},
+	}
+	p.OverrideProfile(loomtypesafe.ModelJevLatest, custom)
+
+	got, ok := p.GetProfile(loomtypesafe.ModelJevLatest)
+	if !ok {
+		t.Fatal("expected GetProfile to return true for overridden model")
+	}
+	if got.Name != "Custom Jev" || got.Capabilities.Decision {
+		t.Errorf("unexpected overridden profile: %+v", got)
+	}
+}
+
+func TestEvaluateValidation(t *testing.T) {
+	t.Run("wire rejects Input.Images for unknown model and permissive override", func(t *testing.T) {
+		var calls atomic.Int32
+		p, err := loomtypesafe.NewProvider(
+			loomtypesafe.WithAPIKey("test-key"),
+			loomtypesafe.WithHTTPClient(newMockOKClient(&calls)),
+		)
+		if err != nil {
+			t.Fatalf("failed to create provider: %v", err)
+		}
+
+		p.OverrideProfile("custom-image-claimed", profile.Profile{
+			ID: "custom-image-claimed",
+			Modalities: profile.Modalities{
+				Inputs: []profile.Modality{profile.ModalityText, profile.ModalityImage},
+			},
+			Capabilities: profile.Capabilities{Decision: true},
+		})
+
+		for _, modelID := range []string{"unknown-custom-model", "custom-image-claimed"} {
+			req := &decision.Request{
+				Model: modelID,
+				Input: decision.Text("analyze").WithImages(message.ImageBlock{
+					URL: "https://example.com/a.png",
+				}),
+			}
+			_, err := p.Evaluate(context.Background(), req)
+			if !errors.Is(err, profile.ErrUnsupportedModality) {
+				t.Errorf("model %q: expected ErrUnsupportedModality, got %v", modelID, err)
+			}
+		}
+		if calls.Load() != 0 {
+			t.Errorf("expected 0 HTTP calls on validation failure, got %d", calls.Load())
+		}
+	})
+
+	t.Run("rejects media blocks inside Input.State", func(t *testing.T) {
+		var calls atomic.Int32
+		p, err := loomtypesafe.NewProvider(
+			loomtypesafe.WithAPIKey("test-key"),
+			loomtypesafe.WithHTTPClient(newMockOKClient(&calls)),
+		)
+		if err != nil {
+			t.Fatalf("failed to create provider: %v", err)
+		}
+
+		type customStructState struct {
+			History message.MessageList
+			Extra   any
+		}
+
+		cases := []struct {
+			name     string
+			model    string
+			state    any
+			modality profile.Modality
+		}{
+			{
+				name:     "User message with ImageBlock",
+				model:    loomtypesafe.ModelJevLatest,
+				state:    message.NewUserImage([]byte("img"), "image/png"),
+				modality: profile.ModalityImage,
+			},
+			{
+				name:     "User message with AudioBlock URL on unknown model",
+				model:    "custom-unknown",
+				state:    message.NewUser(&message.AudioBlock{URL: "https://example.com/audio.mp3"}),
+				modality: profile.ModalityAudio,
+			},
+			{
+				name:     "MessageList with VideoBlock",
+				model:    loomtypesafe.ModelJevLatest,
+				state:    message.MessageList{message.NewUser(&message.VideoBlock{Data: []byte("vid"), MIMEType: "video/mp4"})},
+				modality: profile.ModalityVideo,
+			},
+			{
+				name:     "[]message.Message with plain-text DocumentBlock",
+				model:    loomtypesafe.ModelJevLatest,
+				state:    []message.Message{message.NewUserDocument([]byte("hello"), "text/plain")},
+				modality: profile.ModalityPDF,
+			},
+			{
+				name:     "[]message.Message with PDF DocumentBlock on unknown model",
+				model:    "custom-unknown",
+				state:    []message.Message{message.NewUserDocument([]byte("%PDF"), "application/pdf")},
+				modality: profile.ModalityPDF,
+			},
+			{
+				name:     "message.Content with ImageBlock",
+				model:    loomtypesafe.ModelJevLatest,
+				state:    message.Content{&message.TextBlock{Text: "hi"}, &message.ImageBlock{Data: []byte("png")}},
+				modality: profile.ModalityImage,
+			},
+			{
+				name:     "standalone *message.AudioBlock",
+				model:    loomtypesafe.ModelJevLatest,
+				state:    &message.AudioBlock{Data: []byte("wav"), MIMEType: "audio/wav"},
+				modality: profile.ModalityAudio,
+			},
+			{
+				name:     "value message.VideoBlock",
+				model:    "custom-unknown",
+				state:    message.VideoBlock{URL: "https://example.com/v.mp4"},
+				modality: profile.ModalityVideo,
+			},
+			{
+				name:  "Tool message with ImageBlock in StructuredContent",
+				model: loomtypesafe.ModelJevLatest,
+				state: &message.Tool{
+					ToolCallID:        "tc_1",
+					Name:              "screenshot",
+					Content:           message.Content{&message.TextBlock{Text: "ok"}},
+					StructuredContent: map[string]any{"img": &message.ImageBlock{Data: []byte("png")}},
+				},
+				modality: profile.ModalityImage,
+			},
+			{
+				name:  "nested struct with MessageList containing DocumentBlock",
+				model: loomtypesafe.ModelJevLatest,
+				state: customStructState{
+					History: message.MessageList{
+						message.NewUser(&message.DocumentBlock{URL: "https://example.com/doc.pdf"}),
+					},
+				},
+				modality: profile.ModalityPDF,
+			},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				req := &decision.Request{
+					Model: tc.model,
+					Input: decision.State(tc.state),
+				}
+				_, err := p.Evaluate(context.Background(), req)
+				if !errors.Is(err, profile.ErrUnsupportedModality) {
+					t.Fatalf("expected ErrUnsupportedModality, got %v", err)
+				}
+				var modErr *profile.UnsupportedModalityError
+				if !errors.As(err, &modErr) {
+					t.Fatalf("expected *profile.UnsupportedModalityError, got %T", err)
+				}
+				if modErr.Modality != tc.modality {
+					t.Errorf("expected modality %q, got %q", tc.modality, modErr.Modality)
+				}
+			})
+		}
+
+		if calls.Load() != 0 {
+			t.Errorf("expected 0 HTTP calls when Input.State contains unsupported media, got %d", calls.Load())
+		}
+	})
+
+	t.Run("profile Decision=false rejects request with ErrUnsupportedCapability", func(t *testing.T) {
+		var calls atomic.Int32
+		p, err := loomtypesafe.NewProvider(
+			loomtypesafe.WithAPIKey("test-key"),
+			loomtypesafe.WithHTTPClient(newMockOKClient(&calls)),
+		)
+		if err != nil {
+			t.Fatalf("failed to create provider: %v", err)
+		}
+
+		p.OverrideProfile("non-decision-model", profile.Profile{
+			ID: "non-decision-model",
+			Modalities: profile.Modalities{
+				Inputs: []profile.Modality{profile.ModalityText},
+			},
+			Capabilities: profile.Capabilities{
+				Completion: true,
+				Decision:   false,
+			},
+		})
+
+		req := &decision.Request{
+			Model: "non-decision-model",
+			Input: decision.Text("classify this"),
+		}
+		_, err = p.Evaluate(context.Background(), req)
+		if !errors.Is(err, profile.ErrUnsupportedCapability) {
+			t.Fatalf("expected ErrUnsupportedCapability, got %v", err)
+		}
+		var capErr *profile.UnsupportedCapabilityError
+		if !errors.As(err, &capErr) {
+			t.Fatalf("expected *profile.UnsupportedCapabilityError, got %T", err)
+		}
+		if capErr.Capability != "decision" {
+			t.Errorf("expected capability 'decision', got %q", capErr.Capability)
+		}
+		if calls.Load() != 0 {
+			t.Errorf("expected 0 HTTP calls on capability rejection, got %d", calls.Load())
+		}
+	})
+
+	t.Run("profile lacking text input modality rejects text state", func(t *testing.T) {
+		var calls atomic.Int32
+		p, err := loomtypesafe.NewProvider(
+			loomtypesafe.WithAPIKey("test-key"),
+			loomtypesafe.WithHTTPClient(newMockOKClient(&calls)),
+		)
+		if err != nil {
+			t.Fatalf("failed to create provider: %v", err)
+		}
+
+		p.OverrideProfile("image-only-decision", profile.Profile{
+			ID: "image-only-decision",
+			Modalities: profile.Modalities{
+				Inputs: []profile.Modality{profile.ModalityImage},
+			},
+			Capabilities: profile.Capabilities{
+				Decision: true,
+			},
+		})
+
+		for _, state := range []any{
+			"hello world",
+			message.NewUserText("hello"),
+			&message.TextBlock{Text: "hello"},
+		} {
+			req := &decision.Request{
+				Model: "image-only-decision",
+				Input: decision.State(state),
+			}
+			_, err := p.Evaluate(context.Background(), req)
+			if !errors.Is(err, profile.ErrUnsupportedModality) {
+				t.Errorf("state %T: expected ErrUnsupportedModality, got %v", state, err)
+			}
+		}
+		if calls.Load() != 0 {
+			t.Errorf("expected 0 HTTP calls, got %d", calls.Load())
+		}
+	})
+
+	t.Run("allows text, thinking blocks, nil optional media fields, and unknown model text passthrough", func(t *testing.T) {
+		var calls atomic.Int32
+		p, err := loomtypesafe.NewProvider(
+			loomtypesafe.WithAPIKey("test-key"),
+			loomtypesafe.WithCompression(false),
+			loomtypesafe.WithHTTPClient(newMockOKClient(&calls)),
+		)
+		if err != nil {
+			t.Fatalf("failed to create provider: %v", err)
+		}
+
+		type stateWithNilMedia struct {
+			Note  string
+			Image *message.ImageBlock
+		}
+
+		validStates := []struct {
+			model string
+			state any
+		}{
+			{
+				model: loomtypesafe.ModelJevLatest,
+				state: message.MessageList{
+					message.NewSystemText("system instructions"),
+					message.NewUserText("user input"),
+					&message.Assistant{
+						Content: message.Content{
+							&message.ThinkingBlock{Thinking: "internal reasoning"},
+							&message.TextBlock{Text: "assistant reply"},
+						},
+					},
+				},
+			},
+			{
+				model: loomtypesafe.ModelJevLatest,
+				state: stateWithNilMedia{Note: "safe", Image: nil},
+			},
+			{
+				model: "unlisted-future-jev-model",
+				state: "plain text for unknown model",
+			},
+		}
+
+		for _, tc := range validStates {
+			req := &decision.Request{
+				Model: tc.model,
+				Input: decision.State(tc.state),
+				Questions: []decision.Question{
+					decision.Predicate("ok", "Is this ok?"),
+				},
+			}
+			resp, err := p.Evaluate(context.Background(), req)
+			if err != nil {
+				t.Fatalf("unexpected error for model %q: %v", tc.model, err)
+			}
+			if resp == nil {
+				t.Fatalf("expected non-nil response for model %q", tc.model)
+			}
+		}
+		if calls.Load() != int32(len(validStates)) {
+			t.Errorf("expected %d HTTP calls, got %d", len(validStates), calls.Load())
 		}
 	})
 }

@@ -11,9 +11,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/masterkeysrd/loom/decision"
@@ -58,6 +60,7 @@ type Provider struct {
 	httpClient *http.Client
 	compress   bool
 	maxRetries int
+	overrides  sync.Map
 }
 
 // Option configures a Provider.
@@ -247,8 +250,8 @@ func (p *Provider) Evaluate(ctx context.Context, request *decision.Request) (*de
 	if request == nil {
 		return nil, errors.New("typesafe: decision request cannot be nil")
 	}
-	if len(request.Input.Images) > 0 {
-		return nil, errors.New("typesafe provider does not support image inputs")
+	if err := p.validateRequest(request); err != nil {
+		return nil, err
 	}
 
 	questions := make(map[string]systemOneQuestion, len(request.Questions))
@@ -662,6 +665,272 @@ func toDecisionResponse(sysResp *systemOneResponse, request *decision.Request) (
 		Answers: answers,
 		Metrics: metrics,
 	}, nil
+}
+
+func (p *Provider) validateRequest(request *decision.Request) error {
+	prof, hasProfile := p.GetProfile(request.Model)
+	if hasProfile {
+		if hasKnownCapabilities(prof) && !prof.Capabilities.Decision {
+			return profile.NewUnsupportedCapabilityError(p.Name(), request.Model, "decision", "model profile has Decision=false")
+		}
+		if len(request.Input.Images) > 0 && prof.HasInputModalities() && !prof.SupportsInputModality(profile.ModalityImage) {
+			return profile.NewUnsupportedModalityError(p.Name(), request.Model, profile.ModalityImage, "typesafe provider does not support image inputs")
+		}
+	}
+
+	if len(request.Input.Images) > 0 {
+		return profile.NewUnsupportedModalityError(p.Name(), request.Model, profile.ModalityImage, "typesafe provider does not support image inputs")
+	}
+
+	if request.Input.State != nil {
+		v := &stateValidator{
+			provider:   p,
+			model:      request.Model,
+			prof:       prof,
+			hasProfile: hasProfile,
+			visited:    make(map[visitKey]struct{}),
+		}
+		if err := v.walk(request.Input.State); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func hasKnownCapabilities(p profile.Profile) bool {
+	c := p.Capabilities
+	return c.Completion || c.Decision || c.Embedding || c.Attachment || c.Reasoning || c.ToolCall || c.Temperature || len(p.Modalities.Inputs) > 0 || len(p.Modalities.Outputs) > 0
+}
+
+type visitKey struct {
+	typ reflect.Type
+	ptr uintptr
+}
+
+type stateValidator struct {
+	provider   *Provider
+	model      string
+	prof       profile.Profile
+	hasProfile bool
+	visited    map[visitKey]struct{}
+}
+
+func (v *stateValidator) walk(val any) error {
+	if val == nil {
+		return nil
+	}
+
+	switch x := val.(type) {
+	case string:
+		if v.hasProfile && v.prof.HasInputModalities() && x != "" && !v.prof.SupportsInputModality(profile.ModalityText) {
+			return profile.NewUnsupportedModalityError(v.provider.Name(), v.model, profile.ModalityText, "model profile does not list text input modality")
+		}
+		return nil
+	case message.Message:
+		if rv := reflect.ValueOf(x); rv.Kind() == reflect.Pointer && rv.IsNil() {
+			return nil
+		}
+		if v.hasProfile {
+			if err := v.prof.ValidateContentModalities(v.provider.Name(), v.model, x.GetContent()); err != nil {
+				return fmt.Errorf("state (%s): %w", x.Role(), err)
+			}
+		}
+		if err := v.provider.validateContentWire(v.model, x.GetContent()); err != nil {
+			return fmt.Errorf("state (%s): %w", x.Role(), err)
+		}
+		if t, ok := x.(*message.Tool); ok && t.StructuredContent != nil {
+			return v.walk(t.StructuredContent)
+		}
+		return nil
+	case []message.Message:
+		if v.hasProfile {
+			if err := v.prof.ValidateMessagesModalities(v.provider.Name(), v.model, x); err != nil {
+				return fmt.Errorf("state: %w", err)
+			}
+		}
+		for i, m := range x {
+			if m == nil {
+				continue
+			}
+			if err := v.walk(m); err != nil {
+				return fmt.Errorf("state[%d]: %w", i, err)
+			}
+		}
+		return nil
+	case message.MessageList:
+		return v.walk([]message.Message(x))
+	case *message.MessageList:
+		if x == nil {
+			return nil
+		}
+		return v.walk([]message.Message(*x))
+	case message.Content:
+		if v.hasProfile {
+			if err := v.prof.ValidateContentModalities(v.provider.Name(), v.model, x); err != nil {
+				return fmt.Errorf("state: %w", err)
+			}
+		}
+		return v.provider.validateContentWire(v.model, x)
+	case *message.Content:
+		if x == nil {
+			return nil
+		}
+		return v.walk(*x)
+	case []message.Block:
+		return v.walk(message.Content(x))
+	case message.Block:
+		if rv := reflect.ValueOf(x); rv.Kind() == reflect.Pointer && rv.IsNil() {
+			return nil
+		}
+		if v.hasProfile {
+			if err := v.prof.ValidateContentModalities(v.provider.Name(), v.model, message.Content{x}); err != nil {
+				return fmt.Errorf("state: %w", err)
+			}
+		}
+		return v.provider.validateBlockWire(v.model, x)
+	case message.ImageBlock:
+		b := x
+		return v.walk(&b)
+	case message.AudioBlock:
+		b := x
+		return v.walk(&b)
+	case message.VideoBlock:
+		b := x
+		return v.walk(&b)
+	case message.DocumentBlock:
+		b := x
+		return v.walk(&b)
+	case message.TextBlock:
+		b := x
+		return v.walk(&b)
+	}
+
+	rv := reflect.ValueOf(val)
+	switch rv.Kind() {
+	case reflect.Pointer:
+		if rv.IsNil() {
+			return nil
+		}
+		key := visitKey{typ: rv.Type(), ptr: rv.Pointer()}
+		if _, seen := v.visited[key]; seen {
+			return nil
+		}
+		v.visited[key] = struct{}{}
+		return v.walk(rv.Elem().Interface())
+
+	case reflect.Interface:
+		if rv.IsNil() {
+			return nil
+		}
+		return v.walk(rv.Elem().Interface())
+
+	case reflect.Slice:
+		if rv.IsNil() || rv.Len() == 0 {
+			return nil
+		}
+		if isPrimitiveKind(rv.Type().Elem().Kind()) {
+			return nil
+		}
+		key := visitKey{typ: rv.Type(), ptr: rv.Pointer()}
+		if _, seen := v.visited[key]; seen {
+			return nil
+		}
+		v.visited[key] = struct{}{}
+		for i := 0; i < rv.Len(); i++ {
+			elem := rv.Index(i)
+			if elem.CanInterface() {
+				if err := v.walk(elem.Interface()); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+
+	case reflect.Array:
+		if rv.Len() == 0 || isPrimitiveKind(rv.Type().Elem().Kind()) {
+			return nil
+		}
+		for i := 0; i < rv.Len(); i++ {
+			elem := rv.Index(i)
+			if elem.CanInterface() {
+				if err := v.walk(elem.Interface()); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+
+	case reflect.Map:
+		if rv.IsNil() || rv.Len() == 0 {
+			return nil
+		}
+		key := visitKey{typ: rv.Type(), ptr: rv.Pointer()}
+		if _, seen := v.visited[key]; seen {
+			return nil
+		}
+		v.visited[key] = struct{}{}
+		iter := rv.MapRange()
+		for iter.Next() {
+			mv := iter.Value()
+			if mv.CanInterface() {
+				if err := v.walk(mv.Interface()); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+
+	case reflect.Struct:
+		for _, field := range rv.Fields() {
+			field := field
+			if field.CanInterface() {
+				if err := v.walk(field.Interface()); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+
+	return nil
+}
+
+func isPrimitiveKind(k reflect.Kind) bool {
+	switch k {
+	case reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64,
+		reflect.Complex64, reflect.Complex128:
+		return true
+	default:
+		return false
+	}
+}
+
+func (p *Provider) validateContentWire(model string, content message.Content) error {
+	for _, block := range content {
+		if err := p.validateBlockWire(model, block); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *Provider) validateBlockWire(model string, block message.Block) error {
+	switch block.(type) {
+	case *message.ImageBlock:
+		return profile.NewUnsupportedModalityError(p.Name(), model, profile.ModalityImage, "typesafe provider does not support image inputs")
+	case *message.AudioBlock:
+		return profile.NewUnsupportedModalityError(p.Name(), model, profile.ModalityAudio, "typesafe provider does not support audio inputs")
+	case *message.VideoBlock:
+		return profile.NewUnsupportedModalityError(p.Name(), model, profile.ModalityVideo, "typesafe provider does not support video inputs")
+	case *message.DocumentBlock:
+		return profile.NewUnsupportedModalityError(p.Name(), model, profile.ModalityPDF, "typesafe provider does not support document inputs")
+	default:
+		return nil
+	}
 }
 
 func (p *Provider) endpointURL(path string) string {

@@ -3,6 +3,7 @@ package loomgenai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -250,4 +251,140 @@ func TestProviderEmbedErrors(t *testing.T) {
 	}); err == nil {
 		t.Error("expected error on server 500")
 	}
+}
+
+func TestToEmbedContentArgs_EmptyMediaErrors(t *testing.T) {
+	cases := []struct {
+		name  string
+		block message.Block
+	}{
+		{name: "empty_image", block: &message.ImageBlock{MIMEType: "image/png"}},
+		{name: "empty_audio", block: &message.AudioBlock{MIMEType: "audio/mp3"}},
+		{name: "empty_video", block: &message.VideoBlock{MIMEType: "video/mp4"}},
+		{name: "empty_document", block: &message.DocumentBlock{MIMEType: "application/pdf"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := &embedding.Request{
+				Model: "gemini-embedding-2",
+				Inputs: []embedding.Input{
+					embedding.Text("caption").WithParts(tc.block),
+				},
+			}
+			if _, _, err := toEmbedContentArgs(req); err == nil {
+				t.Fatalf("expected error for %s alongside text, got nil", tc.name)
+			}
+		})
+	}
+}
+
+func TestProviderEmbed_ProfileModalitiesAndCapabilities(t *testing.T) {
+	p := newTestGenAIProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"embeddings": []map[string]any{
+				{"values": []float32{0.1, 0.2}},
+			},
+		})
+	})
+
+	t.Run("gemini-embedding-001_allows_text", func(t *testing.T) {
+		resp, err := p.Embed(context.Background(), &embedding.Request{
+			Model:  "gemini-embedding-001",
+			Inputs: embedding.Texts("hello"),
+		})
+		if err != nil {
+			t.Fatalf("expected text embedding to succeed, got %v", err)
+		}
+		if len(resp.Embeddings) != 1 {
+			t.Fatalf("expected 1 embedding, got %d", len(resp.Embeddings))
+		}
+	})
+
+	t.Run("gemini-embedding-001_rejects_multimodal", func(t *testing.T) {
+		cases := []struct {
+			name  string
+			input embedding.Input
+		}{
+			{
+				name:  "image",
+				input: embedding.Image([]byte("png"), "image/png"),
+			},
+			{
+				name:  "text_with_image",
+				input: embedding.Text("caption").WithParts(&message.ImageBlock{Data: []byte("png"), MIMEType: "image/png"}),
+			},
+			{
+				name:  "audio",
+				input: embedding.Multimodal(&message.AudioBlock{Data: []byte("mp3"), MIMEType: "audio/mp3"}),
+			},
+			{
+				name:  "video",
+				input: embedding.Multimodal(&message.VideoBlock{Data: []byte("mp4"), MIMEType: "video/mp4"}),
+			},
+			{
+				name:  "pdf",
+				input: embedding.Multimodal(&message.DocumentBlock{Data: []byte("pdf"), MIMEType: "application/pdf"}),
+			},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				_, err := p.Embed(context.Background(), &embedding.Request{
+					Model:  "gemini-embedding-001",
+					Inputs: []embedding.Input{tc.input},
+				})
+				if !errors.Is(err, profile.ErrUnsupportedModality) {
+					t.Fatalf("expected ErrUnsupportedModality for %s on gemini-embedding-001, got %v", tc.name, err)
+				}
+			})
+		}
+	})
+
+	t.Run("gemini-embedding-2_allows_text_image_audio_video_pdf", func(t *testing.T) {
+		_, err := p.Embed(context.Background(), &embedding.Request{
+			Model: "gemini-embedding-2",
+			Inputs: []embedding.Input{
+				embedding.Text("hello").WithParts(
+					&message.ImageBlock{Data: []byte("png"), MIMEType: "image/png"},
+					&message.AudioBlock{Data: []byte("mp3"), MIMEType: "audio/mp3"},
+					&message.VideoBlock{Data: []byte("mp4"), MIMEType: "video/mp4"},
+					&message.DocumentBlock{Data: []byte("pdf"), MIMEType: "application/pdf"},
+				),
+			},
+		})
+		if err != nil {
+			t.Fatalf("expected gemini-embedding-2 to allow multimodal inputs, got %v", err)
+		}
+	})
+
+	t.Run("non_embedding_model_rejected", func(t *testing.T) {
+		_, err := p.Embed(context.Background(), &embedding.Request{
+			Model:  "gemini-2.5-flash",
+			Inputs: embedding.Texts("hello"),
+		})
+		if !errors.Is(err, profile.ErrUnsupportedCapability) {
+			t.Fatalf("expected ErrUnsupportedCapability for gemini-2.5-flash, got %v", err)
+		}
+	})
+
+	t.Run("unknown_model_passes_through_wire_supported_modalities", func(t *testing.T) {
+		_, err := p.Embed(context.Background(), &embedding.Request{
+			Model:  "custom-embedding-model",
+			Inputs: []embedding.Input{embedding.Image([]byte("png"), "image/png")},
+		})
+		if err != nil {
+			t.Fatalf("expected unknown embedding model to pass through, got %v", err)
+		}
+
+		// Wire-level validation still rejects empty media blocks on unknown models.
+		_, err = p.Embed(context.Background(), &embedding.Request{
+			Model:  "custom-embedding-model",
+			Inputs: []embedding.Input{embedding.Multimodal(&message.ImageBlock{MIMEType: "image/png"})},
+		})
+		if err == nil {
+			t.Fatal("expected wire-level error for empty image block on unknown model")
+		}
+	})
 }

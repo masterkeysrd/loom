@@ -90,13 +90,17 @@ func NewProvider(ctx context.Context, config *genai.ClientConfig) (*Provider, er
 
 // Name returns "google-genai", uniquely identifying this provider in a [llm.Registry].
 func (p *Provider) Name() string {
-	return "google-genai"
+	return providerName
 }
 
 // Stream converts request into a Google GenAI GenerateContent request, initiates the
 // streaming call, and returns an iterator that yields [message.AssistantChunk]
 // values as tokens arrive from the Google GenAI API.
 func (p *Provider) Stream(ctx context.Context, request *llm.Request) (llm.StreamResponse, error) {
+	if err := p.validateLLMRequest(request); err != nil {
+		return nil, fmt.Errorf("genai: build request: %w", err)
+	}
+
 	contents, config, err := toGenerateContentArgs(request)
 	if err != nil {
 		return nil, fmt.Errorf("genai: build request: %w", err)
@@ -192,9 +196,17 @@ func (p *Provider) OverrideProfile(id string, prof profile.Profile) {
 
 // CreateCache creates a new Google GenAI context cache resource.
 func (p *Provider) CreateCache(ctx context.Context, req *llm.Request) (string, error) {
+	if err := p.validateLLMRequest(req); err != nil {
+		return "", fmt.Errorf("genai: build cache request: %w", err)
+	}
+
 	contents, config, err := toGenerateContentArgs(req)
 	if err != nil {
 		return "", fmt.Errorf("genai: build cache request: %w", err)
+	}
+
+	if p == nil || p.client == nil {
+		return "", fmt.Errorf("genai: client is not initialized")
 	}
 
 	createConfig := &genai.CreateCachedContentConfig{
@@ -217,6 +229,36 @@ func (p *Provider) CreateCache(ctx context.Context, req *llm.Request) (string, e
 	}
 
 	return cache.Name, nil
+}
+
+func (p *Provider) lookupProfile(model string) (profile.Profile, bool) {
+	if prof, ok := p.GetProfile(model); ok {
+		return prof, true
+	}
+	if norm := normalizeModelID(model); norm != model {
+		return p.GetProfile(norm)
+	}
+	return profile.Profile{}, false
+}
+
+func (p *Provider) validateLLMRequest(req *llm.Request) error {
+	if req == nil {
+		return fmt.Errorf("request cannot be nil")
+	}
+	if p == nil {
+		return nil
+	}
+	prof, ok := p.lookupProfile(req.Model)
+	if !ok {
+		return nil
+	}
+	if !prof.Capabilities.Completion && (prof.Capabilities.Embedding || prof.Capabilities.Decision) {
+		return profile.NewUnsupportedCapabilityError(p.Name(), req.Model, "completion", "model profile does not support completion")
+	}
+	if err := prof.ValidateMessagesModalities(p.Name(), req.Model, req.Messages); err != nil {
+		return err
+	}
+	return prof.ValidateToolCallCapability(p.Name(), req.Model, len(req.Tools) > 0)
 }
 
 // DeleteCache deletes an existing Google GenAI context cache resource.

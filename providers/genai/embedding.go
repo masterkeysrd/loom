@@ -7,6 +7,7 @@ import (
 
 	"github.com/masterkeysrd/loom/embedding"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/stream"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -22,6 +23,10 @@ func (p *Provider) Embed(ctx context.Context, req *embedding.Request) (*embeddin
 	}
 	if req == nil {
 		return nil, fmt.Errorf("genai: embedding request cannot be nil")
+	}
+
+	if err := p.validateEmbedRequest(req); err != nil {
+		return nil, fmt.Errorf("genai: build embed request: %w", err)
 	}
 
 	contents, config, err := toEmbedContentArgs(req)
@@ -58,6 +63,30 @@ func (p *Provider) Embed(ctx context.Context, req *embedding.Request) (*embeddin
 	}
 
 	return toEmbeddingResponse(req, resp), nil
+}
+
+func (p *Provider) validateEmbedRequest(req *embedding.Request) error {
+	if req == nil {
+		return fmt.Errorf("embedding request cannot be nil")
+	}
+	prof, ok := p.lookupProfile(req.Model)
+	if !ok {
+		return nil
+	}
+	if !prof.Capabilities.Embedding {
+		return profile.NewUnsupportedCapabilityError(p.Name(), req.Model, "embedding", "model profile has Embedding=false")
+	}
+	for i, in := range req.Inputs {
+		content := make(message.Content, 0, len(in.Parts)+1)
+		if in.Text != "" {
+			content = append(content, &message.TextBlock{Text: in.Text})
+		}
+		content = append(content, in.Parts...)
+		if err := prof.ValidateContentModalities(p.Name(), req.Model, content); err != nil {
+			return fmt.Errorf("input at index %d: %w", i, err)
+		}
+	}
+	return nil
 }
 
 func toEmbedContentArgs(req *embedding.Request) ([]*genai.Content, *genai.EmbedContentConfig, error) {

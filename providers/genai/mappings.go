@@ -10,11 +10,13 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/tool"
 	"google.golang.org/genai"
 )
 
 const (
+	providerName          = "google-genai"
 	ThoughtSignatureKey   = "thought_signature"
 	DummyThoughtSignature = "ErQCCrECAdHtim8MtxgeMCRCiNiyoyImxtYAEDzz4NXOr/HSL3rA7rPPvHWZCm+T9VSDYh/mt9lESoH4wQh/ca1zDtWTN6XOL1+S3krYLQeqp47RV/b1eSq5jdZF28S4Lb7w4A3/EFdybc4SFb2/YhMm+CulYLmLA4Tr4VSu0eMWgxM3HVt6u0jECf5BbXzj0qjJ32tEQYJvKvV8H1tCHvB6J+RZhsDr+TcyOCaqxDoR4WKxXYxNRZb3hYTuCnBEDPhn1lROumVaghi9nEIgc17z002zLoyqIptlLfIVw70FXkCLsPUSL1SjPQYtGL8PVncVajeqGogRD/eZSVZ1Zr5tshxh3DQ+JAYNcrHaRHWC4Hg0H6oftYx+JdJD9B/81NYV9jyGxP7zHKFHOELl0IUP5GEXP9I="
 )
@@ -23,6 +25,9 @@ const (
 // expected by the Google GenAI GenerateContentStream call: a content slice and a
 // config struct. System messages are extracted and placed in SystemInstruction.
 func toGenerateContentArgs(req *llm.Request) ([]*genai.Content, *genai.GenerateContentConfig, error) {
+	if req == nil {
+		return nil, nil, fmt.Errorf("request cannot be nil")
+	}
 	for _, d := range req.Tools {
 		if d.DeferLoading {
 			return nil, nil, fmt.Errorf("genai provider does not support deferred tool loading (tool %q)", d.Name)
@@ -103,10 +108,16 @@ func toGenerateContentArgs(req *llm.Request) ([]*genai.Content, *genai.GenerateC
 	for i, msg := range req.Messages {
 		switch v := msg.(type) {
 		case *message.System:
+			if v == nil {
+				return nil, nil, fmt.Errorf("system message at index %d is nil", i)
+			}
 			activeToolTurn = nil
 			// GenAI accepts a single system instruction at the config level.
 			// When multiple system messages are present, their text is concatenated.
-			text := v.Content.Text()
+			text, err := extractSystemText(req.Model, v.Content)
+			if err != nil {
+				return nil, nil, fmt.Errorf("system message at index %d: %w", i, err)
+			}
 			if config.SystemInstruction == nil {
 				config.SystemInstruction = &genai.Content{
 					Parts: []*genai.Part{{Text: text}},
@@ -117,6 +128,9 @@ func toGenerateContentArgs(req *llm.Request) ([]*genai.Content, *genai.GenerateC
 			}
 
 		case *message.User:
+			if v == nil {
+				return nil, nil, fmt.Errorf("user message at index %d is nil", i)
+			}
 			activeToolTurn = nil
 			parts, err := toUserParts(v.GetContent())
 			if err != nil {
@@ -128,8 +142,11 @@ func toGenerateContentArgs(req *llm.Request) ([]*genai.Content, *genai.GenerateC
 			})
 
 		case *message.Assistant:
+			if v == nil {
+				return nil, nil, fmt.Errorf("assistant message at index %d is nil", i)
+			}
 			activeToolTurn = nil
-			parts, err := toModelParts(v.GetContent())
+			parts, err := toModelPartsForModel(req.Model, v.GetContent())
 			if err != nil {
 				return nil, nil, fmt.Errorf("assistant message at index %d: %w", i, err)
 			}
@@ -139,6 +156,9 @@ func toGenerateContentArgs(req *llm.Request) ([]*genai.Content, *genai.GenerateC
 			})
 
 		case *message.Tool:
+			if v == nil {
+				return nil, nil, fmt.Errorf("tool message at index %d is nil", i)
+			}
 			part, err := toFunctionResponsePart(v)
 			if err != nil {
 				return nil, nil, fmt.Errorf("tool message at index %d: %w", i, err)
@@ -170,78 +190,114 @@ func toGenerateContentArgs(req *llm.Request) ([]*genai.Content, *genai.GenerateC
 	return contents, config, nil
 }
 
+func extractSystemText(model string, content message.Content) (string, error) {
+	var sb strings.Builder
+	first := true
+	for _, block := range content {
+		switch v := block.(type) {
+		case *message.TextBlock:
+			if v == nil {
+				continue
+			}
+			if !first {
+				sb.WriteByte('\n')
+			}
+			sb.WriteString(v.Text)
+			first = false
+		case *message.ThinkingBlock:
+			// Thinking blocks are not sent to GenAI.
+		case *message.ImageBlock:
+			return "", profile.NewUnsupportedModalityError(providerName, model, profile.ModalityImage, "system messages do not support image blocks")
+		case *message.AudioBlock:
+			return "", profile.NewUnsupportedModalityError(providerName, model, profile.ModalityAudio, "system messages do not support audio blocks")
+		case *message.VideoBlock:
+			return "", profile.NewUnsupportedModalityError(providerName, model, profile.ModalityVideo, "system messages do not support video blocks")
+		case *message.DocumentBlock:
+			return "", profile.NewUnsupportedModalityError(providerName, model, profile.ModalityPDF, "system messages do not support document blocks")
+		default:
+			return "", fmt.Errorf("unsupported content block type in system message: %T", block)
+		}
+	}
+	return sb.String(), nil
+}
+
+func mediaBlockToPart(modality profile.Modality, data []byte, url, mimeType string) (*genai.Part, error) {
+	if len(data) > 0 {
+		return &genai.Part{
+			InlineData: &genai.Blob{
+				Data:     data,
+				MIMEType: mimeType,
+			},
+		}, nil
+	}
+	if url != "" {
+		// GenAI supports FileData for URIs (typically gs:// or Files API URLs).
+		return &genai.Part{
+			FileData: &genai.FileData{
+				FileURI:  url,
+				MIMEType: mimeType,
+			},
+		}, nil
+	}
+	return nil, fmt.Errorf("%s block has neither inline data nor URL", modality)
+}
+
+func mediaBlockToFunctionResponsePart(modality profile.Modality, data []byte, url, mimeType string) (*genai.FunctionResponsePart, error) {
+	if len(data) > 0 {
+		return genai.NewFunctionResponsePartFromBytes(data, mimeType), nil
+	}
+	if url != "" {
+		return genai.NewFunctionResponsePartFromURI(url, mimeType), nil
+	}
+	return nil, fmt.Errorf("%s block has neither inline data nor URL", modality)
+}
+
 // toUserParts converts content blocks from a user message into GenAI Part values.
 func toUserParts(content message.Content) ([]*genai.Part, error) {
 	var parts []*genai.Part
 	for _, block := range content {
 		switch v := block.(type) {
 		case *message.TextBlock:
+			if v == nil {
+				continue
+			}
 			parts = append(parts, &genai.Part{Text: v.Text})
 		case *message.ImageBlock:
-			if len(v.Data) > 0 {
-				parts = append(parts, &genai.Part{
-					InlineData: &genai.Blob{
-						Data:     v.Data,
-						MIMEType: v.MIMEType,
-					},
-				})
-			} else if v.URL != "" {
-				// GenAI supports FileData for URIs (typically gs://)
-				parts = append(parts, &genai.Part{
-					FileData: &genai.FileData{
-						FileURI:  v.URL,
-						MIMEType: v.MIMEType,
-					},
-				})
+			if v == nil {
+				return nil, fmt.Errorf("image block cannot be nil")
 			}
+			part, err := mediaBlockToPart(profile.ModalityImage, v.Data, v.URL, v.MIMEType)
+			if err != nil {
+				return nil, err
+			}
+			parts = append(parts, part)
 		case *message.AudioBlock:
-			if len(v.Data) > 0 {
-				parts = append(parts, &genai.Part{
-					InlineData: &genai.Blob{
-						Data:     v.Data,
-						MIMEType: v.MIMEType,
-					},
-				})
-			} else if v.URL != "" {
-				parts = append(parts, &genai.Part{
-					FileData: &genai.FileData{
-						FileURI:  v.URL,
-						MIMEType: v.MIMEType,
-					},
-				})
+			if v == nil {
+				return nil, fmt.Errorf("audio block cannot be nil")
 			}
+			part, err := mediaBlockToPart(profile.ModalityAudio, v.Data, v.URL, v.MIMEType)
+			if err != nil {
+				return nil, err
+			}
+			parts = append(parts, part)
 		case *message.VideoBlock:
-			if len(v.Data) > 0 {
-				parts = append(parts, &genai.Part{
-					InlineData: &genai.Blob{
-						Data:     v.Data,
-						MIMEType: v.MIMEType,
-					},
-				})
-			} else if v.URL != "" {
-				parts = append(parts, &genai.Part{
-					FileData: &genai.FileData{
-						FileURI:  v.URL,
-						MIMEType: v.MIMEType,
-					},
-				})
+			if v == nil {
+				return nil, fmt.Errorf("video block cannot be nil")
 			}
+			part, err := mediaBlockToPart(profile.ModalityVideo, v.Data, v.URL, v.MIMEType)
+			if err != nil {
+				return nil, err
+			}
+			parts = append(parts, part)
 		case *message.DocumentBlock:
-			if len(v.Data) > 0 {
-				parts = append(parts, &genai.Part{
-					InlineData: &genai.Blob{
-						Data:     v.Data,
-						MIMEType: v.MIMEType,
-					},
-				})
-			} else if v.URL != "" {
-				parts = append(parts, &genai.Part{
-					FileData: &genai.FileData{
-						FileURI:  v.URL,
-						MIMEType: v.MIMEType,
-					},
-				})
+			if v == nil {
+				return nil, fmt.Errorf("document block cannot be nil")
 			}
+			part, err := mediaBlockToPart(profile.ModalityPDF, v.Data, v.URL, v.MIMEType)
+			if err != nil {
+				return nil, err
+			}
+			parts = append(parts, part)
 		case *message.ThinkingBlock:
 			// Thinking blocks are not sent to GenAI.
 		default:
@@ -254,12 +310,19 @@ func toUserParts(content message.Content) ([]*genai.Part, error) {
 // toModelParts converts content blocks from an assistant message into GenAI
 // Part values, mapping ToolCall blocks to FunctionCall parts.
 func toModelParts(content message.Content) ([]*genai.Part, error) {
+	return toModelPartsForModel("", content)
+}
+
+func toModelPartsForModel(model string, content message.Content) ([]*genai.Part, error) {
 	var parts []*genai.Part
 	var firstFCSeen bool
 	var pendingSig []byte
 	for _, block := range content {
 		switch v := block.(type) {
 		case *message.TextBlock:
+			if v == nil {
+				continue
+			}
 			var sig []byte
 			if s, ok := v.Extras[ThoughtSignatureKey].(string); ok && s != "" {
 				decodedSig, err := decodeThoughtSignature(s)
@@ -283,6 +346,9 @@ func toModelParts(content message.Content) ([]*genai.Part, error) {
 				ThoughtSignature: sig,
 			})
 		case *message.ThinkingBlock:
+			if v == nil {
+				continue
+			}
 			var sig []byte
 			if s, ok := v.Extras[ThoughtSignatureKey].(string); ok && s != "" {
 				decodedSig, err := decodeThoughtSignature(s)
@@ -312,6 +378,9 @@ func toModelParts(content message.Content) ([]*genai.Part, error) {
 				ThoughtSignature: sig,
 			})
 		case *message.ToolCall:
+			if v == nil {
+				return nil, fmt.Errorf("tool call block cannot be nil")
+			}
 			part := &genai.Part{
 				FunctionCall: &genai.FunctionCall{
 					ID:   v.ID,
@@ -343,6 +412,14 @@ func toModelParts(content message.Content) ([]*genai.Part, error) {
 			firstFCSeen = true
 
 			parts = append(parts, part)
+		case *message.ImageBlock:
+			return nil, profile.NewUnsupportedModalityError(providerName, model, profile.ModalityImage, "assistant messages do not support image blocks")
+		case *message.AudioBlock:
+			return nil, profile.NewUnsupportedModalityError(providerName, model, profile.ModalityAudio, "assistant messages do not support audio blocks")
+		case *message.VideoBlock:
+			return nil, profile.NewUnsupportedModalityError(providerName, model, profile.ModalityVideo, "assistant messages do not support video blocks")
+		case *message.DocumentBlock:
+			return nil, profile.NewUnsupportedModalityError(providerName, model, profile.ModalityPDF, "assistant messages do not support document blocks")
 		default:
 			return nil, fmt.Errorf("unsupported content block type in assistant message: %T", block)
 		}
@@ -362,6 +439,9 @@ func toModelParts(content message.Content) ([]*genai.Part, error) {
 // toFunctionResponsePart converts a tool result message into a GenAI
 // FunctionResponse Part, including structured content and multimodal parts.
 func toFunctionResponsePart(msg *message.Tool) (*genai.Part, error) {
+	if msg == nil {
+		return nil, fmt.Errorf("tool message cannot be nil")
+	}
 	response := make(map[string]any)
 
 	// First check if Content is populated. If so, map Content.
@@ -396,30 +476,46 @@ func toFunctionResponsePart(msg *message.Tool) (*genai.Part, error) {
 	// Comprehensive multimodal support for all types
 	for _, block := range msg.Content {
 		switch v := block.(type) {
+		case *message.TextBlock, *message.ThinkingBlock:
+			// TextBlock is already mapped via msg.Content.Text(); ThinkingBlock is ignored.
 		case *message.ImageBlock:
-			if len(v.Data) > 0 {
-				fr.Parts = append(fr.Parts, genai.NewFunctionResponsePartFromBytes(v.Data, v.MIMEType))
-			} else if v.URL != "" {
-				fr.Parts = append(fr.Parts, genai.NewFunctionResponsePartFromURI(v.URL, v.MIMEType))
+			if v == nil {
+				return nil, fmt.Errorf("image block cannot be nil")
 			}
+			part, err := mediaBlockToFunctionResponsePart(profile.ModalityImage, v.Data, v.URL, v.MIMEType)
+			if err != nil {
+				return nil, err
+			}
+			fr.Parts = append(fr.Parts, part)
 		case *message.AudioBlock:
-			if len(v.Data) > 0 {
-				fr.Parts = append(fr.Parts, genai.NewFunctionResponsePartFromBytes(v.Data, v.MIMEType))
-			} else if v.URL != "" {
-				fr.Parts = append(fr.Parts, genai.NewFunctionResponsePartFromURI(v.URL, v.MIMEType))
+			if v == nil {
+				return nil, fmt.Errorf("audio block cannot be nil")
 			}
+			part, err := mediaBlockToFunctionResponsePart(profile.ModalityAudio, v.Data, v.URL, v.MIMEType)
+			if err != nil {
+				return nil, err
+			}
+			fr.Parts = append(fr.Parts, part)
 		case *message.VideoBlock:
-			if len(v.Data) > 0 {
-				fr.Parts = append(fr.Parts, genai.NewFunctionResponsePartFromBytes(v.Data, v.MIMEType))
-			} else if v.URL != "" {
-				fr.Parts = append(fr.Parts, genai.NewFunctionResponsePartFromURI(v.URL, v.MIMEType))
+			if v == nil {
+				return nil, fmt.Errorf("video block cannot be nil")
 			}
+			part, err := mediaBlockToFunctionResponsePart(profile.ModalityVideo, v.Data, v.URL, v.MIMEType)
+			if err != nil {
+				return nil, err
+			}
+			fr.Parts = append(fr.Parts, part)
 		case *message.DocumentBlock:
-			if len(v.Data) > 0 {
-				fr.Parts = append(fr.Parts, genai.NewFunctionResponsePartFromBytes(v.Data, v.MIMEType))
-			} else if v.URL != "" {
-				fr.Parts = append(fr.Parts, genai.NewFunctionResponsePartFromURI(v.URL, v.MIMEType))
+			if v == nil {
+				return nil, fmt.Errorf("document block cannot be nil")
 			}
+			part, err := mediaBlockToFunctionResponsePart(profile.ModalityPDF, v.Data, v.URL, v.MIMEType)
+			if err != nil {
+				return nil, err
+			}
+			fr.Parts = append(fr.Parts, part)
+		default:
+			return nil, fmt.Errorf("unsupported content block type in tool message: %T", block)
 		}
 	}
 

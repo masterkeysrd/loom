@@ -1383,6 +1383,58 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0,
 		},
 	},
+	"gemini-4-neon": {
+		ID:          "gemini-4-neon",
+		Name:        "Gemini 4 Neon",
+		Description: "Google's Gemini 4 model for fast, frontier-level coding, knowledge work and science workflows, with four thinking levels and a 1M-token context window",
+		Family:      "gemini",
+		Knowledge:   "2026-03",
+		ReleaseDate: "2026-11-18",
+		LastUpdated: "2026-11-18",
+		Capabilities: profile.Capabilities{
+			Completion:  true,
+			Decision:    false,
+			Embedding:   false,
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: true,
+			ReasoningOptions: []profile.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+					},
+				},
+			},
+		},
+		Limits: profile.Limits{
+			Context: 1048576,
+			Output:  65536,
+		},
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityVideo,
+				profile.ModalityAudio,
+				profile.ModalityPDF,
+			},
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: profile.Pricing{
+			Input:      3,
+			Output:     15,
+			CacheRead:  0.15,
+			CacheWrite: 0,
+		},
+	},
 	"gemini-embedding-001": {
 		ID:          "gemini-embedding-001",
 		Name:        "Gemini Embedding 001",

@@ -27,6 +27,32 @@ type sessionMeta struct {
 	EventID      string
 }
 
+// supportedImageMIMETypes lists the image formats the Copilot SDK forwards to
+// models (PNG, JPEG, WebP, GIF per the copilot-sdk Go README). The runtime
+// silently drops other formats, so loom rejects them up front instead.
+var supportedImageMIMETypes = map[string]bool{
+	"image/png":  true,
+	"image/jpeg": true,
+	"image/webp": true,
+	"image/gif":  true,
+}
+
+// resolveImageMIME resolves the effective MIME type for inline image bytes and
+// rejects formats the Copilot runtime will not forward to the model.
+func resolveImageMIME(model, declared string, data []byte) (string, error) {
+	mimeType := strings.ToLower(strings.TrimSpace(declared))
+	if mimeType == "" {
+		mimeType = strings.ToLower(http.DetectContentType(data))
+	}
+	if mimeType == "image/jpg" {
+		mimeType = "image/jpeg"
+	}
+	if !supportedImageMIMETypes[mimeType] {
+		return "", profile.NewUnsupportedModalityError("copilot", model, profile.ModalityImage, fmt.Sprintf("copilot only supports PNG, JPEG, WebP, and GIF images; got %s", mimeType))
+	}
+	return mimeType, nil
+}
+
 // extractSessionMeta reads Copilot session tracking keys from an Assistant
 // message's Extensions, Metadata, or block Extras.
 func extractSessionMeta(msg message.Message) (sessionMeta, bool) {
@@ -250,9 +276,9 @@ func extractAttachmentsOrRejectMedia(model string, role message.Role, content me
 			if len(b.Data) == 0 {
 				return nil, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityImage, "copilot requires inline image bytes; URL-only images are not supported")
 			}
-			mimeType := strings.TrimSpace(b.MIMEType)
-			if mimeType == "" {
-				mimeType = http.DetectContentType(b.Data)
+			mimeType, err := resolveImageMIME(model, b.MIMEType, b.Data)
+			if err != nil {
+				return nil, err
 			}
 			encoded := base64.StdEncoding.EncodeToString(b.Data)
 			attachments = append(attachments, &copilot.AttachmentBlob{
@@ -264,7 +290,27 @@ func extractAttachmentsOrRejectMedia(model string, role message.Role, content me
 		case *message.VideoBlock:
 			return nil, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityVideo, fmt.Sprintf("copilot does not support video blocks in %s messages", role))
 		case *message.DocumentBlock:
-			return nil, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityPDF, fmt.Sprintf("copilot does not support document blocks in %s messages", role))
+			if b == nil || (len(b.Data) == 0 && b.URL == "") {
+				return nil, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityPDF, fmt.Sprintf("empty document block in %s message", role))
+			}
+			if !allowInlineImage {
+				return nil, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityPDF, fmt.Sprintf("copilot does not support document blocks in %s messages", role))
+			}
+			if len(b.Data) == 0 {
+				return nil, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityPDF, "copilot requires inline document bytes; URL-only documents are not supported")
+			}
+			mimeType := strings.ToLower(strings.TrimSpace(b.MIMEType))
+			if mimeType == "" {
+				mimeType = strings.ToLower(http.DetectContentType(b.Data))
+			}
+			if mimeType != "application/pdf" {
+				return nil, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityPDF, fmt.Sprintf("copilot document attachments must be application/pdf; got %s", mimeType))
+			}
+			encoded := base64.StdEncoding.EncodeToString(b.Data)
+			attachments = append(attachments, &copilot.AttachmentBlob{
+				Data:     &encoded,
+				MIMEType: mimeType,
+			})
 		}
 	}
 	return attachments, nil
@@ -537,9 +583,9 @@ func toToolResult(tm *message.Tool, model string) (copilot.ToolResult, error) {
 			if len(b.Data) == 0 {
 				return copilot.ToolResult{}, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityImage, "copilot tool results require inline image bytes; URL-only images are not supported")
 			}
-			mimeType := strings.TrimSpace(b.MIMEType)
-			if mimeType == "" {
-				mimeType = http.DetectContentType(b.Data)
+			mimeType, err := resolveImageMIME(model, b.MIMEType, b.Data)
+			if err != nil {
+				return copilot.ToolResult{}, err
 			}
 			binaryResults = append(binaryResults, copilot.ToolBinaryResult{
 				Data:     base64.StdEncoding.EncodeToString(b.Data),
@@ -551,7 +597,24 @@ func toToolResult(tm *message.Tool, model string) (copilot.ToolResult, error) {
 		case *message.VideoBlock:
 			return copilot.ToolResult{}, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityVideo, "copilot does not support video blocks in tool results")
 		case *message.DocumentBlock:
-			return copilot.ToolResult{}, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityPDF, "copilot does not support document blocks in tool results")
+			if b == nil || (len(b.Data) == 0 && b.URL == "") {
+				return copilot.ToolResult{}, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityPDF, "empty document block in tool result")
+			}
+			if len(b.Data) == 0 {
+				return copilot.ToolResult{}, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityPDF, "copilot tool results require inline document bytes; URL-only documents are not supported")
+			}
+			docMIME := strings.ToLower(strings.TrimSpace(b.MIMEType))
+			if docMIME == "" {
+				docMIME = strings.ToLower(http.DetectContentType(b.Data))
+			}
+			if docMIME != "application/pdf" {
+				return copilot.ToolResult{}, profile.NewUnsupportedModalityError("copilot", model, profile.ModalityPDF, fmt.Sprintf("copilot tool result documents must be application/pdf; got %s", docMIME))
+			}
+			binaryResults = append(binaryResults, copilot.ToolBinaryResult{
+				Data:     base64.StdEncoding.EncodeToString(b.Data),
+				MIMEType: docMIME,
+				Type:     "resource",
+			})
 		}
 	}
 	text := sb.String()

@@ -253,6 +253,39 @@ func TestToGenerateContentArgsStructuredOutput(t *testing.T) {
 	}
 }
 
+func TestToGenerateContentArgsThinkingLevelCasing(t *testing.T) {
+	cases := []struct {
+		effort string
+		want   genai.ThinkingLevel
+	}{
+		{"low", genai.ThinkingLevelLow},
+		{"MEDIUM", genai.ThinkingLevelMedium},
+		{" high ", genai.ThinkingLevelHigh},
+		{"minimal", genai.ThinkingLevelMinimal},
+		{"xhigh", genai.ThinkingLevel("XHIGH")},
+	}
+	for _, tc := range cases {
+		req := &llm.Request{
+			Model:    "gemini-4-neon",
+			Thinking: &llm.ThinkingConfig{Enabled: true, Effort: tc.effort},
+			Messages: message.MessageList{message.NewUser(&message.TextBlock{Text: "hi"})},
+		}
+		_, config, err := toGenerateContentArgs(req)
+		if err != nil {
+			t.Fatalf("toGenerateContentArgs: %v", err)
+		}
+		if config.ThinkingConfig == nil {
+			t.Fatalf("expected ThinkingConfig for effort %q", tc.effort)
+		}
+		if config.ThinkingConfig.ThinkingLevel != tc.want {
+			t.Errorf("effort %q: expected ThinkingLevel %q, got %q", tc.effort, tc.want, config.ThinkingConfig.ThinkingLevel)
+		}
+		if !config.ThinkingConfig.IncludeThoughts {
+			t.Errorf("effort %q: expected IncludeThoughts true", tc.effort)
+		}
+	}
+}
+
 func TestToGenerateContentArgs_GroupsConsecutiveToolResults(t *testing.T) {
 	req := &llm.Request{
 		Model: "gemini-2.5-flash",

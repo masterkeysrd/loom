@@ -98,7 +98,7 @@ func toGenerateContentArgs(req *llm.Request) ([]*genai.Content, *genai.GenerateC
 		}
 		if req.Thinking.Effort != "" {
 			config.ThinkingConfig.IncludeThoughts = true
-			config.ThinkingConfig.ThinkingLevel = genai.ThinkingLevel(req.Thinking.Effort)
+			config.ThinkingConfig.ThinkingLevel = genai.ThinkingLevel(strings.ToUpper(strings.TrimSpace(req.Thinking.Effort)))
 		}
 	}
 

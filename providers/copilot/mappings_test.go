@@ -364,6 +364,32 @@ func TestWireModalityValidationAndAttachments(t *testing.T) {
 		}
 	})
 
+	t.Run("user maps inline PDF to application/pdf AttachmentBlob", func(t *testing.T) {
+		pdfBytes := []byte("%PDF-1.4 test")
+		expectedPDFB64 := base64.StdEncoding.EncodeToString(pdfBytes)
+		msg := message.NewUser(
+			&message.TextBlock{Text: "summarize"},
+			&message.DocumentBlock{Data: pdfBytes, MIMEType: "application/pdf"},
+		)
+		prompt, atts, err := formatUserDeltaPrompt("gpt-6.2-astra", []message.Message{msg})
+		if err != nil {
+			t.Fatalf("formatUserDeltaPrompt: %v", err)
+		}
+		if prompt != "summarize" {
+			t.Fatalf("unexpected prompt: %q", prompt)
+		}
+		if len(atts) != 1 {
+			t.Fatalf("expected 1 attachment, got %d", len(atts))
+		}
+		blob, ok := atts[0].(*copilot.AttachmentBlob)
+		if !ok {
+			t.Fatalf("expected *copilot.AttachmentBlob, got %T", atts[0])
+		}
+		if blob.Data == nil || *blob.Data != expectedPDFB64 || blob.MIMEType != "application/pdf" {
+			t.Fatalf("unexpected pdf blob attachment: %+v", blob)
+		}
+	})
+
 	t.Run("user rejects empty or url-only image and non-image media", func(t *testing.T) {
 		cases := []struct {
 			name  string
@@ -373,8 +399,31 @@ func TestWireModalityValidationAndAttachments(t *testing.T) {
 			{"url-only image", &message.ImageBlock{URL: "https://example.com/img.png", MIMEType: "image/png"}},
 			{"audio", &message.AudioBlock{Data: []byte("wav"), MIMEType: "audio/wav"}},
 			{"video", &message.VideoBlock{Data: []byte("mp4"), MIMEType: "video/mp4"}},
-			{"document", &message.DocumentBlock{Data: []byte("%PDF"), MIMEType: "application/pdf"}},
+			{"url-only document", &message.DocumentBlock{URL: "https://example.com/a.pdf", MIMEType: "application/pdf"}},
+			{"empty document", &message.DocumentBlock{}},
 			{"plain-text document", &message.DocumentBlock{Data: []byte("hello"), MIMEType: "text/plain"}},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				_, _, err := formatUserDeltaPrompt("gpt-5", []message.Message{
+					message.NewUser(&message.TextBlock{Text: "hi"}, tc.block),
+				})
+				if !errors.Is(err, profile.ErrUnsupportedModality) {
+					t.Fatalf("expected ErrUnsupportedModality for %s, got %v", tc.name, err)
+				}
+			})
+		}
+	})
+
+	t.Run("user rejects image formats the SDK will not forward", func(t *testing.T) {
+		bmp := append([]byte("BM"), make([]byte, 100)...)
+		cases := []struct {
+			name  string
+			block message.Block
+		}{
+			{"bmp declared", &message.ImageBlock{Data: []byte("data"), MIMEType: "image/bmp"}},
+			{"tiff declared", &message.ImageBlock{Data: []byte("data"), MIMEType: "image/tiff"}},
+			{"bmp detected", &message.ImageBlock{Data: bmp}},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -472,12 +521,32 @@ func TestWireModalityValidationAndAttachments(t *testing.T) {
 			t.Fatalf("unexpected binary result: %+v", res.BinaryResultsForLLM[0])
 		}
 
+		pdfBytes := []byte("%PDF-1.4 test")
+		resPDF, err := toToolResult(&message.Tool{
+			ToolCallID: "c2",
+			Name:       "fetch_doc",
+			Content: message.Content{
+				&message.TextBlock{Text: "done"},
+				&message.DocumentBlock{Data: pdfBytes, MIMEType: "application/pdf"},
+			},
+		}, "gpt-5")
+		if err != nil {
+			t.Fatalf("toToolResult inline pdf: %v", err)
+		}
+		if len(resPDF.BinaryResultsForLLM) != 1 {
+			t.Fatalf("unexpected pdf tool result: %+v", resPDF)
+		}
+		if resPDF.BinaryResultsForLLM[0].MIMEType != "application/pdf" || resPDF.BinaryResultsForLLM[0].Type != "resource" {
+			t.Fatalf("unexpected pdf binary result: %+v", resPDF.BinaryResultsForLLM[0])
+		}
+
 		for _, blk := range []message.Block{
 			&message.ImageBlock{},
 			&message.ImageBlock{URL: "https://example.com/a.png"},
 			&message.AudioBlock{Data: []byte("wav"), MIMEType: "audio/wav"},
 			&message.VideoBlock{Data: []byte("mp4"), MIMEType: "video/mp4"},
-			&message.DocumentBlock{Data: []byte("%PDF"), MIMEType: "application/pdf"},
+			&message.DocumentBlock{URL: "https://example.com/a.pdf", MIMEType: "application/pdf"},
+			&message.DocumentBlock{Data: []byte("hello"), MIMEType: "text/plain"},
 		} {
 			_, err := toToolResult(&message.Tool{
 				ToolCallID: "c1",

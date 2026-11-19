@@ -10,6 +10,17 @@ import (
 	"github.com/masterkeysrd/loom/profile"
 )
 
+// wireSupportedInputModalities lists the input modalities the Copilot SDK can
+// carry on the wire: text prompts, image attachments, and PDF document blobs
+// (application/pdf). Static models.dev metadata may also advertise Audio/Video
+// for some models (e.g. gemini-3.5-flash), but the SDK has no attachment path
+// for those, so they are never surfaced on discovered profiles.
+var wireSupportedInputModalities = map[profile.Modality]bool{
+	profile.ModalityText:  true,
+	profile.ModalityImage: true,
+	profile.ModalityPDF:   true,
+}
+
 func mapModelInfoToProfile(m copilot.ModelInfo) profile.Profile {
 	name := m.Name
 	if name == "" {
@@ -66,6 +77,9 @@ func mapModelInfoToProfile(m copilot.ModelInfo) profile.Profile {
 		prof.Capabilities.Reasoning = prof.Capabilities.Reasoning || ref.Capabilities.Reasoning
 		prof.Capabilities.Temperature = false // Copilot SDK sessions do not expose sampling temperature.
 		for _, mod := range ref.Modalities.Inputs {
+			if !wireSupportedInputModalities[mod] {
+				continue
+			}
 			if !slices.Contains(prof.Modalities.Inputs, mod) {
 				prof.Modalities.Inputs = append(prof.Modalities.Inputs, mod)
 			}

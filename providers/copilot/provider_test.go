@@ -1294,7 +1294,7 @@ func TestCopilotModalityAndCapabilityValidation(t *testing.T) {
 			},
 			{
 				Model:    "unlisted-vision-model",
-				Messages: []message.Message{message.NewUser(&message.DocumentBlock{Data: []byte("%PDF"), MIMEType: "application/pdf"})},
+				Messages: []message.Message{message.NewUser(&message.DocumentBlock{URL: "https://example.com/a.pdf", MIMEType: "application/pdf"})},
 			},
 			{
 				Model:    "unlisted-vision-model",
@@ -1338,6 +1338,7 @@ func TestCopilotModalityAndCapabilityValidation(t *testing.T) {
 			message.NewUser(
 				&message.TextBlock{Text: "and this"},
 				&message.ImageBlock{Data: pngBytes, MIMEType: "image/png"},
+				&message.DocumentBlock{Data: []byte("%PDF-1.4 test"), MIMEType: "application/pdf"},
 			),
 		})
 		if err != nil {
@@ -1353,6 +1354,9 @@ func TestCopilotModalityAndCapabilityValidation(t *testing.T) {
 		}
 		if !strings.Contains(log, `"type":"blob"`) || !strings.Contains(log, `"mimeType":"image/png"`) {
 			t.Fatalf("expected blob image/png attachment in log:\n%s", log)
+		}
+		if !strings.Contains(log, `"mimeType":"application/pdf"`) {
+			t.Fatalf("expected blob application/pdf attachment in log:\n%s", log)
 		}
 	})
 }

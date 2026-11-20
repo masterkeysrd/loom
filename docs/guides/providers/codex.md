@@ -97,6 +97,18 @@ assistant message. On resume, execute the tool by name with its saved arguments
 and attach the original call ID to the tool result. Send the restored history
 and tool result together on the next model invocation.
 
+Model discovery is cached per provider for one hour. Pass
+`loomcodex.WithProfileCacheTTL(10*time.Minute)` as the third argument to
+`NewProvider` to change the lifetime, or pass a zero duration to disable caching.
+`ListModels` and `GetModel` refresh expired discovery on demand. The synchronous
+`GetProfile`, `ListProfiles`, and `SearchProfiles` methods read fresh cached
+metadata and explicit overrides without contacting the service. Overrides take
+precedence and persist across refreshes.
+
+For visible model IDs, Loom enriches account metadata with exact matches from
+its OpenAI catalog and applies the ChatGPT route’s capability limits. Newly
+listed models can receive bound tools before a static profile becomes available.
+
 Each inference request uses streaming, sends the conversation history, and sets
 `store: false`. Loom preserves encrypted reasoning items in the serialized
 assistant message so the next request can include them.

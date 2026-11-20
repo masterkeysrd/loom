@@ -1,4 +1,6 @@
-# Anthropic Provider 🔌
+---
+title: "Anthropic"
+---
 
 The Anthropic provider supports the Claude family of models, including Claude 3.5 Sonnet and Haiku.
 
@@ -23,7 +25,10 @@ if err != nil {
     // handle error
 }
 
-model := llm.NewModel(provider, "claude-3-5-sonnet-latest")
+model, err := llm.NewModel(provider, "claude-3-5-sonnet-latest", nil)
+if err != nil {
+    log.Fatal(err)
+}
 ```
 
 ## 3. Advanced Features
@@ -113,7 +118,7 @@ msg := message.NewUser(
 
 ## 4. Model Catalog & Live Discovery
 
-The provider maintains a curated static catalog with pricing and limits, and also implements [`llm.ModelLister`](../llm-package.md#5-live-model-discovery-llmmodellister) against Anthropic's `/v1/models` and `/v1/models/{model_id}` endpoints (mapping live `max_input_tokens`, `max_tokens`, modalities, thinking, and effort levels while preserving static pricing):
+The provider maintains a curated static catalog with pricing and limits, and also implements [`llm.ModelLister`](../llm/discovery.md#list-available-models) against Anthropic's `/v1/models` and `/v1/models/{model_id}` endpoints (mapping live `max_input_tokens`, `max_tokens`, modalities, thinking, and effort levels while preserving static pricing):
 
 ```go
 // 1. Static in-memory lookup

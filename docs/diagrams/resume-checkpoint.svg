@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="260" viewBox="0 0 440 260" role="img" aria-labelledby="title desc">
+  <title id="title">Resume a review across processes</title>
+  <desc id="desc">The first process saves a pending draft to SQLite and exits. The second uses the same thread ID to load the draft and apply approval.</desc>
+  <style>
+    text { font-family: system-ui, sans-serif; }
+    .label, .ink { font-size: 19px; font-weight: 550; }
+    .label { fill: #edf9f6; } .ink { fill: #103c35; }
+    .caption { fill: #b6d9d1; font-size: 17px; }
+    .step { fill: #22484a; stroke: #77aba2; }
+    .focus { fill: #a7ecd4; }
+    .edge { fill: none; stroke: #94ddc9; stroke-width: 2; stroke-linejoin: round; }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="m1 1 5 3-5 3" fill="none" stroke="#94ddc9" stroke-width="2"/>
+    </marker>
+  </defs>
+  <rect width="440" height="260" rx="16" fill="#112e31"/>
+  <text x="105" y="36" class="caption" text-anchor="middle">First process</text>
+  <text x="335" y="36" class="caption" text-anchor="middle">Second process</text>
+  <rect x="20" y="52" width="170" height="48" rx="9" class="step"/>
+  <text x="105.0" y="82.0" class="label" text-anchor="middle">Pause review</text>
+  <rect x="250" y="52" width="170" height="48" rx="9" class="focus"/>
+  <text x="335.0" y="82.0" class="ink" text-anchor="middle">Apply approval</text>
+  <path d="M105 100v74" class="edge" marker-end="url(#arrow)"/>
+  <path d="M335 178v-72" class="edge" marker-end="url(#arrow)"/>
+  <text x="116" y="143" class="caption" text-anchor="start">write</text>
+  <text x="324" y="143" class="caption" text-anchor="end">load</text>
+  <path d="M66 181c0-16 308-16 308 0v48c0 16-308 16-308 0z" class="step"/>
+  <path d="M66 181c0 16 308 16 308 0" fill="none" stroke="#77aba2"/>
+  <text x="220" y="219" class="label" text-anchor="middle">SQLite checkpoint</text>
+</svg>

@@ -1,4 +1,6 @@
-# Embedding Models 🧭
+---
+title: "Embedding models"
+---
 
 The `embedding` package provides a unified abstraction for generating dense vector representations (`embedding.Vector`) from text and multimodal content across cloud and local providers.
 
@@ -11,7 +13,7 @@ Embedding models map inputs—such as sentences, document chunks, images, or aud
 - **`Provider`**: The backend implementation that executes embedding requests (`loomopenai`, `loomgenai`, `loomollama`).
 - **`Model`**: The high-level wrapper around a `Provider` and model name. Provides single-query and batch-document helpers, dimension and task configuration, automatic token cost calculation, and middleware chains.
 - **`Vector`**: A `[]float32` slice with built-in vector math methods (`CosineSimilarity`, `Dot`, `EuclideanDistance`, `Normalize`, `Float64`, `Dimension`).
-- **`Input`**: A single item to embed. Supports plain text (`embedding.Text`, `embedding.Texts`) as well as multimodal [`message.Block`](conversations.md) parts (`embedding.Image`, `embedding.ImageURL`, `embedding.Multimodal`, `Input.WithParts`).
+- **`Input`**: A single item to embed. Supports plain text (`embedding.Text`, `embedding.Texts`) as well as multimodal [`message.Block`](./conversations.md) parts (`embedding.Image`, `embedding.ImageURL`, `embedding.Multimodal`, `Input.WithParts`).
 - **`TaskType`**: Optional hint informing task-aware models how vectors will be used (`TaskRetrievalQuery`, `TaskRetrievalDocument`, `TaskSemanticSimilarity`, `TaskClassification`, `TaskClustering`).
 
 ---
@@ -174,10 +176,10 @@ vec, err := model.EmbedInput(ctx, combined)
 | Method | Description |
 |---|---|
 | `v.Dimension() int` | Returns the number of elements in the vector (`len(v)`). |
-| `v.CosineSimilarity(other Vector) float32` | Computes cosine similarity $\frac{v \cdot \text{other}}{\|v\| \|\text{other}\|}$. Returns `0` on dimension mismatch or zero norm. |
-| `v.Dot(other Vector) float32` | Computes the inner dot product $\sum v_i \cdot \text{other}_i$. |
-| `v.EuclideanDistance(other Vector) float32` | Computes the $L_2$ distance $\sqrt{\sum (v_i - \text{other}_i)^2}$. |
-| `v.Normalize() Vector` | Returns a new $L_2$-normalized unit vector (`\|v\| = 1`). |
+| `v.CosineSimilarity(other Vector) float32` | Computes cosine similarity by dividing the dot product by the product of the two vector norms. Returns `0` on dimension mismatch or zero norm. |
+| `v.Dot(other Vector) float32` | Computes the inner dot product by summing pairwise products. |
+| `v.EuclideanDistance(other Vector) float32` | Computes the Euclidean distance as the square root of the sum of squared element-wise differences. |
+| `v.Normalize() Vector` | Returns a new L₂-normalized unit vector (`\|v\| = 1`). |
 | `v.Float64() []float64` | Converts the `[]float32` vector into a `[]float64` slice. |
 
 ---

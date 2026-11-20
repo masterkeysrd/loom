@@ -1,6 +1,10 @@
-# Memory & Context Management 🧠
+---
+title: "Manage conversation memory"
+---
 
 As conversations with AI agents grow, they can quickly exceed the LLM's context window (token limit). Loom provides automated tools to manage this history through **Trimming** and **Summarization**.
+
+![With a budget for recent turns, last-message trimming drops older turns. Summarization can keep their gist alongside recent turns.](../diagrams/history-budget.svg)
 
 ## 1. Trimming Messages
 

@@ -1,4 +1,6 @@
-# Human-in-the-Loop (HITL) 🤝
+---
+title: "Pause for human approval"
+---
 
 Human-in-the-loop patterns allow you to pause an AI workflow and wait for human approval, clarification, or additional input. This is critical for high-stakes tasks where an LLM should not act autonomously (e.g., executing financial transactions, sending external emails, or approving destructive operations).
 
@@ -76,18 +78,9 @@ resumedSnapshot, err := g.Execute(ctx, humanInput, &snapshot.Location)
 
 When building modular, hierarchical agents with sub-graphs (`childGraph.AsNode()` or `graph.MapNode`), interrupt handling is fully transparent:
 
-```mermaid
-flowchart TD
-    subgraph Parent Graph
-        A[Start] --> B[Sub-graph Node]
-        B --> C[Finalize]
-    end
-    subgraph Child Sub-graph
-        B1[Child Step 1] --> B2[Human Review Node]
-        B2 -->|Interrupt| B2_PAUSE[Child Pause & Checkpoint]
-    end
-    B2_PAUSE -.->|InterruptUpdate| B
-```
+For example, a parent graph starts a child workflow and waits to finalize its result. When the child reaches human review, it checkpoints and returns an interrupt to the parent. Approval lets the parent re-enter the child workflow and finish.
+
+![A parent enters its child graph. The child pauses at review, returning control to the caller. Human approval resumes the child and lets the parent finish.](../diagrams/approval-handoff.svg)
 
 ### How Subgraph Interrupts Work:
 1. **Child Interruption**: When a node inside the sub-graph returns `graph.Interrupt()` or `graph.InterruptUpdate[ChildState]`, the child graph pauses and saves its internal checkpoint under its scoped namespace (e.g., `coordinator|reviewer:sha1...`).

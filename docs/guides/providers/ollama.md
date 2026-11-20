@@ -1,4 +1,6 @@
-# Ollama Provider 🔌
+---
+title: "Ollama"
+---
 
 The Ollama provider allows you to run open-source models (like Llama 3, Mistral, Qwen) locally on your machine.
 
@@ -22,12 +24,15 @@ if err != nil {
 }
 
 // Make sure you have pulled the model locally: ollama pull llama3.1
-model := llm.NewModel(provider, "llama3.1")
+model, err := llm.NewModel(provider, "llama3.1", nil)
+if err != nil {
+    log.Fatal(err)
+}
 ```
 
 ## 3. Local Model Discovery & Overrides
 
-Unlike cloud providers, Ollama's available models depend on what you have installed locally. `loomollama.Provider` implements [`llm.ModelLister`](../llm-package.md#5-live-model-discovery-llmmodellister) using `/api/tags` (`ListModels`) and `/api/show` (`GetModel`), and also supports custom profile overrides:
+Unlike cloud providers, Ollama's available models depend on what you have installed locally. `loomollama.Provider` implements [`llm.ModelLister`](../llm/discovery.md#list-available-models) using `/api/tags` (`ListModels`) and `/api/show` (`GetModel`), and also supports custom profile overrides:
 
 ```go
 // 1. List installed local models via /api/tags

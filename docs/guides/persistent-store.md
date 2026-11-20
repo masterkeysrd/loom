@@ -1,4 +1,6 @@
-# Persistent Store 💾
+---
+title: "Store and search application data"
+---
 
 The `store` package provides a **namespaced key-value store** for persistent, searchable long-term memory. It gives AI agents the ability to read and write structured data that survives across graph executions, process restarts, and conversations.
 

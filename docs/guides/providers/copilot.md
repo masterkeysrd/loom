@@ -1,11 +1,12 @@
-# GitHub Copilot Provider 🐙
+---
+title: "GitHub Copilot"
+---
 
-The GitHub Copilot provider (`providers/copilot`) implements [`llm.Provider`](../../../llm/provider.go) on top of the official GitHub Copilot Go SDK (`github.com/github/copilot-sdk/go`), adding dynamic model discovery (`llm.ModelLister`), quota inspection (`llm.QuotaProvider`), and idle notifications / sync-on-write (`llm.IdleMessageNotifier`, `*llm.OutOfSyncError`).
+The GitHub Copilot provider (`providers/copilot`) implements [`llm.Provider`](https://pkg.go.dev/github.com/masterkeysrd/loom/llm#Provider) on top of the official GitHub Copilot Go SDK (`github.com/github/copilot-sdk/go`), adding dynamic model discovery (`llm.ModelLister`), quota inspection (`llm.QuotaProvider`), and idle notifications / sync-on-write (`llm.IdleMessageNotifier`, `*llm.OutOfSyncError`).
 
 It lets you run standard Loom graphs (`Agent -> Tools -> Agent` loops, `model.BindTools`, checkpoints, structured output, thinking effort, and compaction) backed by your GitHub Copilot subscription or a BYOK endpoint (OpenAI, Azure, Anthropic, or Ollama).
 
-> [!NOTE]
-> For a concise breakdown of Copilot SDK caveats, parameter limitations, and deviations from `providers/claudecode`, see [`copilot.md`](../../../copilot.md) at the repository root.
+> **Note.** See [limitations](#7-limitations) for details about parameter support and the differences between Copilot and Claude Code.
 
 ## 1. Prerequisites & Authentication
 
@@ -17,8 +18,7 @@ copilot login
 export COPILOT_GITHUB_TOKEN='...'
 ```
 
-> [!IMPORTANT]
-> GitHub Copilot **does not support classic Personal Access Tokens (`ghp_...`)**. If `GITHUB_TOKEN` contains a classic `ghp_` token, either unset it before running `copilot login` / `go run ./examples/copilot` or pass a fine-grained PAT (`github_pat_...` with *Copilot Requests* permission) or `COPILOT_GITHUB_TOKEN`.
+> **Caution.** GitHub Copilot **does not support classic Personal Access Tokens (`ghp_...`)**. If `GITHUB_TOKEN` contains a classic `ghp_` token, either unset it before running `copilot login` / `go run ./examples/copilot` or pass a fine-grained PAT (`github_pat_...` with *Copilot Requests* permission) or `COPILOT_GITHUB_TOKEN`.
 
 When `WithBaseDirectory` is unset, `providers/copilot` leaves `BaseDirectory` empty so the Copilot SDK uses its standard `~/.copilot` directory. Pass `WithBaseDirectory(...)` explicitly if you want isolated session/config storage.
 
@@ -131,7 +131,7 @@ provider, err := loomcopilot.NewDefaultProvider(
 
 ## 6. Running the Example
 
-See [`examples/copilot`](../../../examples/copilot/main.go) for a streaming interactive REPL + `Agent -> Tools -> Agent` demo:
+See [`examples/copilot`](https://github.com/masterkeysrd/loom/blob/main/examples/copilot/main.go) for a streaming interactive REPL + `Agent -> Tools -> Agent` demo:
 
 ```bash
 # Using your local `copilot login` session (`auto` model):

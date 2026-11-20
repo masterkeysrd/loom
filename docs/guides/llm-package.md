@@ -1,264 +1,51 @@
-# LLM Package 🧠
+---
+title: Call a language model
+description: Send a message to a model using Loom’s provider-independent Go API.
+---
 
-The `llm` package provides a high-level abstraction over different Large Language Model (LLM) backends. It allows you to interact with models from various providers (OpenAI, Anthropic, Google, Ollama) using a consistent API.
+Use `llm.Model` directly in a Go application or call it inside a graph node. A provider connects the model to a particular service. The `message` package carries the same conversation types across providers.
 
-## Core Components
+## Send your first message
 
-- **`Model`**: The primary interface for interacting with an LLM. It supports both blocking (`Invoke`) and streaming (`Stream`) calls.
-- **`Provider`**: The backend-specific implementation that translates generic requests into provider-specific API calls.
-- **`Registry`**: A central store for managing and instantiating providers without creating hard dependencies.
-
-## 1. Using the Model API
-
-The `llm.Model` provides a fluent API for configuring and calling LLMs.
+This example uses OpenAI. Set `OPENAI_API_KEY`, choose a model available to your account, and install the imports with `go mod tidy` after saving the program as `main.go` in a Go module. For another backend, follow [Choose a provider](../providers.md).
 
 ```go
+package main
+
 import (
+    "context"
+    "fmt"
+    "log"
+
     "github.com/masterkeysrd/loom/llm"
-    "github.com/masterkeysrd/loom/providers/openai"
+    "github.com/masterkeysrd/loom/message"
+    loomopenai "github.com/masterkeysrd/loom/providers/openai"
 )
 
-// 1. Create a provider
-provider, _ := loomopenai.NewDefaultProvider()
-
-// 2. Instantiate a model
-model := llm.NewModel(provider, "gpt-4o")
-
-// 3. Configure parameters (Fluent API)
-model = model.
-    WithTemperature(0.7).
-    WithMaxTokens(1000).
-    WithStop("User:", "Assistant:")
-
-// 4. Invoke the model (blocking)
-resp, err := model.Invoke(ctx, messages)
-
-// 5. Stream the model (real-time)
-// Chunks are automatically forwarded to any stream.Writer in the context.
-stream, err := model.Stream(ctx, messages)
-for chunk, err := range stream {
-    fmt.Print(chunk.Content.Text())
-}
-```
-
-## 2. Advanced Configuration
-
-### Structured Output (JSON Schema)
-If a provider supports it, you can enforce a specific JSON schema for the model's response.
-```go
-model = model.WithStructuredOutput(myJsonSchema)
-```
-
-### Thinking (Reasoning) Mode
-For models that support "thinking" or extended reasoning (like Anthropic Claude or Google Gemini), you can configure the reasoning budget.
-```go
-model = model.WithThinking(4000) // 4000 tokens for thinking
-```
-
-### Extensions & Hints
-Providers often have specialized features (like caching) that aren't part of the common LLM parameters. Loom uses a type-safe **Extensions** system to pass these hints.
-
-Extensions come in two flavors:
-1.  **Call Extensions (`llm.Extension`)**: Apply to the entire request (e.g., enable system prompt caching).
-2.  **Message Extensions (`message.Extension`)**: Apply to a specific turn in the conversation (e.g., mark a checkpoint).
-
-```go
-// Example: Setting a call-level extension for Anthropic
-model = model.WithExtension(loomanthropic.PromptCaching{CacheHeader: true})
-
-// Example: Passing a call-level extension for a single call
-model.Invoke(ctx, msgs, llm.WithExtensionOption(loomopenai.PromptCache{
-    Key: "user-session-123",
-}))
-```
-
-## 3. Middleware & Hooks
-Middleware allows you to wrap LLM calls to inject cross-cutting concerns like logging, auditing, or automatic metadata injection.
-
-```go
-model = model.WithMiddleware(func(next llm.Streamer) llm.Streamer {
-    return func(ctx context.Context, req *llm.Request) (llm.StreamResponse, error) {
-        fmt.Printf("Calling model: %s\n", req.Model)
-        
-        // You can also modify the request before it reaches the provider
-        if len(req.Messages) > 10 {
-            req.Extensions[myprovider.CustomExt{}.ExtensionID()] = myprovider.CustomExt{Enabled: true}
-        }
-
-        return next(ctx, req)
+func main() {
+    provider, err := loomopenai.NewDefaultProvider()
+    if err != nil {
+        log.Fatal(err)
     }
-})
-```
-
-### Built-in Middleware: Deferred Tools & Inline Tools
-
-Loom includes built-in middlewares that bring deferred tool loading and mid-conversation inline tool injection to any provider:
-
-#### 1. Deferred Tools (`llm.DeferredToolsMiddleware`)
-```go
-// Default configuration: automatically detects provider capability via llm.DeferredToolsSupport
-model = model.WithMiddleware(llm.DeferredToolsMiddleware(nil))
-
-// Or with custom options:
-model = model.WithMiddleware(llm.DeferredToolsMiddleware(&llm.DeferredToolsOptions{
-    Match: func(ctx context.Context, req *llm.Request) bool {
-        return true // force fallback transformation
-    },
-    FormatReference: func(def tool.Definition) message.Block {
-        return &message.TextBlock{Text: fmt.Sprintf("Tool %s is active", def.Name)}
-    },
-    DisableCoercion: false,
-}))
-```
-
-#### 2. Inline Tools (`llm.InlineToolsMiddleware`)
-```go
-// Default configuration: automatically detects provider capability via llm.InlineToolsSupport
-model = model.WithMiddleware(llm.InlineToolsMiddleware(nil))
-
-// Or with custom options:
-model = model.WithMiddleware(llm.InlineToolsMiddleware(&llm.InlineToolsOptions{
-    Match: func(ctx context.Context, req *llm.Request) bool {
-        return true // force fallback transformation
-    },
-    FormatDefinition: func(def tool.Definition) message.Block {
-        return &message.TextBlock{Text: fmt.Sprintf("Inline tool %s loaded", def.Name)}
-    },
-    DisableCoercion: false,
-}))
-```
-
-When used with providers that don't natively support deferred or inline tools (e.g. Ollama or Gemini), these middlewares strip matching tools from initial `req.Tools`, expand `ToolReferenceBlock` and `ToolDefinitionBlock` references into full schemas, and coerce stringified arguments returned by models into typed JSON schema values. See the [Tools Guide](./tools.md#6-deferred-tools-tool-search--dynamic-tool-injection) for more details.
-
-## 4. Cache Management
-For providers that support explicit resource management (like Google Gemini's Context Caching), Loom provides a `CacheManager` API.
-
-```go
-// 1. Create a long-lived cache from a list of messages
-cacheID, err := model.
-    WithExtension(loomgenai.CacheCreation{DisplayName: "Project Docs"}).
-    CreateCache(ctx, documentMessages)
-
-// 2. Use the cache ID in subsequent calls
-resp, _ := model.Invoke(ctx, prompt, llm.WithExtensionOption(loomgenai.ContextCache{ID: cacheID}))
-
-// 3. Delete when no longer needed
-model.DeleteCache(ctx, cacheID)
-```
-
-## 5. Live Model Discovery (`llm.ModelLister`)
-
-Providers that expose model-listing APIs (OpenAI, Anthropic, Google GenAI, Ollama, and Google Antigravity) implement [`llm.ModelLister`](file:///Users/masterkeysrd/Projects/loom/llm/provider.go):
-
-```go
-if ml, ok := provider.(llm.ModelLister); ok {
-    // Query all models available to your credentials or local server
-    models, err := ml.ListModels(ctx)
-    if err == nil {
-        for _, m := range models {
-            fmt.Printf("• %s (%s) — ctx=%d\n", m.ID, m.Name, m.Limits.Context)
-        }
+    model, err := llm.NewModel(provider, "gpt-4o", nil)
+    if err != nil {
+        log.Fatal(err)
     }
-
-    // Fetch live metadata for a single model by ID
-    prof, err := ml.GetModel(ctx, "claude-sonnet-4-6")
-    _ = prof
-    _ = err
-}
-```
-
-- **Static-catalog providers (`openai`, `anthropic`, `genai`)**: Enrich live API results with static catalog metadata (preserving `Pricing`, `TieredLimits`, `Modalities`, and `Capabilities`) without mutating `provider.ListProfiles()`. Unknown models (such as fine-tunes `ft:...`, tuned Gemini models, or OpenAI-compatible vLLM/LiteLLM servers) receive synthesized profiles from live API metadata.
-- **Dynamic-catalog providers (`ollama`, `antigravity`)**: Refresh their in-memory discovered model cache while preserving any explicit `provider.OverrideProfile(...)` entries.
-
-## 6. Quota & Rate Limit Inspection (`llm.QuotaProvider`)
-
-Providers that expose quota or rolling-window capacity metrics (such as Google Antigravity and GitHub Copilot) implement the [`llm.QuotaProvider`](file:///Users/masterkeysrd/Projects/loom/llm/provider.go) interface. This allows callers to inspect multi-bucket constraints (e.g. rolling burst windows, weekly caps, monthly request pools) and reset times:
-
-```go
-// Type-assert to llm.QuotaProvider
-if qp, ok := provider.(llm.QuotaProvider); ok {
-    // Inspect all buckets constraining a specific model (resolving aliases like "gemini-3.8-flash")
-    if buckets, ok, err := qp.GetQuota(ctx, "gemini-3.8-flash"); ok && err == nil {
-        if bottleneck, ok := buckets.Bottleneck(); ok {
-            fmt.Printf("Remaining: %.1f%%\n", bottleneck.Percentage())
-            if bottleneck.ResetAt != nil {
-                fmt.Printf("Replenishes at: %s\n", bottleneck.ResetAt.Format(time.RFC3339))
-            }
-        }
+    messages := []message.Message{message.NewUserText("Say hello in Spanish.")}
+    reply, err := model.Invoke(context.Background(), messages)
+    if err != nil {
+        log.Fatal(err)
     }
-
-    // Retrieve the full snapshot separating shared buckets from model bindings
-    snap, _ := qp.GetQuotaSnapshot(ctx)
-    for id, bucket := range snap.Buckets {
-        fmt.Printf("• %s: %.1f%%\n", id, bucket.Percentage())
-    }
+    fmt.Println(reply.GetContent().Text())
 }
 ```
 
-## 7. Idle Notifications (`llm.IdleMessageNotifier`) & Sync-on-Write (`llm.OutOfSyncError`)
+Run `go run .` to print the model’s reply. To continue the conversation, append the assistant reply and the next user message to your history. See [Conversations and messages](./conversations.md) for roles and multimodal input.
 
-Stateful providers (such as `providers/claudecode` and `providers/copilot`) can push unsolicited `message.Message` events while idle between turns via [`llm.IdleMessageNotifier`](file:///Users/masterkeysrd/Projects/loom/llm/provider.go) and reject out-of-sync writes with [`llm.OutOfSyncError`](file:///Users/masterkeysrd/Projects/loom/llm/provider.go):
+## Explore the model API
 
-```go
-if notifier, ok := provider.(llm.IdleMessageNotifier); ok {
-    unsub := notifier.OnIdleMessage(func(msg message.Message) {
-        // Promptly enqueue or react to idle updates (e.g. background compaction)
-    })
-    defer unsub()
-}
-
-resp, err := model.Invoke(ctx, messages)
-var syncErr *llm.OutOfSyncError
-if errors.As(err, &syncErr) && len(syncErr.Messages) > 0 {
-    // Reconcile local conversation history using syncErr.Messages and resubmit
-}
-```
-
-## 8. Using the LLM Registry
-The `Registry` is useful for decoupling your application from specific provider packages. It allows you to register provider factories and retrieve them by name.
-
-## Summary
-
-- Use `llm.NewModel` to start interacting with an LLM.
-- Use the `With*` methods to configure model parameters.
-- Use `Invoke` for simple request-response and `Stream` for real-time applications.
-- Use `llm.ModelLister` to discover models dynamically from provider APIs.
-- Use `llm.QuotaProvider` to query model quotas and replenishment windows.
-- Use `llm.IdleMessageNotifier` and `llm.OutOfSyncError` to keep local history synchronized with stateful providers.
-- Use `llm.Registry` to manage multiple providers in a large application.
-
-## 9. Cost Estimation, Pricing Tiers & Provider Credits
-
-`profile.Profile.Estimate(tokens)` returns a `CostEstimate` (`Details`, `Total`, `Tier`, `Priced`). `Model.Stream` copies these onto `chunk.Metrics` (`Cost`, `TotalCost`, `CostTier`, `Priced`) for LLM, embedding, and decision models.
-
-When a provider also reports server-side billing or quota-unit consumption on a turn (for example, Copilot's `ai_credits` / `premium_requests` and billing `Multiplier`, or Claude Code's `total_cost_usd` reported as `Unit: "usd", Estimated: true`), those values are populated on `chunk.Metrics.Credits` (`message.CreditMetrics`) independently of static profile cost estimation.
-
-- **Token semantics**: `message.TokenDetails.Input` is the total prompt size and *includes* cache read/write tokens (they are subsets of `Input`), matching LangChain's `UsageMetadata`. Provider mappings normalize to this rule. The uncached part, `Input - CacheRead - CacheWrite`, is billed at the input price.
-- **Tiers**: a `TierPricing` has a `Condition{Type, Size}`. `TierConditionContext` measures `Input` (output excluded) and applies when it is **strictly greater** than `Size`. Of the matching tiers, the one with the highest `Size` wins regardless of slice order. Unknown condition types never match. A tier without a `Label` gets a generated one such as `context>200000`.
-- **Priced**: `false` when the profile has no pricing data (nil profile, or `Pricing.IsZero()`: all prices zero and no tiers).
-- **Middleware**: cost is attached *after* the middleware chain. Middleware that needs it should use `llm.RuntimeFromContext(ctx)` and call `rt.Profile.Estimate(...)`.
-- **Injecting a profile**: `model.WithProfile(p)` returns a clone that uses `p` for cost estimation and `Runtime.Profile`. `WithProfile(nil)` clears it. `ModelConfig` defaults derived from the profile are not recomputed. `embedding.Model` and `decision.Model` have the same setter.
-- `EstimateCost` and `TierPricing.TierLimit` were removed; use `Estimate` and `TierPricing.Condition`.
-
-## 10. Strict Modality & Capability Validation
-
-All built-in providers (`openai`, `anthropic`, `genai`, `ollama`, `copilot`, `claudecode`, `antigravity`, and `typesafe`) enforce strict validation across `llm`, `embedding`, and `decision` requests so unsupported attachments are **never silently dropped**:
-
-1. **Profile & Capability Gate (When Known)**: When `provider.GetProfile(model)` resolves an authoritative `profile.Profile`, Loom validates message/input modalities against `Modalities.Inputs` and tool definitions against `Capabilities.ToolCall` (as well as `Completion`, `Embedding`, or `Decision` workload flags). Unknown or custom model IDs with no catalog profile skip this step automatically.
-2. **Wire-Protocol Gate (Always Enforced)**: Every provider's message mapper validates `System`, `User`, `Assistant`, `Tool`, `embedding.Input`, and `decision.Input` blocks—rejecting unsupported block types, unsupported roles (e.g., images inside `System` prompts), empty media blocks, or unsupported delivery modes (e.g., URL-only audio where inline bytes are required). Historical `*message.ThinkingBlock` items remain lenient on replay.
-
-```go
-import (
-    "errors"
-
-    "github.com/masterkeysrd/loom/profile"
-)
-
-resp, err := model.Invoke(ctx, messages)
-if errors.Is(err, profile.ErrUnsupportedModality) {
-    // Handle unsupported image/audio/video/document modality or URL source
-}
-if errors.Is(err, profile.ErrUnsupportedCapability) {
-    // Handle unsupported capability (e.g., tools bound to a non-tool model)
-}
-```
+- [Stream responses and configure generation](./llm/generation.md) for incremental output, JSON schemas, reasoning, and provider-specific hints.
+- [Apply middleware](./llm/middleware.md) to wrap model calls and adapt tool definitions.
+- [Manage caches and stateful sessions](./llm/sessions.md) to reuse context and reconcile history.
+- <a id="5-live-model-discovery-llmmodellister"></a>[Discover models and register providers](./llm/discovery.md) to select a backend at runtime and check supported inputs.
+- <a id="6-quota--rate-limit-inspection-llmquotaprovider"></a>[Inspect quotas and costs](./llm/usage.md) to see remaining capacity and interpret usage metrics.

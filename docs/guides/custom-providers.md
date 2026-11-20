@@ -1,4 +1,6 @@
-# Custom Providers (Advanced) 🛠️
+---
+title: "Implement a custom provider"
+---
 
 Loom is designed to be provider-agnostic. While it comes with built-in support for OpenAI, Anthropic, Gemini, and Ollama, you can easily add support for any other LLM backend by implementing the `llm.Provider` interface.
 

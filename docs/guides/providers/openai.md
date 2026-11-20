@@ -1,4 +1,6 @@
-# OpenAI Provider 🔌
+---
+title: "OpenAI"
+---
 
 The OpenAI provider allows you to use all standard GPT models, including reasoning models like `o1` and `o3-mini`, as well as standard models like `gpt-4o`.
 
@@ -33,7 +35,10 @@ if err != nil {
 }
 
 // Instantiate a model
-model := llm.NewModel(provider, "gpt-4o")
+model, err := llm.NewModel(provider, "gpt-4o", nil)
+if err != nil {
+    log.Fatal(err)
+}
 ```
 
 ## 4. Advanced Features
@@ -143,7 +148,11 @@ Starting with `gpt-5.4`, OpenAI's Responses API natively supports **Tool Search*
 calcTool, _ := tool.New("calculate_mortgage", "...", "...", handler, tool.WithDeferLoading())
 
 // 2. Enable Responses API Tool Search
-model = llm.NewModel(provider, "gpt-5.4").
+model, err = llm.NewModel(provider, "gpt-5.4", nil)
+if err != nil {
+    log.Fatal(err)
+}
+model = model.
     BindTools(calcTool).
     WithExtension(loomopenai.WithToolSearch())
 ```
@@ -181,12 +190,11 @@ msg := message.NewUser(
 )
 ```
 
-> [!NOTE]
-> Native tool search and mid-conversation tool additions require `gpt-5.4` or later with the Responses API. For models prior to `gpt-5.4` (e.g. `gpt-4o`, `o3-mini`) or when using standard Chat Completions, use `llm.DeferredToolsMiddleware(nil)` and `llm.InlineToolsMiddleware(nil)` to gain deferred and inline tool benefits via client-side transformation.
+> **Note.** Native tool search and mid-conversation tool additions require `gpt-5.4` or later with the Responses API. For models prior to `gpt-5.4` (e.g. `gpt-4o`, `o3-mini`) or when using standard Chat Completions, use `llm.DeferredToolsMiddleware(nil)` and `llm.InlineToolsMiddleware(nil)` to gain deferred and inline tool benefits via client-side transformation.
 
 ## 6. Model Catalog & Live Discovery
 
-The provider includes a static catalog of OpenAI models (with pricing, modalities, and context limits) accessible synchronously via `ListProfiles()` and `GetProfile()`, and also implements [`llm.ModelLister`](../llm-package.md#5-live-model-discovery-llmmodellister) against OpenAI's `/v1/models` and `/v1/models/{model}` endpoints:
+The provider includes a static catalog of OpenAI models (with pricing, modalities, and context limits) accessible synchronously via `ListProfiles()` and `GetProfile()`, and also implements [`llm.ModelLister`](../llm/discovery.md#list-available-models) against OpenAI's `/v1/models` and `/v1/models/{model}` endpoints:
 
 ```go
 // 1. Static in-memory catalog

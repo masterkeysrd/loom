@@ -1,19 +1,21 @@
-# Documents, Vector Stores & Retrievers (RAG) 📚
+---
+title: "Retrieval-augmented generation"
+---
 
-Loom provides a modular, end-to-end **Retrieval-Augmented Generation (RAG)** pipeline built around three focused packages:
+Build a retrieval-augmented generation (RAG) workflow that searches documents and gives the matching passages to a model. [Run the end-to-end example](#5-end-to-end-example-examplesrag) with Ollama or OpenAI, or explore each stage below.
 
 1. **`document`** (`github.com/masterkeysrd/loom/document`) — `Document`, lazy iterator `Loader` implementations, and text `Splitter` chunkers (`RecursiveCharacterSplitter`, `MarkdownSplitter`).
 2. **`vectorstore`** (`github.com/masterkeysrd/loom/vectorstore`) — `VectorStore` interface and backends (`memory`, `sqlite`, `pg`) for batch embedding, similarity search, and metadata filtering.
 3. **`retriever`** (`github.com/masterkeysrd/loom/retriever`) — `Retriever` runtime interface with OpenTelemetry spans, `on_retrieve` stream events, Reciprocal Rank Fusion (`NewMerger`), System One decision reranking (`NewDecisionReranker`), and agent tool integration (`NewTool`).
 
-```mermaid
-flowchart LR
-    A["Loader<br/>(FS, CSV, JSON, Reader)"] -->|iter.Seq2| B["Splitter<br/>(Recursive, Markdown)"]
-    B -->|[]Document chunks| C["VectorStore<br/>(memory, sqlite, pg)"]
-    D["Query"] --> E["Retriever<br/>(Vector, RRF, DecisionReranker)"]
-    C <-->|Top-K + Filter| E
-    E -->|[]Document| F["Graph Node / Agent Tool"]
-```
+Indexing and retrieval use the same vector store.
+
+![Indexing embeds document chunks in the vector store. Retrieval compares an embedded question with those stored vectors and returns matching passages.](../diagrams/retrieval-pipeline.svg)
+
+| Stage | Input | Result |
+| --- | --- | --- |
+| Index documents | A loader streams documents to a splitter. | The splitter yields chunks to embed and store. |
+| Retrieve passages | A retriever receives a query and searches the store with a result limit and optional filters. | The retriever returns matching documents to a graph node or agent tool. |
 
 ---
 
@@ -99,41 +101,50 @@ for chunk, err := range document.SplitIter(loader.Load(ctx), mdSplitter) {
 
 ### Choosing a Backend
 
-=== "In-Memory (`vectorstore/memory`)"
+<details>
+<summary>In-Memory</summary>
 
-    ```go
-    import (
-        "github.com/masterkeysrd/loom/vectorstore/memory"
-    )
+```go
+import (
+    "github.com/masterkeysrd/loom/vectorstore/memory"
+)
 
-    vs := memory.New(embedModel)
-    ```
+vs := memory.New(embedModel)
+```
 
-=== "SQLite (`vectorstore/sqlite`)"
+</details>
 
-    ```go
-    import (
-        "database/sql"
-        "github.com/masterkeysrd/loom/vectorstore/sqlite"
-        _ "modernc.org/sqlite"
-    )
+<details>
+<summary>SQLite</summary>
 
-    db, _ := sql.Open("sqlite", "vectors.db")
-    vs, err := sqlite.New(db, embedModel)
-    ```
+```go
+import (
+    "database/sql"
+    "github.com/masterkeysrd/loom/vectorstore/sqlite"
+    _ "modernc.org/sqlite"
+)
 
-=== "PostgreSQL `pgvector` (`vectorstore/pg`)"
+db, _ := sql.Open("sqlite", "vectors.db")
+vs, err := sqlite.New(db, embedModel)
+```
 
-    ```go
-    import (
-        "database/sql"
-        _ "github.com/lib/pq"
-        "github.com/masterkeysrd/loom/vectorstore/pg"
-    )
+</details>
 
-    db, _ := sql.Open("postgres", os.Getenv("POSTGRES_DSN"))
-    vs, err := pg.New(db, embedModel, pg.WithDims(1536))
-    ```
+<details>
+<summary>PostgreSQL pgvector</summary>
+
+```go
+import (
+    "database/sql"
+    _ "github.com/lib/pq"
+    "github.com/masterkeysrd/loom/vectorstore/pg"
+)
+
+db, _ := sql.Open("postgres", os.Getenv("POSTGRES_DSN"))
+vs, err := pg.New(db, embedModel, pg.WithDims(1536))
+```
+
+</details>
 
 ### Adding, Searching, and Deleting Documents
 
@@ -215,12 +226,12 @@ chatModel = chatModel.BindToolDefs(container.Definitions()...)
 
 ## 5. End-to-End Example (`examples/rag`)
 
-Loom includes a complete, runnable end-to-end RAG example in [`examples/rag/main.go`](../../examples/rag/main.go). It demonstrates:
+Loom includes a complete, runnable end-to-end RAG example in [`examples/rag/main.go`](https://github.com/masterkeysrd/loom/blob/main/examples/rag/main.go). It demonstrates:
 - Streaming documents lazily with `document.NewFSLoader`.
 - Chunking Markdown by heading hierarchy with `document.NewMarkdownSplitter`.
 - In-memory vector store indexing (`vectorstore/memory`) with dense embeddings.
 - Hybrid lexical (BM25) and semantic retrieval with Reciprocal Rank Fusion (`retriever.NewMerger`).
-- A stateful RAG graph workflow (`retrieve` $\to$ `generate`) using `graph.Builder`.
+- A stateful RAG graph workflow (`retrieve` → `generate`) using `graph.Builder`.
 
 ### Running with Ollama (Local)
 

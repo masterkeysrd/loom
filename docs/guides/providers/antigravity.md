@@ -1,4 +1,6 @@
-# Google Antigravity Provider 🔌
+---
+title: "Google Antigravity"
+---
 
 The Google Antigravity provider connects Loom to Google's internal Cloud Code / Antigravity LLM backend, supporting streaming completions, dynamic model discovery, thinking effort configuration, and quota inspection.
 
@@ -96,7 +98,10 @@ func main() {
     }
 
     // 2. Instantiate model (e.g. Gemini 3.8 Flash)
-    model := llm.NewModel(provider, "gemini-3.8-flash")
+    model, err := llm.NewModel(provider, "gemini-3.8-flash", nil)
+    if err != nil {
+        log.Fatal(err)
+    }
 
     // 3. Stream a completion
     stream, err := model.Stream(ctx, message.MessageList{
@@ -129,8 +134,14 @@ Antigravity models support configurable thinking budgets and levels (`low`, `med
 model = model.WithThinkingEffort("high")
 
 // 2. Or using dynamic model alias names
-fastModel := llm.NewModel(provider, "gemini-3.8-flash-low")
-deepModel := llm.NewModel(provider, "gemini-3.8-flash-high")
+fastModel, err := llm.NewModel(provider, "gemini-3.8-flash-low", nil)
+if err != nil {
+    log.Fatal(err)
+}
+deepModel, err := llm.NewModel(provider, "gemini-3.8-flash-high", nil)
+if err != nil {
+    log.Fatal(err)
+}
 ```
 
 The provider's heuristic resolver normalizes `thinkingConfig.thinkingLevel` to uppercase (`"LOW"`, `"MEDIUM"`, `"HIGH"`) and routes requests to either the family's `-tiered` gateway endpoint (such as `gemini-3.8-flash-tiered`) or its dedicated per-effort endpoint (such as `gemini-4-carbon-high`). When a canonical model family with only per-effort endpoints is invoked without an explicit thinking effort, it automatically falls back to `-medium` → `-low` → `-high`.
@@ -172,7 +183,7 @@ model = model.WithExtension(loomantigravity.Session{
 
 ## 4. Quota & Rate Limit Inspection (`llm.QuotaProvider`)
 
-The Antigravity provider implements Loom's [`llm.QuotaProvider`](../llm-package.md#6-quota--rate-limit-inspection-llmquotaprovider) interface, combining model mappings from `/v1internal:fetchAvailableModels` with multi-window pools (such as 5-hour and weekly buckets) from `/v1internal:retrieveUserQuotaSummary`. Quotas are decoupled from the 1-hour profile metadata cache to ensure fresh reporting without staleness:
+The Antigravity provider implements Loom's [`llm.QuotaProvider`](../llm/usage.md#check-available-quota) interface, combining model mappings from `/v1internal:fetchAvailableModels` with multi-window pools (such as 5-hour and weekly buckets) from `/v1internal:retrieveUserQuotaSummary`. Quotas are decoupled from the 1-hour profile metadata cache to ensure fresh reporting without staleness:
 
 ```go
 // Assert llm.QuotaProvider
@@ -210,7 +221,7 @@ Quota caching can be tuned in `loomantigravity.Config`:
 
 ## 5. Token Counting & Metrics (`llm.TokenCounter`)
 
-The Antigravity provider implements Loom's [`llm.TokenCounter`](../../llm/token_counter.go) interface and provides comprehensive token metrics during streaming:
+The Antigravity provider implements Loom's [`llm.TokenCounter`](https://pkg.go.dev/github.com/masterkeysrd/loom/llm#TokenCounter) interface and provides comprehensive token metrics during streaming:
 
 ### Pre-call Token Counting (`CountTokens`)
 
@@ -231,7 +242,7 @@ if counter, ok := provider.(llm.TokenCounter); ok {
 }
 ```
 
-This enables seamless integration with Loom's [`memory.Summarizer`](../../memory/summarizer.go) and conversational memory pruning.
+This enables seamless integration with Loom's [`memory.Summarizer`](https://pkg.go.dev/github.com/masterkeysrd/loom/memory#Summarizer) and conversational memory pruning.
 
 ### Streaming Token Metrics
 

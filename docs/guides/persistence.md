@@ -1,8 +1,43 @@
-# Persistence & State 💾
-
-One of Loom's core strengths is its "state-first" architecture. Every time a node executes, Loom saves a **checkpoint** of your workflow's state. This allows you to resume execution after a failure, restart a long-running process, audit execution history, or pause a graph to wait for human input.
-
 ---
+title: Resume a workflow
+description: Save a checkpoint with SQLite and resume a Loom graph across process restarts.
+---
+
+Run a draft review in two processes. The first one writes a draft to SQLite and pauses for approval. The second one loads that draft, applies your approval, and finishes the graph. Loom keeps checkpoints across restarts when you attach a durable checkpointer to your builder.
+
+![The first process saves a pending draft to SQLite and exits. The second uses the same thread ID to load the draft and apply approval.](../diagrams/resume-checkpoint.svg)
+
+## Start a review
+
+From a checkout of the Loom repository, use Go 1.26.10 or newer and a fresh SQLite file. The example creates the database in your working directory. To try the tutorial again, choose a new filename for both commands.
+
+```sh
+go run ./examples/resume -db review.db
+```
+
+```text
+Awaiting approval: Ship the new search
+```
+
+The process has exited. The SQLite database holds the draft and the name of the node waiting to run.
+
+## Resume after the process exits
+
+From the same directory, run the example again and approve the draft.
+
+```sh
+go run ./examples/resume -db review.db -approve
+```
+
+```text
+Approved: Ship the new search
+```
+
+The second invocation supplies only the approval. The draft text comes from the first process's checkpoint. Repeating the approval prints `Already approved: Ship the new search`.
+
+## Use this pattern in your graph
+
+Attach a checkpointer before calling `Build`. Give each independent workflow a stable `ThreadID`. In the example, the review node returns `graph.InterrupCmd[Review]{}` while it waits. When another process starts, it opens the same database and calls `Execute` with the same thread ID and a state update that sets `Approved`. Loom reloads the latest checkpoint and re-enters the waiting node. [Read the complete example](https://github.com/masterkeysrd/loom/blob/main/examples/resume/main.go).
 
 ## How Checkpointing Works
 
@@ -38,10 +73,10 @@ import (
     "database/sql"
 
     "github.com/masterkeysrd/loom/checkpoint/sqlite"
-    _ "github.com/mattn/go-sqlite3"
+    _ "modernc.org/sqlite"
 )
 
-db, err := sql.Open("sqlite3", "loom.db")
+db, err := sql.Open("sqlite", "loom.db")
 if err != nil {
     log.Fatal(err)
 }
@@ -110,7 +145,7 @@ This predictable identity guarantees idempotency and enables safe correlation be
 
 When embedding sub-graphs via `childGraph.AsNode()` or `graph.MapNode()`, child checkpoints are stored within a segmented, hierarchical namespace modeled after LangGraph:
 
-$$\text{CheckpointNS} = \langle\text{parent\_ns}\rangle \mid \langle\text{node\_name}\rangle:\langle\text{task\_id}\rangle$$
+`CheckpointNS = parent_ns | node_name:task_id`
 
 Where:
 - `|` (`NSSep`) separates nesting levels.
@@ -140,7 +175,7 @@ You can pause a graph's execution using `graph.Interrupt()` or `graph.InterruptU
 builder.AddNode("Approval", graph.NodeFunc[MyState](func(ctx context.Context, s MyState) (graph.Command[MyState], error) {
     if !s.IsApproved {
         // Stop execution and save checkpoint
-        return graph.Interrupt(), nil 
+        return graph.InterrupCmd[MyState]{}, nil
     }
     return graph.Update[MyState](func(s MyState) MyState { return s }), nil
 }))

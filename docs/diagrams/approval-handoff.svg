@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="264" viewBox="0 0 440 264" role="img" aria-labelledby="title desc">
+  <title id="title">Review handoff</title>
+  <desc id="desc">A parent enters its child graph. The child pauses at review, returning control to the caller. Human approval resumes the child and lets the parent finish.</desc>
+  <style>
+    text { font-family: system-ui, sans-serif; }
+    .label, .ink { font-size: 19px; font-weight: 550; }
+    .label { fill: #edf9f6; } .ink { fill: #103c35; }
+    .caption { fill: #b6d9d1; font-size: 17px; }
+    .step { fill: #22484a; stroke: #77aba2; }
+    .focus { fill: #a7ecd4; }
+    .edge { fill: none; stroke: #94ddc9; stroke-width: 2; stroke-linejoin: round; }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="m1 1 5 3-5 3" fill="none" stroke="#94ddc9" stroke-width="2"/>
+    </marker>
+  </defs>
+  <rect width="440" height="264" rx="16" fill="#112e31"/>
+  <text x="100" y="33" class="caption" text-anchor="middle">First execution</text>
+  <text x="338" y="33" class="caption" text-anchor="middle">After approval</text>
+  <rect x="18" y="47" width="166" height="44" rx="9" class="step"/>
+  <text x="101.0" y="75.0" class="label" text-anchor="middle">Parent starts</text>
+  <rect x="255" y="47" width="166" height="44" rx="9" class="step"/>
+  <text x="338.0" y="75.0" class="label" text-anchor="middle">Parent finishes</text>
+  <path d="M101 91v30" class="edge" marker-end="url(#arrow)"/>
+  <path d="M338 126V97" class="edge" marker-end="url(#arrow)"/>
+  <rect x="18" y="127" width="166" height="44" rx="9" class="step"/>
+  <text x="101.0" y="155.0" class="label" text-anchor="middle">Child pauses</text>
+  <rect x="255" y="127" width="166" height="44" rx="9" class="step"/>
+  <text x="338.0" y="155.0" class="label" text-anchor="middle">Child resumes</text>
+  <path d="M101 171v55h36" class="edge" marker-end="url(#arrow)"/>
+  <path d="M300 226h38v-49" class="edge" marker-end="url(#arrow)"/>
+  <rect x="143" y="205" width="154" height="42" rx="9" class="focus"/>
+  <text x="220.0" y="232.0" class="ink" text-anchor="middle">Human approval</text>
+</svg>

@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="300" viewBox="0 0 440 300" role="img" aria-labelledby="title desc">
+  <title id="title">Routing a workflow</title>
+  <desc id="desc">Setup reaches a router. The tools route executes a tool and loops back. The model route generates a response and ends the run.</desc>
+  <style>
+    text { font-family: system-ui, sans-serif; }
+    .label, .ink { font-size: 19px; font-weight: 550; }
+    .label { fill: #edf9f6; } .ink { fill: #103c35; }
+    .caption { fill: #b6d9d1; font-size: 17px; }
+    .step { fill: #22484a; stroke: #77aba2; }
+    .focus { fill: #a7ecd4; }
+    .edge { fill: none; stroke: #94ddc9; stroke-width: 2; stroke-linejoin: round; }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="m1 1 5 3-5 3" fill="none" stroke="#94ddc9" stroke-width="2"/>
+    </marker>
+  </defs>
+  <rect width="440" height="300" rx="16" fill="#112e31"/>
+  <rect x="155" y="18" width="130" height="40" rx="9" class="step"/>
+  <text x="220.0" y="44.0" class="label" text-anchor="middle">Setup</text>
+  <path d="M220 58v26" class="edge" marker-end="url(#arrow)"/>
+  <path d="m220 89 66 38-66 38-66-38z" class="focus"/>
+  <text x="220" y="133" class="ink" text-anchor="middle">Route</text>
+  <path d="M154 127H97v59" class="edge" marker-end="url(#arrow)"/>
+  <path d="M286 127h57v59" class="edge" marker-end="url(#arrow)"/>
+  <rect x="36" y="192" width="122" height="42" rx="9" class="step"/>
+  <text x="97.0" y="219.0" class="label" text-anchor="middle">Run tool</text>
+  <rect x="263" y="192" width="156" height="42" rx="9" class="step"/>
+  <text x="341.0" y="219.0" class="label" text-anchor="middle">Call model</text>
+  <path d="M36 213H18V73h161v32" class="edge" marker-end="url(#arrow)"/>
+  <path d="M341 234v22" class="edge" marker-end="url(#arrow)"/>
+  <rect x="296" y="262" width="90" height="28" rx="14" class="step"/>
+  <text x="341.0" y="282.0" class="label" text-anchor="middle">End</text>
+</svg>

@@ -1,0 +1,45 @@
+---
+title: Run your first graph
+description: Build and run a one-node Go workflow on your machine, then change its input and inspect the result.
+---
+
+import { Code } from '@astrojs/starlight/components';
+import source from '../../../../../examples/quickstart/main.go?raw';
+
+Build a graph that takes a name and returns a greeting. It runs entirely on your machine and needs only Go 1.26.10 or newer.
+
+## Create a Go module
+
+In a terminal, create an empty project and add Loom's graph package.
+
+```sh
+mkdir hello-loom
+cd hello-loom
+go mod init example.com/hello-loom
+go get github.com/masterkeysrd/loom/graph
+```
+
+## Add a greeting node
+
+Save this program as `main.go`. The two edges tell Loom to start at `greet` and finish when that node returns its update.
+
+<Code code={source.trimEnd()} lang="go" title="main.go" />
+
+## Run the graph
+
+```sh
+go run .
+```
+
+You should see this greeting.
+
+```text
+Hello, Ada!
+```
+
+Change `s.Name = "Ada"` to `s.Name = "Sam"` and run the program again. The input update sets the starting state, the node fills in `Text`, and `result.State` contains the final greeting.
+
+## Try another step
+
+- [Choose a provider](../../providers/) to call a model from your graph.
+- [Connect nodes and branch](../graphs/) to send different inputs down different paths.

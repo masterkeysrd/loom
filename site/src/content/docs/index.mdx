@@ -1,0 +1,30 @@
+---
+title: Build AI applications in Go
+description: Run your first Loom graph, connect a model, and save your workflow between runs.
+template: splash
+hero:
+  title: Build AI applications in Go.
+  tagline: Call language models, connect tools, and retrieve documents. Use a stateful graph when your application needs to branch, pause, or resume.
+  actions:
+    - text: Run your first graph
+      link: /loom/guides/quickstart/
+    - text: Go API reference
+      link: https://pkg.go.dev/github.com/masterkeysrd/loom#section-directories
+      variant: minimal
+  image:
+    file: ../../assets/first-graph.svg
+    alt: 'Start with Name set to Ada. The greet node sets Text to "Hello, Ada!" before the graph ends.'
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+## What are you building?
+
+<CardGrid>
+  <LinkCard title="Call a language model" description="Send a message, stream a reply, or request structured output." href="/loom/guides/llm-package/" />
+  <LinkCard title="Choose a provider" description="Find an integration for your credentials and runtime." href="/loom/providers/" />
+  <LinkCard title="Search your documents" description="Index passages and retrieve context for a model." href="/loom/guides/rag/" />
+  <LinkCard title="Resume a workflow" description="Save a checkpoint and continue after a restart." href="/loom/guides/persistence/" />
+  <LinkCard title="Call a tool" description="Give a model a Go function it can invoke." href="/loom/guides/tools/" />
+  <LinkCard title="Inspect a run" description="Follow a trace through your graph in Loom Studio." href="/loom/guides/observability/" />
+</CardGrid>

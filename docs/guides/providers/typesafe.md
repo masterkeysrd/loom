@@ -1,4 +1,6 @@
-# TypeSafe AI Provider ⚖️
+---
+title: "TypeSafe AI"
+---
 
 The TypeSafe AI provider (`loomtypesafe`) offers native, high-performance integration with TypeSafe AI's dedicated **System One / Decision Model** API. 
 
@@ -16,7 +18,7 @@ TypeSafe AI provides dedicated System One endpoints:
 
 ### Key Capabilities
 - **Ultra-low latency & cost**: Purpose-built decision inference at **$0.042 per 1M input tokens** ($0 output tokens).
-- **Automatic payload compression**: Payloads $\ge$ 1 KiB are automatically gzip-compressed by default.
+- **Automatic payload compression**: Payloads ≥ 1 KiB are automatically gzip-compressed by default.
 - **Resilient retries**: Built-in exponential backoff on HTTP `429 Too Many Requests` and `529 Overloaded`.
 - **Dynamic model catalog**: Models and profiles are queryable via `provider.ListModels(ctx)`.
 - **Extended context extension**: Context limits can be scaled from 64k up to 262k tokens via `loomtypesafe.LongContext`.
@@ -69,7 +71,7 @@ Available options:
 - `WithAPIKey(string)`: Sets the API key.
 - `WithBaseURL(string)`: Overrides the base URL (defaults to `https://api.typesafe.ai`).
 - `WithHTTPClient(*http.Client)`: Injects a custom HTTP client.
-- `WithCompression(bool)`: Controls automatic gzip compression for requests $\ge$ 1 KiB (enabled by default).
+- `WithCompression(bool)`: Controls automatic gzip compression for requests ≥ 1 KiB (enabled by default).
 - `WithMaxRetries(int)`: Sets the maximum number of retries on `429` (Too Many Requests) or `529` (Overloaded) responses (default: 3).
 
 ---
@@ -115,8 +117,7 @@ TypeSafe AI natively supports all three core decision question types:
    - Maps to TypeSafe AI's `"score"` question type.
    - Evaluates across **2 to 10 rubric levels**.
 
-> [!WARNING]
-> **Modality Support**: TypeSafe AI is optimized for pure text and structured JSON state (`decision.Text` and `decision.State`). It does **not** accept multimodal image inputs. For visual evaluations, use the OpenAI Decisions provider or the LLM fallback adapter.
+> **Caution.** **Modality Support**: TypeSafe AI is optimized for pure text and structured JSON state (`decision.Text` and `decision.State`). It does **not** accept multimodal image inputs. For visual evaluations, use the OpenAI Decisions provider or the LLM fallback adapter.
 
 ---
 

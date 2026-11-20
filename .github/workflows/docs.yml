@@ -1,29 +1,49 @@
 name: Documentation
 
 on:
+  pull_request:
   release:
     types: [published]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      
-      - name: Configure Git Credentials
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-node@v7
         with:
-          python-version: 3.x
+          node-version: 24
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm --prefix site ci
+      - run: make docs
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Test the first graph and checkpoint tutorials
+        run: go test ./examples/quickstart ./examples/resume
+      - name: Upload the release site
+        if: github.event_name == 'release'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/dist
 
-      - name: Install dependencies
-        run: pip install mkdocs-material
-
-      - name: Deploy to GitHub Pages
-        run: mkdocs gh-deploy --force
+  deploy:
+    # The Pages publishing source must be GitHub Actions.
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    concurrency:
+      group: github-pages
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

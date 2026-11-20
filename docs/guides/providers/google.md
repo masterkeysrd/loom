@@ -1,4 +1,6 @@
-# Google Gemini Provider 🔌
+---
+title: "Google Gemini"
+---
 
 The Google Gemini provider (GenAI) supports Gemini 1.5 Pro, Flash, and Gemini 2.0 models.
 
@@ -25,11 +27,13 @@ if err != nil {
     // handle error
 }
 
-model := llm.NewModel(provider, "gemini-1.5-pro")
+model, err := llm.NewModel(provider, "gemini-1.5-pro", nil)
+if err != nil {
+    log.Fatal(err)
+}
 ```
 
-> [!NOTE]
-> Providers created through `NewProvider`/`NewDefaultProvider` pin requests to the
+> **Note.** Providers created through `NewProvider`/`NewDefaultProvider` pin requests to the
 > `v1beta` API unless `HTTPOptions.APIVersion` is set explicitly. This keeps
 > `-latest` model aliases (such as `gemini-flash-lite-latest`) working, since the
 > Google GenAI SDK defaults API-key clients to `v1` from v1.78.0 onward. Vertex AI
@@ -77,7 +81,7 @@ model.DeleteCache(ctx, cacheID)
 
 ## 4. Model Profiles & Live Discovery
 
-Google GenAI models are statically defined with multimodal support, context window sizes, and tiered pricing, and the provider also implements [`llm.ModelLister`](../llm-package.md#5-live-model-discovery-llmmodellister) against the Gemini `models.list` and `models.get` endpoints:
+Google GenAI models are statically defined with multimodal support, context window sizes, and tiered pricing, and the provider also implements [`llm.ModelLister`](../llm/discovery.md#list-available-models) against the Gemini `models.list` and `models.get` endpoints:
 
 ```go
 // 1. Search static profiles

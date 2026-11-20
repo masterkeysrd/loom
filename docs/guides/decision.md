@@ -1,4 +1,6 @@
-# Decision Models ⚖️
+---
+title: "Decision models"
+---
 
 The `decision` package introduces a first-class **System One / Decision Model** abstraction for Loom. 
 
@@ -102,7 +104,7 @@ Features:
 - **Ultra-low cost**: $0.042 per 1M input tokens ($0 output tokens).
 - **Purpose-built models**: `loomtypesafe.ModelJevLatest` (`"jev-latest"`), `loomtypesafe.ModelJevPreview` (`"jev-preview"`), `loomtypesafe.ModelJev1_14_0` (`"jev-1.14.0"`), and `loomtypesafe.ModelJev1_13_0` (`"jev-1.13.0"`).
 - **Extended context extension**: Use `loomtypesafe.LongContext{Enabled: true}` to raise context limits from 64k to 262k tokens.
-- **Payload optimization & retries**: Automatic gzip compression for requests $\ge$ 1 KiB, exponential retries on `429` and `529`.
+- **Payload optimization & retries**: Automatic gzip compression for requests ≥ 1 KiB, exponential retries on `429` and `529`.
 - **Modality**: Text and structured JSON state (multimodal images not supported).
 
 ### LLM Fallback Adapter
@@ -288,12 +290,12 @@ pUser := ans.Prob("user")
 ```
 
 ### Ordinal Scores
-- `ans.Score`: Probability-weighted expected score ($\sum i \cdot P(i)$).
-- `ans.NormalizedScore()`: Expected score scaled to $[0.0, 1.0]$.
+- `ans.Score`: Probability-weighted expected score (Σ i × P(i)).
+- `ans.NormalizedScore()`: Expected score scaled to `[0.0, 1.0]`.
 - `ans.TopLevel()`: Returns the `LevelProbability` with the highest probability.
 
 ### Confidence & Refusals
-- `ans.Confidence`: Normalized Shannon entropy concentration ($1 - H(p)/\ln(N)$) clamped between `0.0` (maximum uncertainty) and `1.0` (complete certainty).
+- `ans.Confidence`: Normalized Shannon entropy concentration (`1 − H(p)/ln(N)`) clamped between `0.0` (maximum uncertainty) and `1.0` (complete certainty).
 - `ans.Refused`: Indicates the model refused to evaluate the question (due to safety filters, unanswerable queries, or missing context).
 
 ---
@@ -384,4 +386,4 @@ Decision models include built-in OpenTelemetry instrumentation via `TelemetryMid
 - Explore [OpenAI Provider](./providers/openai.md) for configuring `gpt-6-luna` with native decisions.
 - Explore [Ollama Provider](./providers/ollama.md) for running local `nimble` and `clef` System One models.
 - Explore [TypeSafe AI Provider](./providers/typesafe.md) for purpose-built, high-throughput System One decision models.
-- Review [Graph Workflows](./quickstart.md) to learn how to construct complex graph agents.
+- Review [Graph Workflows](./graphs.md) to learn how to construct complex graph agents.

@@ -1,18 +1,19 @@
-# Graph Workflows 🕸️
+---
+title: "Graph workflows"
+---
 
 The `graph` package is the core execution engine of Loom. It provides primitives for defining, executing, streaming, and persisting multi-step AI agent workflows as directed graphs.
 
 Loom is built on a **State-First** architecture. Rather than managing sprawling control flow, nested loops, and side-effects in unstructured application code, you define an explicit graph where each node transforms a strongly-typed shared state.
 
-```mermaid
-flowchart LR
-    START((START)) --> A[Setup]
-    A --> B{Route}
-    B -->|tools| C[Tool Execution]
-    B -->|llm| D[LLM Generation]
-    C --> B
-    D --> END((END))
-```
+After setup, the router chooses the next step based on the current state.
+
+![Setup reaches a router. The tools route executes a tool and loops back. The model route generates a response and ends the run.](../diagrams/route-loop.svg)
+
+| Route | Next step | Where it leads |
+| --- | --- | --- |
+| `tools` | Execute a tool | Return to the router with the tool result. |
+| `llm` | Generate a response | End the run. |
 
 ---
 
@@ -69,8 +70,7 @@ func (s AgentState) Copy() AgentState {
 }
 ```
 
-> [!TIP]
-> Ensure all exported state fields include `json` tags. Loom checkpointers decompose state into channel-level JSON keys during persistence.
+> **Tip.** Ensure all exported state fields include `json` tags. Loom checkpointers decompose state into channel-level JSON keys during persistence.
 
 ---
 
@@ -172,8 +172,7 @@ Loom provides three types of edges to connect nodes:
    })
    ```
 
-> [!NOTE]
-> `graph.START` and `graph.END` are reserved virtual nodes representing graph entry and termination points.
+> **Note.** `graph.START` and `graph.END` are reserved virtual nodes representing graph entry and termination points.
 
 ---
 
@@ -181,16 +180,9 @@ Loom provides three types of edges to connect nodes:
 
 Loom natively supports concurrent execution. When multiple outgoing edges emerge from a node (or from `START`), the engine executes target nodes in parallel using goroutines.
 
-```mermaid
-flowchart TD
-    START((START)) --> A[Fetch Docs]
-    START((START)) --> B[Fetch User Profile]
-    START((START)) --> C[Fetch Permissions]
-    A --> D[Synthesize Response]
-    B --> D
-    C --> D
-    D --> END((END))
-```
+In this example, three nodes fetch documents, the user profile, and permissions in parallel. Once all three finish, one node synthesizes the response and the graph ends.
+
+![Start fans out to fetch documents, a profile, and permissions concurrently. The three branches join at one synthesis node.](../diagrams/parallel-join.svg)
 
 ```go
 builder := graph.New[AgentState]()
@@ -304,7 +296,7 @@ parentBuilder.AddNode("calculator", mathNode)
 
 When saving checkpoints across nested sub-graphs, Loom scopes state storage into LangGraph-style hierarchical namespaces:
 
-$$\text{CheckpointNS} = \langle\text{parent\_ns}\rangle \mid \langle\text{node\_name}\rangle:\langle\text{task\_id}\rangle$$
+`CheckpointNS = parent_ns | node_name:task_id`
 
 Examples:
 - Root level: `""` (empty string)
@@ -416,7 +408,7 @@ fmt.Println("Graph Diagram Preview:", imageURL)
 ```
 
 Example Mermaid output:
-```mermaid
+```text
 graph TD
   START((START))
   classify[classify]

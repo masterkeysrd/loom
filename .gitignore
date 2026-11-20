@@ -1,2 +1,5 @@
 /.loom
 /logs
+/site/node_modules/
+/site/.astro/
+/site/dist/

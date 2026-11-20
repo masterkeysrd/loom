@@ -1,4 +1,6 @@
-# Tools & Streaming 🛠️
+---
+title: "Tools and streaming"
+---
 
 Tools allow your AI agents to interact with external systems, APIs, and databases. Loom provides a robust, type-safe way to define tools and execute them within your graphs.
 

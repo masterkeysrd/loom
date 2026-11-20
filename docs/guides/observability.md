@@ -1,4 +1,6 @@
-# Observability
+---
+title: "Explore traces in Loom Studio"
+---
 
 Loom provides first-class support for observability using OpenTelemetry (OTel). This allows you to trace the execution of your agents, monitor performance, and debug complex multi-step workflows.
 

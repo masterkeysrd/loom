@@ -1,4 +1,6 @@
-# Conversations & Messages 💬
+---
+title: "Conversations and messages"
+---
 
 In Loom, a conversation is represented as an ordered list of messages. Because Loom is "state-first," these messages are typically stored in your `GraphState` and passed to LLMs to provide context.
 
@@ -42,8 +44,7 @@ imageMsg := message.NewUserImage(imageData, "image/png")
 imageMsg := message.NewUserImageURL("https://example.com/photo.jpg")
 ```
 
-> [!IMPORTANT]
-> **Strict Modality Validation (Zero Silent Drops):** Loom never silently ignores or drops media blocks (`ImageBlock`, `AudioBlock`, `VideoBlock`, `DocumentBlock`). If a known model profile does not list the modality in `Modalities.Inputs`, or if the target provider's wire protocol does not support that block type, role, or source mode (e.g., URL vs. inline bytes), the call fails immediately before spending tokens with an error matching `errors.Is(err, profile.ErrUnsupportedModality)`. Historical `*message.ThinkingBlock` items on prior `Assistant` turns remain lenient across providers.
+> **Caution.** **Strict Modality Validation (Zero Silent Drops):** Loom never silently ignores or drops media blocks (`ImageBlock`, `AudioBlock`, `VideoBlock`, `DocumentBlock`). If a known model profile does not list the modality in `Modalities.Inputs`, or if the target provider's wire protocol does not support that block type, role, or source mode (e.g., URL vs. inline bytes), the call fails immediately before spending tokens with an error matching `errors.Is(err, profile.ErrUnsupportedModality)`. Historical `*message.ThinkingBlock` items on prior `Assistant` turns remain lenient across providers.
 
 ### Thinking Blocks
 Some models (like Claude 3.5 or Gemini 2.0) can return their internal reasoning. Loom surfaces this as a `ThinkingBlock`.

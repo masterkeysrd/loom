@@ -1,4 +1,6 @@
-# Codex with Sign in with ChatGPT
+---
+title: "Codex with Sign in with ChatGPT"
+---
 
 Use `providers/codex` to call the Responses API directly with an eligible ChatGPT
 plan. You need a browser for the first sign-in. Loom sends the conversation and
@@ -33,7 +35,7 @@ go run ./examples/codex -model MODEL_ID
 The example keeps one account registration in `loom/codex-example/session.json`
 under the OS user configuration directory. Run one instance at a time so a
 single process owns token refresh. Use `-login` again to reauthorize the saved
-account. Chat history lasts for the current process. [Example source](../../../examples/codex/main.go)
+account. Chat history lasts for the current process. [Example source](https://github.com/masterkeysrd/loom/blob/main/examples/codex/main.go)
 
 ## Register and sign in
 

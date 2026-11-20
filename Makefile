@@ -14,7 +14,7 @@ help:
 # Dependencies
 install:
 	go mod download
-	pip install -r docs/requirements.txt
+	npm --prefix site ci
 
 # Development
 generate:
@@ -28,13 +28,13 @@ lint:
 
 # Documentation
 docs:
-	python3 -m mkdocs build
+	npm --prefix site run build
 
 docs-serve:
-	python3 -m mkdocs serve
+	npm --prefix site run dev
 
 # Cleanup
 clean:
-	rm -rf site/
+	rm -rf site/dist/ site/.astro/
 	rm -rf logs/*.json
 	rm -rf logs/*.jsonl

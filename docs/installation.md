@@ -1,60 +1,23 @@
-# Installation 📦
-
-Loom is a Go library. To include it in your project, use `go get`.
-
-## Requirements
-
-- **Go**: 1.23 or higher is recommended (Loom uses generics and modern Go features).
-- **Environment**: Linux, macOS, or Windows.
-
-## Basic Installation
-
-```bash
-go get github.com/masterkeysrd/loom
-```
-
-## LLM Providers
-
-Depending on which LLM providers you intend to use, you may need to set specific environment variables for authentication.
-
-| Provider | Requirement |
-|---|---|
-| **OpenAI** | `OPENAI_API_KEY` |
-| **Anthropic** | `ANTHROPIC_API_KEY` |
-| **Google Gemini** | `GOOGLE_API_KEY` |
-| **Ollama** | Local Ollama instance running |
-
-## Persistence Backends
-
-Loom supports SQLite and PostgreSQL for checkpointing. These are optional but required if you want state persistence.
-
-### SQLite
-Requires the `github.com/mattn/go-sqlite3` driver.
-
-```bash
-go get github.com/mattn/go-sqlite3
-```
-
-### PostgreSQL
-Requires a standard PostgreSQL connection string.
-
-## Development Setup
-
-If you plan to contribute to Loom or run the documentation locally, you can use the provided `Makefile` to simplify the setup.
-
-```bash
-# Install all development dependencies (Go modules and MkDocs)
-make install
-
-# Start the documentation server
-make docs-serve
-```
-
-Available commands:
-- `make generate`: Run code generation for LLM profiles.
-- `make test`: Run all tests with race detection.
-- `make clean`: Cleanup logs and temporary files.
-
 ---
-Once installed
-, proceed to the [Quick Start Guide](./guides/quickstart.md) to build your first agent!
+title: Install Loom
+description: Add Loom to a Go module and choose what to set up for your workflow.
+---
+
+Loom requires Go 1.26.10 or later. In the directory containing your project's `go.mod`, add the graph package.
+
+```sh
+go get github.com/masterkeysrd/loom/graph
+```
+
+Starting from an empty directory? [Run your first graph](https://masterkeysrd.github.io/loom/guides/quickstart/) walks through creating a module, executing a node, and checking the result.
+
+## Add integrations when you need them
+
+- To call a language model, [choose a provider](./providers.md) and follow its setup instructions. For example, [OpenAI](./guides/providers/openai.md) uses an API key and [Ollama](./guides/providers/ollama.md) connects to a model running locally.
+- To resume a workflow after a restart, [configure a SQLite or PostgreSQL checkpointer](./guides/persistence.md).
+
+## Work on Loom itself
+
+From the repository root, `make install` installs Go and documentation dependencies. Use `make docs-serve` to preview the Astro site and `make docs` to build it. Use Node.js 24 and npm to match the documentation build in CI.
+
+Run the Go tests with `make test` and regenerate model profiles with `make generate`.

@@ -1,8 +1,8 @@
 # loom 🧵
 
-`loom` is a high-performance, graph-based AI workflow engine for Go. It allows you to build complex agentic systems by defining multi-step workflows as directed graphs, seamlessly connecting them to any large language model, and persisting execution state for long-running or interrupted tasks.
+Loom is a Go library for building AI workflows as graphs. Connect functions and model calls, branch on their results, and add a checkpointer to pause work and resume it across processes.
 
-Unlike linear chains, `loom` provides a robust, state-first architecture inspired by state machines, making it easy to build agents that can loop, branch, and resume exactly where they left off.
+[Run your first graph](https://masterkeysrd.github.io/loom/guides/quickstart/) · [Documentation](https://masterkeysrd.github.io/loom/) · [Go API reference](https://pkg.go.dev/github.com/masterkeysrd/loom#section-directories)
 
 ## Key Features
 
@@ -18,105 +18,19 @@ Unlike linear chains, `loom` provides a robust, state-first architecture inspire
 - **🛠️ Tool Integration**: Native support for tool calling and tool-use loops.
 - **🛡️ Type Safe**: Built from the ground up with Go generics for maximum developer productivity and safety.
 
-## Documentation
+## Quick start
 
-Detailed guides on how to use Loom's features:
+From a checkout of this repository with Go 1.26.10 or newer, run the local greeting workflow.
 
-- [🚀 Quick Start Guide](./docs/guides/quickstart.md): Build your first graph-based agent.
-- [🕸️ Graph Workflows](./docs/guides/graphs.md): Parallel fan-out/fan-in, sub-graphs (`AsNode`/`MapNode`), retries, and step limits.
-- [🖥️ Loom Studio](./docs/guides/observability.md): The built-in visualization and debugging dashboard.
-- [💬 Conversations](./docs/guides/conversations.md): Message roles, multimodal content, and history.
-- [🧠 LLM Package](./docs/guides/llm-package.md): Learn about the Model API and Registry.
-- [⚖️ Decision Models](./docs/guides/decision.md): Fast, calibrated System One probabilistic evaluations and routing.
-- [🧭 Embedding Models](./docs/guides/embedding.md): Dense text and multimodal vector embeddings.
-- [💾 Persistent Store](./docs/guides/persistent-store.md): Namespaced key-value store with semantic vector indexing (`memorydb`, `sqlite`, `pg`).
-- [📚 RAG (Documents, VectorStore & Retrievers)](./docs/guides/rag.md): Lazy document loaders, text splitters, vector stores, RRF fusion, and System One reranking.
-- [🔌 Providers: OpenAI](./docs/guides/providers/openai.md), [Codex](./docs/guides/providers/codex.md), [Anthropic](./docs/guides/providers/anthropic.md), [Gemini](./docs/guides/providers/google.md), [Antigravity](./docs/guides/providers/antigravity.md), [Ollama](./docs/guides/providers/ollama.md), [TypeSafe AI](./docs/guides/providers/typesafe.md), [Claude Code](./docs/guides/providers/claudecode.md), [GitHub Copilot](./docs/guides/providers/copilot.md).
-- [🔌 MCP Support](./docs/guides/mcp.md): Connect to MCP servers for tools, resources, and prompts.
-- [💾 Persistence & State](./docs/guides/persistence.md): Learn about checkpointing and thread resumption.
-- [🤝 Human-in-the-Loop](./docs/guides/hitl.md): Patterns for human approval and input.
-- [🛠️ Tools & Streaming](./docs/guides/tools.md): Integrate tools and handle real-time events.
-- [🧠 Memory & Context](./docs/guides/memory.md): Manage conversation history and token limits.
-- [🔍 Observability](./docs/guides/observability.md): Deep-dive into metrics and tracing.
-- [🏗️ Custom Providers](./docs/guides/custom-providers.md): Extend Loom with new LLM backends.
-
-## Installation
-
-```bash
-go get github.com/masterkeysrd/loom
+```sh
+go run ./examples/quickstart
 ```
 
-For development and documentation setup, see the [Installation Guide](./docs/installation.md).
-
-## Quick Start
-
-Create a simple chat agent that loops until a specific condition is met.
-
-```go
-package main
-
-import (
-    "context"
-    "fmt"
-    "log"
-
-    "github.com/masterkeysrd/loom/graph"
-    "github.com/masterkeysrd/loom/llm"
-    "github.com/masterkeysrd/loom/providers/openai"
-    "github.com/masterkeysrd/loom/message"
-)
-
-type MyState struct {
-    Messages message.MessageList
-}
-
-func main() {
-    ctx := context.Background()
-
-    // 1. Initialize an LLM provider
-    provider, _ := loomopenai.NewDefaultProvider()
-    model := llm.NewModel(provider, "gpt-4o").
-        WithTemperature(0.7).
-        WithMaxTokens(1000)
-
-    // 2. Build the workflow graph
-    builder := graph.New[MyState]().
-        WithName("chat-agent").
-        AddNode("llm", func(ctx context.Context, s MyState) (graph.Command[MyState], error) {
-            resp, err := model.Invoke(ctx, s.Messages)
-            if err != nil {
-                return nil, err
-            }
-            return graph.Update[MyState](func(s MyState) MyState {
-                s.Messages = append(s.Messages, resp)
-                return s
-            }), nil
-        })
-
-    builder.AddEdge(graph.START, "llm")
-    builder.AddEdge("llm", graph.END)
-
-    g, _ := builder.Build()
-
-    // 3. Execute the graph
-    initialState := MyState{
-        Messages: message.MessageList{
-            message.NewUserText("What is the best way to weave a loom?"),
-        },
-    }
-
-    // Pass a unique ThreadID for telemetry correlation
-    snapshot, err := g.Execute(ctx, graph.Update[MyState](func(s MyState) MyState {
-        return initialState
-    }), &graph.Location{ThreadID: "first-weave"})
-
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    fmt.Println(snapshot.State.Messages.Last().GetContent().Text())
-}
+```text
+Hello, Ada!
 ```
+
+To build it in your own project, follow the [quick start](https://masterkeysrd.github.io/loom/guides/quickstart/). To make a model call, [choose a provider](https://masterkeysrd.github.io/loom/providers/).
 
 ## 🖥️ Loom Studio
 

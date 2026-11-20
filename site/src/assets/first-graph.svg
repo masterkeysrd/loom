@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
+  <defs>
+    <pattern id="grid" width="16" height="16" patternUnits="userSpaceOnUse">
+      <circle cx="8" cy="8" r="1" fill="#47706e"/>
+    </pattern>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="m1 1 5 3-5 3" fill="none" stroke="#90e6ce" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <rect width="400" height="300" rx="20" fill="#112e31"/>
+  <rect x="1" y="1" width="398" height="298" rx="19" fill="url(#grid)" stroke="#3b6261"/>
+
+  <!-- The elbows connect the exit port of each node to the next entry port. -->
+  <g fill="none" stroke="#90e6ce" stroke-width="2.5" marker-end="url(#arrow)">
+    <path d="M67 79v54q0 12 12 12h34"/>
+    <path d="M278 145h45q12 0 12 12v61"/>
+  </g>
+
+  <g font-family="system-ui, sans-serif" font-size="18" font-weight="600">
+    <rect x="24" y="34" width="100" height="45" rx="22.5" fill="#203f43" stroke="#70ab9e"/>
+    <path d="m43 50 10 7-10 7z" fill="#b1e8d7"/>
+    <text x="65" y="63" fill="#ecfaf5">Start</text>
+
+    <rect x="119" y="112" width="159" height="66" rx="12" fill="#a7ecd4"/>
+    <rect x="134" y="127" width="36" height="36" rx="8" fill="#20564f"/>
+    <path d="m146 140-5 5 5 5m11-10 5 5-5 5" fill="none" stroke="#c1ffea" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="185" y="152" font-family="ui-monospace, monospace" font-size="23" fill="#113a36">greet</text>
+    <circle cx="278" cy="145" r="4" fill="#173e39" stroke="#a7ecd4" stroke-width="2"/>
+
+    <rect x="286" y="224" width="90" height="45" rx="22.5" fill="#203f43" stroke="#70ab9e"/>
+    <rect x="303" y="241" width="10" height="10" rx="2" fill="#b1e8d7"/>
+    <text x="325" y="253" fill="#ecfaf5">End</text>
+  </g>
+
+  <g font-family="ui-monospace, monospace" font-size="19" fill="#f0fcf8">
+    <text x="148" y="63"><tspan fill="#a5c6c2">Name</tspan> "Ada"</text>
+    <text x="31" y="252"><tspan fill="#a5c6c2">Text</tspan> "Hello, Ada!"</text>
+  </g>
+</svg>

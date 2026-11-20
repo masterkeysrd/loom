@@ -1,6 +1,8 @@
-# Claude Code Provider 🔌
+---
+title: "Claude Code"
+---
 
-The Claude Code provider (`providers/claudecode`) implements [`llm.Provider`](../../../llm/provider.go) on top of the official `claude` CLI (`stream-json` + `control` protocol) using an **in-process mini-proxy**.
+The Claude Code provider (`providers/claudecode`) implements [`llm.Provider`](https://pkg.go.dev/github.com/masterkeysrd/loom/llm#Provider) on top of the official `claude` CLI (`stream-json` + `control` protocol) using an **in-process mini-proxy**.
 
 It lets you run standard Loom graphs (`Agent -> Tools -> Agent` loops, `model.BindTools`, checkpoints, compaction, and retries) backed by your local Claude Code installation and authentication (Claude Pro/Max subscription, `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, or custom Anthropic-compatible endpoints such as Ollama).
 
@@ -49,7 +51,7 @@ if err != nil {
 }
 ```
 
-Model profiles are derived dynamically from [`providers/anthropic`](anthropic.md)'s `loomgen` catalog alongside Claude Code aliases (`sonnet`, `opus`, `haiku`, `default`). Custom model IDs (e.g., Ollama models) are also accepted by `llm.NewModel`.
+Model profiles are derived dynamically from [`providers/anthropic`](./anthropic.md)'s `loomgen` catalog alongside Claude Code aliases (`sonnet`, `opus`, `haiku`, `default`). Custom model IDs (e.g., Ollama models) are also accepted by `llm.NewModel`.
 
 Always call `defer provider.Close()` so warm or parked CLI subprocesses and any temporary config directories are cleaned up when your application exits.
 
@@ -136,7 +138,7 @@ if errors.As(err, &syncErr) && len(syncErr.Messages) > 0 {
 
 ### Quota Inspection (`llm.QuotaProvider`)
 
-When running with a `claude.ai` subscription credential, `Provider` implements [`llm.QuotaProvider`](../llm-package.md#6-quota--rate-limit-inspection-llmquotaprovider) by querying Claude Code's `/usage` slash command and decoding `usage_report.rate_limits` (`limits[]` rolling windows and `extra_usage` credit pools):
+When running with a `claude.ai` subscription credential, `Provider` implements [`llm.QuotaProvider`](../llm/usage.md#check-available-quota) by querying Claude Code's `/usage` slash command and decoding `usage_report.rate_limits` (`limits[]` rolling windows and `extra_usage` credit pools):
 
 ```go
 if qp, ok := provider.(llm.QuotaProvider); ok {
@@ -150,7 +152,7 @@ Unauthenticated sessions or plain `ANTHROPIC_API_KEY` environments return an emp
 
 ## 6. Running the Example & Local Endpoints (e.g. Ollama)
 
-See [`examples/claudecode`](../../../examples/claudecode/main.go) for a streaming interactive REPL + `Agent -> Tools -> Agent` demo:
+See [`examples/claudecode`](https://github.com/masterkeysrd/loom/blob/main/examples/claudecode/main.go) for a streaming interactive REPL + `Agent -> Tools -> Agent` demo:
 
 ```bash
 # With your local Claude Code login (~/.claude):
@@ -170,8 +172,8 @@ go run ./examples/claudecode --debug --endpoint http://localhost:11434 --model q
 ## 7. Limitations
 
 - Sampling parameters not exposed by the `claude` CLI (`Temperature`, `TopP`, `TopK`, `PresencePenalty`, `FrequencyPenalty`, `Stop`, `ContextWindow`) are ignored; `Thinking.Effort` maps to `--effort <level>` (`low`, `medium`, `high`, `xhigh`, `max`).
-- Multimodal media blocks (`ImageBlock`, `AudioBlock`, `VideoBlock`, `DocumentBlock`) are not transported over the `claude` CLI `stream-json` prompt/MCP bridge and fail fast with `profile.ErrUnsupportedModality` instead of being dropped; use [`providers/anthropic`](anthropic.md) for multimodal image/PDF inputs.
+- Multimodal media blocks (`ImageBlock`, `AudioBlock`, `VideoBlock`, `DocumentBlock`) are not transported over the `claude` CLI `stream-json` prompt/MCP bridge and fail fast with `profile.ErrUnsupportedModality` instead of being dropped; use [`providers/anthropic`](./anthropic.md) for multimodal image/PDF inputs.
 - Model swaps and permission-mode changes on sequential warm turns reuse the live session via `control_request` (`set_model`, `set_permission_mode`), and context cancellation issues an `interrupt` control request before shutdown.
 - `ListModels` / `GetModel` discover models dynamically from the CLI's `initialize` handshake (matching `providers/copilot`, so `ListProfiles` / `GetProfile` return cached discovered models + overrides without spawning eagerly) and enrich matched IDs with limits, pricing, and modalities from `providers/anthropic`.
 - When using a Claude Pro/Max subscription (`CLAUDE_CODE_OAUTH_TOKEN` or local login), reported dollar estimates are informational; token usage (`Input`, `Output`, `CacheRead`, `CacheWrite`) is still reported in Loom telemetry and Studio.
-- If you have an `ANTHROPIC_API_KEY` and do not need the `claude` CLI harness or subscription auth, [`providers/anthropic`](anthropic.md) remains the recommended choice for lowest latency and full parameter control.
+- If you have an `ANTHROPIC_API_KEY` and do not need the `claude` CLI harness or subscription auth, [`providers/anthropic`](./anthropic.md) remains the recommended choice for lowest latency and full parameter control.

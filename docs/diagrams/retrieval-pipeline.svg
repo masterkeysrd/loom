@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="300" viewBox="0 0 440 300" role="img" aria-labelledby="title desc">
+  <title id="title">Index and query a vector store</title>
+  <desc id="desc">Indexing embeds document chunks in the vector store. Retrieval compares an embedded question with those stored vectors and returns matching passages.</desc>
+  <style>
+    text { font-family: system-ui, sans-serif; }
+    .label, .ink { font-size: 19px; font-weight: 550; }
+    .label { fill: #edf9f6; } .ink { fill: #103c35; }
+    .caption { fill: #b6d9d1; font-size: 17px; }
+    .step { fill: #22484a; stroke: #77aba2; }
+    .focus { fill: #a7ecd4; }
+    .edge { fill: none; stroke: #94ddc9; stroke-width: 2; stroke-linejoin: round; }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="m1 1 5 3-5 3" fill="none" stroke="#94ddc9" stroke-width="2"/>
+    </marker>
+  </defs>
+  <rect width="440" height="300" rx="16" fill="#112e31"/>
+  <text x="112" y="31" class="caption" text-anchor="middle">Index documents</text>
+  <text x="327" y="31" class="caption" text-anchor="middle">Answer a query</text>
+  <rect x="27" y="44" width="170" height="40" rx="9" class="step"/>
+  <text x="112.0" y="70.0" class="label" text-anchor="middle">Documents</text>
+  <rect x="242" y="44" width="170" height="40" rx="9" class="step"/>
+  <text x="327.0" y="70.0" class="label" text-anchor="middle">Question</text>
+  <path d="M112 84v24" class="edge" marker-end="url(#arrow)"/>
+  <path d="M327 84v24" class="edge" marker-end="url(#arrow)"/>
+  <rect x="16" y="114" width="192" height="46" rx="9" class="step"/>
+  <text x="112.0" y="143.0" class="label" text-anchor="middle">Split and embed</text>
+  <rect x="231" y="114" width="192" height="46" rx="9" class="step"/>
+  <text x="327.0" y="143.0" class="label" text-anchor="middle">Embed query</text>
+  <path d="M112 160v41h23" class="edge" marker-end="url(#arrow)"/>
+  <path d="M327 160v41h-23" class="edge" marker-end="url(#arrow)"/>
+  <rect x="141" y="181" width="157" height="42" rx="9" class="focus"/>
+  <text x="219.5" y="208.0" class="ink" text-anchor="middle">Vector store</text>
+  <path d="M220 223v20" class="edge" marker-end="url(#arrow)"/>
+  <rect x="112" y="249" width="216" height="37" rx="9" class="step"/>
+  <text x="220.0" y="273.5" class="label" text-anchor="middle">Matching passages</text>
+</svg>

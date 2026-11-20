@@ -36,6 +36,7 @@ func CloneBlock(block Block) Block {
 		}
 	case *ThinkingBlock:
 		return &ThinkingBlock{
+			ID:       current.ID,
 			Thinking: current.Thinking,
 			Extras:   maps.Clone(current.Extras),
 		}

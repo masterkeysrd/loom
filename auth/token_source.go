@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/masterkeysrd/loom/internal/authstate"
 	"golang.org/x/oauth2"
 )
 
@@ -62,18 +63,20 @@ type PersistentConfig struct {
 	// Load loads the initial token from the developer's storage (optional).
 	Load func() (*oauth2.Token, error)
 	// Save persists a newly acquired or refreshed token to the developer's storage (optional).
+	// If it fails, Token returns the error and retries saving the same token on its next call.
 	Save func(*oauth2.Token) error
 	// Login acquires a new token when no token is loaded or when refreshing an expired token fails (optional).
 	Login func(ctx context.Context) (*oauth2.Token, error)
 }
 
 type persistentTokenSource struct {
-	ctx     context.Context
-	cfg     *oauth2.Config
-	pcfg    PersistentConfig
-	mu      sync.Mutex
-	base    oauth2.TokenSource
-	lastTok *oauth2.Token
+	ctx         context.Context
+	cfg         *oauth2.Config
+	pcfg        PersistentConfig
+	mu          sync.Mutex
+	base        oauth2.TokenSource
+	lastTok     *oauth2.Token
+	pendingSave authstate.PendingSave[*oauth2.Token]
 }
 
 // NewPersistentTokenSource creates a thread-safe [oauth2.TokenSource] that loads tokens
@@ -85,9 +88,10 @@ func NewPersistentTokenSource(ctx context.Context, cfg *oauth2.Config, pcfg Pers
 		ctx = context.Background()
 	}
 	return &persistentTokenSource{
-		ctx:  ctx,
-		cfg:  cfg,
-		pcfg: pcfg,
+		ctx:         ctx,
+		cfg:         cfg,
+		pcfg:        pcfg,
+		pendingSave: authstate.PendingSave[*oauth2.Token]{Write: pcfg.Save},
 	}
 }
 
@@ -100,13 +104,6 @@ func (s *persistentTokenSource) initBase(tok *oauth2.Token) {
 	s.base = oauth2.StaticTokenSource(tok)
 }
 
-func (s *persistentTokenSource) save(tok *oauth2.Token) error {
-	if s.pcfg.Save == nil {
-		return nil
-	}
-	return s.pcfg.Save(tok)
-}
-
 func (s *persistentTokenSource) loginAndSave() (*oauth2.Token, error) {
 	tok, err := s.pcfg.Login(s.ctx)
 	if err != nil {
@@ -115,16 +112,20 @@ func (s *persistentTokenSource) loginAndSave() (*oauth2.Token, error) {
 	if tok == nil {
 		return nil, errors.New("auth: login returned nil token")
 	}
-	if err := s.save(tok); err != nil {
+	s.initBase(tok)
+	if err := s.pendingSave.Save(tok); err != nil {
 		return nil, err
 	}
-	s.initBase(tok)
 	return tok, nil
 }
 
 func (s *persistentTokenSource) Token() (*oauth2.Token, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if err := s.pendingSave.Retry(); err != nil {
+		return nil, err
+	}
 
 	if s.base == nil && s.pcfg.Load != nil {
 		if tok, err := s.pcfg.Load(); err == nil && tok != nil {
@@ -149,7 +150,7 @@ func (s *persistentTokenSource) Token() (*oauth2.Token, error) {
 
 	if s.lastTok == nil || s.lastTok.AccessToken != tok.AccessToken || s.lastTok.RefreshToken != tok.RefreshToken {
 		s.lastTok = tok
-		if err := s.save(tok); err != nil {
+		if err := s.pendingSave.Save(tok); err != nil {
 			return nil, err
 		}
 	}

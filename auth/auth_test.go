@@ -220,7 +220,7 @@ func TestPersistentTokenSource_MissingNoLogin(t *testing.T) {
 	}
 }
 
-func TestPersistentTokenSource_RefreshAndSave(t *testing.T) {
+func TestPersistentTokenSource_RetriesSaveAfterRefresh(t *testing.T) {
 	// Setup a mock OAuth2 token refresh server
 	var refreshRequests int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -242,6 +242,8 @@ func TestPersistentTokenSource_RefreshAndSave(t *testing.T) {
 		},
 	}
 
+	saveErr := errors.New("storage unavailable")
+	var attempts int
 	var savedToken *oauth2.Token
 	ts := NewPersistentTokenSource(context.Background(), cfg, PersistentConfig{
 		Load: func() (*oauth2.Token, error) {
@@ -253,11 +255,18 @@ func TestPersistentTokenSource_RefreshAndSave(t *testing.T) {
 			}, nil
 		},
 		Save: func(tok *oauth2.Token) error {
+			attempts++
+			if attempts == 1 {
+				return saveErr
+			}
 			savedToken = tok
 			return nil
 		},
 	})
 
+	if tok, err := ts.Token(); tok != nil || !errors.Is(err, saveErr) {
+		t.Fatalf("first Token() = (%v, %v), want (nil, save error)", tok, err)
+	}
 	tok, err := ts.Token()
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -265,7 +274,7 @@ func TestPersistentTokenSource_RefreshAndSave(t *testing.T) {
 	if tok.AccessToken != "refreshed-access-token" {
 		t.Errorf("expected refreshed token 'refreshed-access-token', got %q", tok.AccessToken)
 	}
-	if savedToken == nil || savedToken.AccessToken != "refreshed-access-token" {
+	if attempts != 2 || savedToken == nil || savedToken.RefreshToken != "new-refresh-token" || savedToken.AccessToken != "refreshed-access-token" {
 		t.Errorf("expected Save() to be called with refreshed token, got %+v", savedToken)
 	}
 	if atomic.LoadInt32(&refreshRequests) != 1 {

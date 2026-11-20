@@ -57,6 +57,7 @@ nav:
       - Model Context Protocol (MCP): guides/mcp.md
   - LLM Providers:
       - OpenAI: guides/providers/openai.md
+      - Codex: guides/providers/codex.md
       - Anthropic: guides/providers/anthropic.md
       - Claude Code: guides/providers/claudecode.md
       - GitHub Copilot: guides/providers/copilot.md

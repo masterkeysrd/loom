@@ -135,17 +135,20 @@ func RenderCallback(w http.ResponseWriter, r *http.Request, tmpl *template.Templ
 type AuthorizationResult struct {
 	Code  string `json:"code"`
 	State string `json:"state"`
+	// ClientID is supplied by providers that register a client during authorization.
+	ClientID string `json:"client_id,omitempty"`
 }
 
 type loopbackServer struct {
-	redirectURL   *url.URL
-	expectedState string
-	opts          LoopbackOptions
-	listener      net.Listener
-	server        *http.Server
-	resChan       chan *AuthorizationResult
-	errChan       chan error
-	closeOnce     sync.Once
+	redirectURL        *url.URL
+	expectedState      string
+	validateErrorState bool
+	opts               LoopbackOptions
+	listener           net.Listener
+	server             *http.Server
+	resChan            chan *AuthorizationResult
+	errChan            chan error
+	closeOnce          sync.Once
 }
 
 func parseRedirectURL(raw string) (*url.URL, error) {
@@ -195,20 +198,19 @@ func (s *loopbackServer) serve() {
 
 func (s *loopbackServer) handleCallback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	if errParam := q.Get("error"); errParam != "" {
-		errDesc := q.Get("error_description")
-		s.render(w, r, CallbackData{Error: errParam, ErrorDescription: errDesc})
-		s.sendErr(fmt.Errorf("auth: oauth callback error %s: %s", errParam, errDesc))
-		return
-	}
-
 	state := q.Get("state")
-	if s.expectedState != "" && state != s.expectedState {
+	if s.expectedState != "" && state != s.expectedState && (s.validateErrorState || q.Get("error") == "") {
 		s.render(w, r, CallbackData{
 			Error:            "state_mismatch",
 			ErrorDescription: "The authorization state returned did not match the expected session state.",
 		})
 		s.sendErr(errors.New("auth: state mismatch in OAuth callback"))
+		return
+	}
+	if errParam := q.Get("error"); errParam != "" {
+		errDesc := q.Get("error_description")
+		s.render(w, r, CallbackData{Error: errParam, ErrorDescription: errDesc})
+		s.sendErr(fmt.Errorf("auth: oauth callback error %s: %s", errParam, errDesc))
 		return
 	}
 
@@ -224,7 +226,7 @@ func (s *loopbackServer) handleCallback(w http.ResponseWriter, r *http.Request) 
 
 	s.render(w, r, CallbackData{Success: true})
 	select {
-	case s.resChan <- &AuthorizationResult{Code: code, State: state}:
+	case s.resChan <- &AuthorizationResult{Code: code, State: state, ClientID: q.Get("client_id")}:
 	default:
 	}
 }
@@ -280,13 +282,27 @@ func ReceiveCallback(ctx context.Context, redirectURL, authURL string, opts Loop
 // through the OAuth 2.0 PKCE flow, captures the authorization code, and completes
 // the token exchange.
 func LoginLoopback(ctx context.Context, cfg *oauth2.Config, opts LoopbackOptions) (*oauth2.Token, error) {
+	session, result, err := authorizeLoopback(ctx, cfg, opts, false)
+	if err != nil {
+		return nil, err
+	}
+	return CompleteAuth(ctx, cfg, session, result.Code, result.State)
+}
+
+// AuthorizeLoopback runs the browser and loopback part of an OAuth 2.0 PKCE
+// authorization, leaving the code exchange to the caller.
+func AuthorizeLoopback(ctx context.Context, cfg *oauth2.Config, opts LoopbackOptions) (*AuthSession, *AuthorizationResult, error) {
+	return authorizeLoopback(ctx, cfg, opts, true)
+}
+
+func authorizeLoopback(ctx context.Context, cfg *oauth2.Config, opts LoopbackOptions, validateErrorState bool) (*AuthSession, *AuthorizationResult, error) {
 	if cfg == nil {
-		return nil, errors.New("auth: oauth2 config cannot be nil")
+		return nil, nil, errors.New("auth: oauth2 config cannot be nil")
 	}
 
 	srv, err := startLoopbackServer(cfg.RedirectURL, opts)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	cfgCopy := *cfg
@@ -295,9 +311,10 @@ func LoginLoopback(ctx context.Context, cfg *oauth2.Config, opts LoopbackOptions
 	session, err := BeginAuth(&cfgCopy, opts.AuthCodeOptions...)
 	if err != nil {
 		srv.close()
-		return nil, err
+		return nil, nil, err
 	}
 	srv.expectedState = session.State
+	srv.validateErrorState = validateErrorState
 	go srv.serve()
 
 	if opts.OnAuthURL != nil {
@@ -306,10 +323,10 @@ func LoginLoopback(ctx context.Context, cfg *oauth2.Config, opts LoopbackOptions
 
 	res, err := srv.wait(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return CompleteAuth(ctx, &cfgCopy, session, res.Code, res.State)
+	return session, res, nil
 }
 
 // OpenBrowser launches the user's default system web browser directed at targetURL.

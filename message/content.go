@@ -245,6 +245,8 @@ func (b *DocumentBlock) isBlock() {}
 // first-class block so callers can inspect or display the reasoning separately
 // from the final answer.
 type ThinkingBlock struct {
+	// ID identifies a reasoning item when the provider streams multiple items.
+	ID       string         `json:"id,omitempty"`
 	Thinking string         `json:"thinking"`
 	Extras   map[string]any `json:"extras,omitempty"`
 }

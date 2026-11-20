@@ -135,13 +135,16 @@ func (a *AssistantAggregator) upsert(incoming Block) {
 			last := a.blocks[len(a.blocks)-1]
 			if last.Kind() == BlockKindThinking {
 				tb := last.(*ThinkingBlock)
-				tb.Thinking += incoming.Thinking
-				tb.Extras = collection.MergeMap(tb.Extras, incoming.Extras)
-				return
+				if tb.ID == incoming.ID {
+					tb.Thinking += incoming.Thinking
+					tb.Extras = collection.MergeMap(tb.Extras, incoming.Extras)
+					return
+				}
 			}
 		}
 		// Same defensive copy as TextBlock above.
 		tb := &ThinkingBlock{
+			ID:       incoming.ID,
 			Thinking: incoming.Thinking,
 			Extras:   maps.Clone(incoming.Extras),
 		}

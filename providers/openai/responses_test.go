@@ -11,6 +11,7 @@ import (
 	"github.com/masterkeysrd/loom/message"
 	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/tool"
+	"github.com/openai/openai-go/v3/responses"
 )
 
 func TestShouldUseResponsesAPI(t *testing.T) {
@@ -229,7 +230,7 @@ func TestToResponseNewParamsBasic(t *testing.T) {
 		WebSearch: true,
 	}
 
-	params, err := toResponseNewParams(req, opts)
+	params, err := EncodeResponsesRequest(req, opts, responses.EasyInputMessageRoleSystem)
 	if err != nil {
 		t.Fatalf("toResponseNewParams failed: %v", err)
 	}
@@ -310,7 +311,7 @@ func TestToResponseNewParamsStatePruning(t *testing.T) {
 		UsePreviousResponseID: true,
 	}
 
-	params, err := toResponseNewParams(req, opts)
+	params, err := EncodeResponsesRequest(req, opts, responses.EasyInputMessageRoleSystem)
 	if err != nil {
 		t.Fatalf("toResponseNewParams failed: %v", err)
 	}
@@ -355,7 +356,7 @@ func TestToResponseNewParamsStatePruningFromExtras(t *testing.T) {
 		UsePreviousResponseID: true,
 	}
 
-	params, err := toResponseNewParams(req, opts)
+	params, err := EncodeResponsesRequest(req, opts, responses.EasyInputMessageRoleSystem)
 	if err != nil {
 		t.Fatalf("toResponseNewParams failed: %v", err)
 	}
@@ -409,7 +410,7 @@ func TestToResponseNewParamsStoreFalseEncryptedContent(t *testing.T) {
 		UsePreviousResponseID: true, // Should be ignored when Store is false
 	}
 
-	params, err := toResponseNewParams(req, opts)
+	params, err := EncodeResponsesRequest(req, opts, responses.EasyInputMessageRoleSystem)
 	if err != nil {
 		t.Fatalf("toResponseNewParams failed: %v", err)
 	}
@@ -467,7 +468,7 @@ func TestToResponseNewParamsStructuredOutput(t *testing.T) {
 		},
 	}
 
-	params, err := toResponseNewParams(req, ResponsesOptions{})
+	params, err := EncodeResponsesRequest(req, ResponsesOptions{}, responses.EasyInputMessageRoleSystem)
 	if err != nil {
 		t.Fatalf("toResponseNewParams failed: %v", err)
 	}
@@ -507,7 +508,7 @@ func TestToResponseNewParamsStrictTools(t *testing.T) {
 	}
 
 	// Default: StrictTools = false (optional properties like 'limit' are allowed without being in Required)
-	paramsDefault, err := toResponseNewParams(req, ResponsesOptions{})
+	paramsDefault, err := EncodeResponsesRequest(req, ResponsesOptions{}, responses.EasyInputMessageRoleSystem)
 	if err != nil {
 		t.Fatalf("failed default: %v", err)
 	}
@@ -523,7 +524,7 @@ func TestToResponseNewParamsStrictTools(t *testing.T) {
 	}
 
 	// Explicit: WithStrictTools(true)
-	paramsStrict, err := toResponseNewParams(req, WithStrictTools(true))
+	paramsStrict, err := EncodeResponsesRequest(req, WithStrictTools(true), responses.EasyInputMessageRoleSystem)
 	if err != nil {
 		t.Fatalf("failed strict: %v", err)
 	}
@@ -610,7 +611,7 @@ func TestToResponseNewParams_UnsupportedModelValidation(t *testing.T) {
 	reqToolSearch := &llm.Request{
 		Model: "gpt-4o",
 	}
-	_, err := toResponseNewParams(reqToolSearch, WithToolSearch())
+	_, err := EncodeResponsesRequest(reqToolSearch, WithToolSearch(), responses.EasyInputMessageRoleSystem)
 	if err == nil {
 		t.Errorf("expected error with WithToolSearch() on gpt-4o, got nil")
 	}
@@ -622,7 +623,7 @@ func TestToResponseNewParams_UnsupportedModelValidation(t *testing.T) {
 			{Name: "fetch_data", DeferLoading: true},
 		},
 	}
-	_, err = toResponseNewParams(reqDeferred, ResponsesOptions{})
+	_, err = EncodeResponsesRequest(reqDeferred, ResponsesOptions{}, responses.EasyInputMessageRoleSystem)
 	if err == nil {
 		t.Errorf("expected error with DeferLoading on gpt-5.2-pro, got nil")
 	}
@@ -634,7 +635,7 @@ func TestToResponseNewParams_UnsupportedModelValidation(t *testing.T) {
 			message.NewUser(&message.ToolReferenceBlock{ToolName: "fetch_data"}),
 		},
 	}
-	_, err = toResponseNewParams(reqToolRef, ResponsesOptions{})
+	_, err = EncodeResponsesRequest(reqToolRef, ResponsesOptions{}, responses.EasyInputMessageRoleSystem)
 	if err == nil {
 		t.Errorf("expected error with ToolReferenceBlock on gpt-4o, got nil")
 	}
@@ -646,7 +647,7 @@ func TestToResponseNewParams_UnsupportedModelValidation(t *testing.T) {
 			message.NewUser(&message.ToolDefinitionBlock{Name: "fetch_data"}),
 		},
 	}
-	_, err = toResponseNewParams(reqToolDef, ResponsesOptions{})
+	_, err = EncodeResponsesRequest(reqToolDef, ResponsesOptions{}, responses.EasyInputMessageRoleSystem)
 	if err == nil {
 		t.Errorf("expected error with ToolDefinitionBlock on gpt-4o, got nil")
 	}
@@ -712,7 +713,7 @@ func TestToResponseNewParams_ToolSearchAndDeferredTools(t *testing.T) {
 
 	opts := WithToolSearch()
 
-	params, err := toResponseNewParams(req, opts)
+	params, err := EncodeResponsesRequest(req, opts, responses.EasyInputMessageRoleSystem)
 	if err != nil {
 		t.Fatalf("toResponseNewParams failed: %v", err)
 	}
@@ -890,7 +891,7 @@ func TestToResponseNewParams_ToolDefinitionBlock(t *testing.T) {
 		},
 	}
 
-	params, err := toResponseNewParams(req, ResponsesOptions{})
+	params, err := EncodeResponsesRequest(req, ResponsesOptions{}, responses.EasyInputMessageRoleSystem)
 	if err != nil {
 		t.Fatalf("toResponseNewParams failed: %v", err)
 	}
@@ -939,44 +940,44 @@ func TestModalityValidation_ResponsesAPIWire(t *testing.T) {
 
 	for _, tc := range mediaBlocks {
 		t.Run("system_initial/"+tc.name, func(t *testing.T) {
-			_, err := toResponseNewParams(&llm.Request{
+			_, err := EncodeResponsesRequest(&llm.Request{
 				Model: "gpt-4o",
 				Messages: []message.Message{
 					message.NewSystem(&message.TextBlock{Text: "sys"}, tc.block),
 				},
-			}, ResponsesOptions{})
+			}, ResponsesOptions{}, responses.EasyInputMessageRoleSystem)
 			if !errors.Is(err, profile.ErrUnsupportedModality) {
 				t.Fatalf("expected ErrUnsupportedModality, got %v", err)
 			}
 		})
 
 		t.Run("system_mid_conversation/"+tc.name, func(t *testing.T) {
-			_, err := toResponseNewParams(&llm.Request{
+			_, err := EncodeResponsesRequest(&llm.Request{
 				Model: "gpt-4o",
 				Messages: []message.Message{
 					message.NewUserText("hi"),
 					message.NewSystem(&message.TextBlock{Text: "sys"}, tc.block),
 				},
-			}, ResponsesOptions{})
+			}, ResponsesOptions{}, responses.EasyInputMessageRoleSystem)
 			if !errors.Is(err, profile.ErrUnsupportedModality) {
 				t.Fatalf("expected ErrUnsupportedModality, got %v", err)
 			}
 		})
 
 		t.Run("assistant/"+tc.name, func(t *testing.T) {
-			_, err := toResponseNewParams(&llm.Request{
+			_, err := EncodeResponsesRequest(&llm.Request{
 				Model: "gpt-4o",
 				Messages: []message.Message{
 					&message.Assistant{Content: message.Content{&message.TextBlock{Text: "hi"}, tc.block}},
 				},
-			}, ResponsesOptions{})
+			}, ResponsesOptions{}, responses.EasyInputMessageRoleSystem)
 			if !errors.Is(err, profile.ErrUnsupportedModality) {
 				t.Fatalf("expected ErrUnsupportedModality, got %v", err)
 			}
 		})
 
 		t.Run("tool/"+tc.name, func(t *testing.T) {
-			_, err := toResponseNewParams(&llm.Request{
+			_, err := EncodeResponsesRequest(&llm.Request{
 				Model: "gpt-4o",
 				Messages: []message.Message{
 					&message.Tool{
@@ -984,7 +985,7 @@ func TestModalityValidation_ResponsesAPIWire(t *testing.T) {
 						Content:    message.Content{&message.TextBlock{Text: "ok"}, tc.block},
 					},
 				},
-			}, ResponsesOptions{})
+			}, ResponsesOptions{}, responses.EasyInputMessageRoleSystem)
 			if !errors.Is(err, profile.ErrUnsupportedModality) {
 				t.Fatalf("expected ErrUnsupportedModality, got %v", err)
 			}
@@ -1003,12 +1004,12 @@ func TestModalityValidation_ResponsesAPIWire(t *testing.T) {
 
 	for _, tc := range userRejections {
 		t.Run("user/"+tc.name, func(t *testing.T) {
-			_, err := toResponseNewParams(&llm.Request{
+			_, err := EncodeResponsesRequest(&llm.Request{
 				Model: "gpt-4o",
 				Messages: []message.Message{
 					message.NewUser(&message.TextBlock{Text: "hi"}, tc.block),
 				},
-			}, ResponsesOptions{})
+			}, ResponsesOptions{}, responses.EasyInputMessageRoleSystem)
 			if !errors.Is(err, profile.ErrUnsupportedModality) {
 				t.Fatalf("expected ErrUnsupportedModality, got %v", err)
 			}
@@ -1016,7 +1017,7 @@ func TestModalityValidation_ResponsesAPIWire(t *testing.T) {
 	}
 
 	t.Run("user_audio_alongside_tool_reference", func(t *testing.T) {
-		_, err := toResponseNewParams(&llm.Request{
+		_, err := EncodeResponsesRequest(&llm.Request{
 			Model: "gpt-5.4",
 			Messages: []message.Message{
 				message.NewUser(
@@ -1024,7 +1025,7 @@ func TestModalityValidation_ResponsesAPIWire(t *testing.T) {
 					&message.AudioBlock{Data: []byte("aud"), MIMEType: "audio/wav"},
 				),
 			},
-		}, ResponsesOptions{})
+		}, ResponsesOptions{}, responses.EasyInputMessageRoleSystem)
 		if !errors.Is(err, profile.ErrUnsupportedModality) {
 			t.Fatalf("expected ErrUnsupportedModality even with ToolReferenceBlock, got %v", err)
 		}
@@ -1032,12 +1033,12 @@ func TestModalityValidation_ResponsesAPIWire(t *testing.T) {
 
 	t.Run("user_inline_document_data_mapped", func(t *testing.T) {
 		rawPDF := []byte("%PDF-1.4")
-		params, err := toResponseNewParams(&llm.Request{
+		params, err := EncodeResponsesRequest(&llm.Request{
 			Model: "gpt-4o",
 			Messages: []message.Message{
 				message.NewUser(&message.DocumentBlock{Data: rawPDF, MIMEType: "application/pdf"}),
 			},
-		}, ResponsesOptions{})
+		}, ResponsesOptions{}, responses.EasyInputMessageRoleSystem)
 		if err != nil {
 			t.Fatalf("expected inline document data to succeed, got %v", err)
 		}

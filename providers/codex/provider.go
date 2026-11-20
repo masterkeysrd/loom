@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/masterkeysrd/loom/auth"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
@@ -107,6 +109,58 @@ func (p *Provider) Stream(ctx context.Context, req *llm.Request) (llm.StreamResp
 			return nil, err
 		}
 	}
-	client := responses.NewResponseService(option.WithBaseURL(p.baseURL), option.WithHTTPClient(p.client), option.WithMaxRetries(0))
-	return loomopenai.StreamChatGPTPlanResponses(ctx, &client, req, p.Name(), opts)
+	opts.Store = new(bool)
+	params, err := loomopenai.EncodeResponsesRequest(req, opts, responses.EasyInputMessageRoleDeveloper)
+	if err != nil {
+		return nil, fmt.Errorf("codex: encode request: %w", err)
+	}
+	clientOptions := []option.RequestOption{option.WithBaseURL(p.baseURL), option.WithHTTPClient(p.client), option.WithMaxRetries(0)}
+	id := requestSessionID(req)
+	if id != "" {
+		clientOptions = append(clientOptions, option.WithHeader("session-id", id))
+	}
+	client := responses.NewResponseService(clientOptions...)
+	stream := loomopenai.StreamResponsesRequest(ctx, &client, adaptRequest(params), p.Name(), true)
+	return func(yield func(message.AssistantChunk, error) bool) {
+		for chunk, err := range stream {
+			if err == nil && id != "" {
+				if chunk.Metadata == nil {
+					chunk.Metadata = make(map[string]any)
+				}
+				chunk.Metadata[SessionIDKey] = id
+			}
+			if !yield(chunk, err) {
+				return
+			}
+		}
+	}, nil
 }
+
+// SessionIDKey identifies the conversation's cache session on assistant messages and chunks.
+const SessionIDKey = "codex.session_id"
+
+func requestSessionID(req *llm.Request) string {
+	switch session := req.Extensions[SessionIDKey].(type) {
+	case SessionID:
+		return string(session)
+	case *SessionID:
+		if session != nil {
+			return string(*session)
+		}
+	}
+	for _, msg := range slices.Backward(req.Messages) {
+		if assistant, ok := msg.(*message.Assistant); ok {
+			if id, ok := assistant.Metadata[SessionIDKey].(string); ok && id != "" {
+				return id
+			}
+		}
+	}
+	return uuid.NewString()
+}
+
+// SessionID optionally overrides the inferred session for an inference call.
+// An empty SessionID omits the header for that call.
+type SessionID string
+
+// ExtensionID identifies the Codex session override.
+func (SessionID) ExtensionID() string { return SessionIDKey }

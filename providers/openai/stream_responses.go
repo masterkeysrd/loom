@@ -25,51 +25,16 @@ func (p *Provider) streamResponses(ctx context.Context, request *llm.Request, op
 	if p.client != nil {
 		client = &p.client.Responses
 	}
-	return streamResponses(ctx, client, request, opts, p.Name(), false)
-}
-
-// StreamChatGPTPlanResponses adapts the Responses protocol for direct ChatGPT plan
-// usage, including caller-managed history and client-side function tools.
-func StreamChatGPTPlanResponses(ctx context.Context, client *responses.ResponseService, request *llm.Request, provider string, opts ResponsesOptions) (llm.StreamResponse, error) {
-	opts.Store = new(bool)
-	req := *request
-	req.MaxTokens = 0
-	req.Temperature = nil
-	req.TopP = nil
-	return streamResponses(ctx, client, &req, opts, provider, true)
-}
-
-func streamResponses(ctx context.Context, client *responses.ResponseService, request *llm.Request, opts ResponsesOptions, provider string, chatGPTPlan bool) (llm.StreamResponse, error) {
-	params, err := toResponseNewParams(request, opts)
+	params, err := EncodeResponsesRequest(request, opts, responses.EasyInputMessageRoleSystem)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert responses request: %w", err)
 	}
-	if chatGPTPlan {
-		params.Include = append(params.Include, responses.ResponseIncludableReasoningEncryptedContent)
-		var functions, hosted []responses.ToolUnionParam
-		for _, tool := range params.Tools {
-			if tool.OfFunction != nil {
-				functions = append(functions, tool)
-			} else {
-				hosted = append(hosted, tool)
-			}
-		}
-		params.Tools = hosted
-		if len(functions) > 0 {
-			params.Input.OfInputItemList = append([]responses.ResponseInputItemUnionParam{
-				responses.ResponseInputItemParamOfAdditionalTools(functions),
-			}, params.Input.OfInputItemList...)
-		}
-		for _, item := range params.Input.OfInputItemList {
-			if item.OfMessage != nil && item.OfMessage.Role == responses.EasyInputMessageRoleSystem {
-				item.OfMessage.Role = responses.EasyInputMessageRoleDeveloper
-			}
-		}
-		if params.Input.OfInputItemList == nil {
-			params.Input.OfInputItemList = []responses.ResponseInputItemUnionParam{}
-		}
-	}
+	return StreamResponsesRequest(ctx, client, params, p.Name(), false), nil
+}
 
+// StreamResponsesRequest streams an encoded request as Loom chunks. When
+// requireCompletion is set, missing or unsuccessful terminal events yield an error.
+func StreamResponsesRequest(ctx context.Context, client *responses.ResponseService, params responses.ResponseNewParams, provider string, requireCompletion bool) llm.StreamResponse {
 	if sw, ok := stream.WriterFromContext(ctx); ok {
 		_ = sw.Write(ctx, stream.Event{
 			Name: "on_llm_request",
@@ -200,7 +165,7 @@ func streamResponses(ctx context.Context, client *responses.ResponseService, req
 				}
 
 			case "response.output_item.done":
-				if chatGPTPlan && event.Item.Type == "function_call" {
+				if requireCompletion && event.Item.Type == "function_call" {
 					info := toolCallsByIndex[event.OutputIndex]
 					if info == nil || !info.hasDelta {
 						args := event.Item.AsFunctionCall().Arguments
@@ -337,21 +302,21 @@ func streamResponses(ctx context.Context, client *responses.ResponseService, req
 						ResponseIDKey: currentResponseID,
 					},
 				}
-				if !yield(chunk, nil) || chatGPTPlan {
+				if !yield(chunk, nil) || requireCompletion {
 					return
 				}
 			case "response.failed":
-				if chatGPTPlan {
+				if requireCompletion {
 					yield(message.AssistantChunk{}, fmt.Errorf("%s: response failed (%s): %s", provider, event.Response.Error.Code, event.Response.Error.Message))
 					return
 				}
 			case "response.incomplete":
-				if chatGPTPlan {
+				if requireCompletion {
 					yield(message.AssistantChunk{}, fmt.Errorf("%s: response incomplete (%s)", provider, event.Response.IncompleteDetails.Reason))
 					return
 				}
 			case "error":
-				if chatGPTPlan {
+				if requireCompletion {
 					yield(message.AssistantChunk{}, fmt.Errorf("%s: response error (%s): %s", provider, event.Code, event.Message))
 					return
 				}
@@ -360,13 +325,16 @@ func streamResponses(ctx context.Context, client *responses.ResponseService, req
 
 		if err := respStream.Err(); err != nil {
 			yield(message.AssistantChunk{}, fmt.Errorf("stream error: %w", err))
-		} else if chatGPTPlan {
+		} else if requireCompletion {
 			yield(message.AssistantChunk{}, fmt.Errorf("%s: stream ended without response.completed", provider))
 		}
-	}, nil
+	}
 }
 
-func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses.ResponseNewParams, error) {
+// EncodeResponsesRequest maps Loom messages and tools to Responses input. The
+// developer role keeps system messages in history; the system role promotes
+// leading plain-text system messages to top-level instructions.
+func EncodeResponsesRequest(request *llm.Request, opts ResponsesOptions, systemRole responses.EasyInputMessageRole) (responses.ResponseNewParams, error) {
 	if !modelSupportsToolSearch(request.Model) {
 		if opts.ToolSearch {
 			return responses.ResponseNewParams{}, fmt.Errorf("model %q does not support tool_search; tool search requires gpt-5.4 or later", request.Model)
@@ -454,7 +422,7 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 			}
 			refNames := extractToolReferences(sys.Content)
 			inlineDefs := extractToolDefinitions(sys.Content)
-			if !seenNonSystem && len(refNames) == 0 && len(inlineDefs) == 0 {
+			if systemRole == responses.EasyInputMessageRoleSystem && !seenNonSystem && len(refNames) == 0 && len(inlineDefs) == 0 {
 				if text := sys.Content.Text(); text != "" {
 					instructions = append(instructions, text)
 				}
@@ -500,7 +468,7 @@ func toResponseNewParams(request *llm.Request, opts ResponsesOptions) (responses
 			if text := m.Content.Text(); text != "" {
 				inputItems = append(inputItems, responses.ResponseInputItemParamOfMessage(
 					text,
-					responses.EasyInputMessageRoleSystem,
+					systemRole,
 				))
 			}
 			refNames := extractToolReferences(m.Content)

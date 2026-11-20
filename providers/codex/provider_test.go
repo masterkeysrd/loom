@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/masterkeysrd/loom/auth"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
@@ -20,6 +21,7 @@ import (
 func TestBindToolsAndReplay(t *testing.T) {
 	var mu sync.Mutex
 	var requests []map[string]any
+	var sessionHeaders []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/v1/responses" || r.Header.Get("Authorization") != "Bearer access-token" {
 			t.Errorf("unexpected request method, path or credential: %s %s", r.Method, r.URL.Path)
@@ -31,6 +33,7 @@ func TestBindToolsAndReplay(t *testing.T) {
 		}
 		mu.Lock()
 		requests = append(requests, payload)
+		sessionHeaders = append(sessionHeaders, r.Header.Get("session-id"))
 		requestNumber := len(requests)
 		mu.Unlock()
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -70,6 +73,7 @@ func TestBindToolsAndReplay(t *testing.T) {
 	model = model.BindTools(lookup)
 	history := message.MessageList{
 		message.NewSystemText("Use lookup when needed."),
+		message.NewSystemText("Cite the lookup result."),
 		message.NewUserText("Find hello"),
 		message.NewSystemText("Keep the response short."),
 	}
@@ -120,14 +124,17 @@ func TestBindToolsAndReplay(t *testing.T) {
 	if len(requests) != 2 {
 		t.Fatalf("got %d requests, want two", len(requests))
 	}
+	if sessionHeaders[0] == "" || sessionHeaders[1] != sessionHeaders[0] || first.Metadata[SessionIDKey] != sessionHeaders[0] || second.Metadata[SessionIDKey] != sessionHeaders[1] {
+		t.Fatalf("checkpoint replay lost Codex session: %v", sessionHeaders)
+	}
 	if toolRuns != 1 {
 		t.Fatalf("tool ran %d times, want one", toolRuns)
 	}
 	for _, req := range requests {
-		if req["store"] != false || req["stream"] != true || req["instructions"] != "Use lookup when needed." {
+		if req["store"] != false || req["stream"] != true {
 			t.Fatalf("invalid request fields: %#v", req)
 		}
-		for _, key := range []string{"max_output_tokens", "temperature", "top_p", "tools", "previous_response_id"} {
+		for _, key := range []string{"instructions", "max_output_tokens", "temperature", "top_p", "tools", "previous_response_id"} {
 			if _, ok := req[key]; ok {
 				t.Fatalf("unexpected field %s in %#v", key, req)
 			}
@@ -137,33 +144,41 @@ func TestBindToolsAndReplay(t *testing.T) {
 			t.Fatalf("missing encrypted reasoning include: %#v", req)
 		}
 		items, ok := req["input"].([]any)
-		if !ok || len(items) < 3 {
+		if !ok || len(items) < 5 {
 			t.Fatalf("missing input items: %#v", req)
 		}
-		additional := items[0].(map[string]any)
+		prefix := items[0].(map[string]any)
+		if prefix["role"] != "developer" || prefix["content"] != "Use lookup when needed." {
+			t.Fatalf("unexpected developer prefix: %#v", prefix)
+		}
+		secondInstruction := items[1].(map[string]any)
+		if secondInstruction["role"] != "developer" || secondInstruction["content"] != "Cite the lookup result." {
+			t.Fatalf("unexpected second developer message: %#v", secondInstruction)
+		}
+		additional := items[2].(map[string]any)
 		tools := additional["tools"].([]any)
 		if additional["type"] != "additional_tools" || len(tools) != 1 || tools[0].(map[string]any)["name"] != "lookup" {
 			t.Fatalf("invalid function binding: %#v", additional)
 		}
-		if items[2].(map[string]any)["role"] != "developer" {
-			t.Fatalf("expected developer role: %#v", items[2])
+		if items[4].(map[string]any)["role"] != "developer" {
+			t.Fatalf("expected developer role: %#v", items[4])
 		}
 	}
 	items := requests[1]["input"].([]any)
-	if len(items) != 7 {
+	if len(items) != 9 {
 		t.Fatalf("unexpected replay input: %#v", items)
 	}
 	for i, want := range []string{"opaque1", "opaque2"} {
-		if item := items[i+3].(map[string]any); item["encrypted_content"] != want || item["type"] != "reasoning" {
+		if item := items[i+5].(map[string]any); item["encrypted_content"] != want || item["type"] != "reasoning" {
 			t.Fatalf("unexpected reasoning replay: %#v", item)
 		}
 	}
 	for i, want := range []string{"function_call", "function_call_output"} {
-		if item := items[i+5].(map[string]any); item["call_id"] != "call_1" || item["type"] != want {
+		if item := items[i+7].(map[string]any); item["call_id"] != "call_1" || item["type"] != want {
 			t.Fatalf("unexpected tool replay: %#v", item)
 		}
 	}
-	if output := items[6].(map[string]any)["output"]; !strings.Contains(fmt.Sprint(output), "found hello") {
+	if output := items[8].(map[string]any)["output"]; !strings.Contains(fmt.Sprint(output), "found hello") {
 		t.Fatalf("result did not contain the tool output: %v", output)
 	}
 }
@@ -228,4 +243,55 @@ func TestModelsAndUnsupportedTools(t *testing.T) {
 
 func writeEvent(w http.ResponseWriter, data string) {
 	fmt.Fprintf(w, "data: %s\n\n", data)
+}
+
+func TestSessionHeader(t *testing.T) {
+	headers := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headers <- r.Header.Get("session-id")
+		w.Header().Set("Content-Type", "text/event-stream")
+		writeEvent(w, `{"type":"response.completed","response":{"id":"resp_test"}}`)
+	}))
+	defer server.Close()
+	newModel := func() *llm.Model {
+		p, err := NewProvider(auth.StaticTokenSource("token"), server.Client())
+		if err != nil {
+			t.Fatal(err)
+		}
+		p.baseURL = server.URL
+		m, err := llm.NewModel(p, "gpt-6.2-sol", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	invoke := func(m *llm.Model, opts ...llm.CallOption) string {
+		t.Helper()
+		if _, err := m.Invoke(t.Context(), message.MessageList{message.NewUserText("hello")}, opts...); err != nil {
+			t.Fatal(err)
+		}
+		return <-headers
+	}
+	m := newModel()
+	first := invoke(m)
+	if _, err := uuid.Parse(first); err != nil {
+		t.Fatalf("expected UUID, got %q", first)
+	}
+	thread := llm.WithExtensionOption(SessionID("thread-123"))
+	if got := invoke(m, thread); got != "thread-123" {
+		t.Fatalf("override = %q", got)
+	}
+	if got := invoke(m, llm.WithExtensionOption(SessionID(""))); got != "" {
+		t.Fatalf("disabled header = %q", got)
+	}
+	if got := invoke(m); got == first || got == "" {
+		t.Fatalf("independent conversation reused session %q", got)
+	}
+	resumed := newModel()
+	if got := invoke(resumed); got == first || got == "" {
+		t.Fatalf("second provider default = %q", got)
+	}
+	if got := invoke(resumed, thread); got != "thread-123" {
+		t.Fatalf("resumed override = %q", got)
+	}
 }

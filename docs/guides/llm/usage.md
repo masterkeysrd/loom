@@ -35,7 +35,7 @@ if qp, ok := provider.(llm.QuotaProvider); ok {
 
 When a provider also reports server-side billing or quota-unit consumption on a turn (for example, Copilot's `ai_credits` / `premium_requests` and billing `Multiplier`, or Claude Code's `total_cost_usd` reported as `Unit: "usd", Estimated: true`), those values are populated on `chunk.Metrics.Credits` (`message.CreditMetrics`) independently of static profile cost estimation.
 
-- **Token semantics**: `message.TokenDetails.Input` is the total prompt size and *includes* cache read/write tokens (they are subsets of `Input`), matching LangChain's `UsageMetadata`. Provider mappings normalize to this rule. The uncached part, `Input - CacheRead - CacheWrite`, is billed at the input price.
+- **Token semantics**: `message.TokenDetails.Input` is the total prompt size and *includes* cache read/write tokens (they are subsets of `Input`). Provider mappings normalize to this rule. The uncached part, `Input - CacheRead - CacheWrite`, is billed at the input price.
 - **Tiers**: a `TierPricing` has a `Condition{Type, Size}`. `TierConditionContext` measures `Input` (output excluded) and applies when it is **strictly greater** than `Size`. Of the matching tiers, the one with the highest `Size` wins regardless of slice order. Unknown condition types never match. A tier without a `Label` gets a generated one such as `context>200000`.
 - **Priced**: `false` when the profile has no pricing data (nil profile, or `Pricing.IsZero()`: all prices zero and no tiers).
 - **Middleware**: cost is attached *after* the middleware chain. Middleware that needs it should use `llm.RuntimeFromContext(ctx)` and call `rt.Profile.Estimate(...)`.

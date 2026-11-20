@@ -113,6 +113,25 @@ Each inference request uses streaming, sends the conversation history, and sets
 `store: false`. Loom preserves encrypted reasoning items in the serialized
 assistant message so the next request can include them.
 
+## Prompt caching
+
+Put reusable application instructions in leading Loom system messages. The Codex
+provider sends them as developer messages at the start of `input`, ahead of bound
+tool definitions and conversation history. GPT-6.2 processes top-level
+`instructions` after the cacheable prefix. Keeping the developer prefix stable
+makes it eligible for reuse when it meets the model’s minimum cacheable length.
+[OpenAI prompt caching guide](https://developers.openai.com/api/docs/guides/prompt-caching)
+
+Call `model.Invoke(ctx, history)` normally. Codex generates a UUID for a new
+conversation, sends it in the `session-id` HTTP header, and records it in
+assistant message metadata under `codex.session_id`. Later calls read the most
+recent Codex session ID from the supplied assistant history. Saving and
+restoring full messages preserves the ID across provider restarts and tool
+calls. Independent chats can share one provider.
+
+Check `reply.Metrics.Tokens.CacheRead` after successful inference to see how
+many input tokens were served from cache when usage metrics are available.
+
 ## Preview limits
 
 The provider omits `MaxTokens`, `Temperature`, and `TopP` on this route.

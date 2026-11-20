@@ -3,7 +3,7 @@
 This document specifies the design for **Graph Retrieval** and **Knowledge Graph RAG (GraphRAG)** in Loom, extending the existing RAG stack ([`document`](document/document.go), [`vectorstore`](vectorstore/vectorstore.go), and [`retriever`](retriever/retriever.go)).
 
 It synthesizes three proven industry patterns into an idiomatic, zero-bloat Go architecture:
-1. **Metadata-Edge Graph Traversal** (*LangChain `GraphRetriever` / `graph_rag`*) — multi-hop traversal over existing [`vectorstore.VectorStore`](vectorstore/vectorstore.go) backends using metadata links (`Eager` and `MMR` strategies) with no dedicated graph database required.
+1. **Metadata-Edge Graph Traversal** — multi-hop traversal over existing [`vectorstore.VectorStore`](vectorstore/vectorstore.go) backends using metadata links (`Eager` and `MMR` strategies) with no dedicated graph database required.
 2. **Schema-Guided LLM Graph Extraction** (*Constructing Knowledge Graphs from Text via Structured Outputs / `LLMGraphTransformer`*) — converting [`document.Document`](document/document.go) chunks into typed nodes and edges using [`llm.Model.WithStructuredOutput`](llm/model.go) and [`jsonschema.Schema`](https://pkg.go.dev/github.com/google/jsonschema-go/jsonschema).
 3. **Hybrid Structured + Unstructured RAG** (*Enhancing RAG Accuracy with Knowledge Graphs*) — pairing entity-grounded $N$-hop subgraph traversal with dense vector similarity, Okapi BM25, Reciprocal Rank Fusion ([`retriever.NewMerger`](retriever/retrievers.go)), and System One probabilistic pruning ([`retriever.NewDecisionReranker`](retriever/retrievers.go)).
 

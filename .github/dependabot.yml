@@ -44,3 +44,20 @@ updates:
         update-types:
           - "minor"
           - "patch"
+
+  # NPM dependencies (documentation site)
+  - package-ecosystem: "npm"
+    directory: "/site"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(deps-docs)"
+    open-pull-requests-limit: 10
+    groups:
+      npm-docs:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+

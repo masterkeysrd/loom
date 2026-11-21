@@ -2041,7 +2041,7 @@ var staticProfiles = map[string]profile.Profile{
 		ID:          "gpt-image-1-mini",
 		Name:        "gpt-image-1-mini",
 		Description: "Image model for prompt-driven generation, editing, and visual design workflows",
-		Family:      "gpt-image",
+		Family:      "gpt-image-mini",
 		ReleaseDate: "2025-09-26",
 		LastUpdated: "2025-09-26",
 		Capabilities: profile.Capabilities{
@@ -2154,7 +2154,7 @@ var staticProfiles = map[string]profile.Profile{
 		ID:          "gpt-realtime-2.1",
 		Name:        "GPT-Realtime-2.1",
 		Description: "Realtime speech-to-speech model with configurable reasoning, tool use, and robust voice-agent behavior",
-		Family:      "gpt",
+		Family:      "gpt-realtime",
 		Knowledge:   "2024-09-30",
 		ReleaseDate: "2026-07-06",
 		LastUpdated: "2026-07-06",

@@ -2149,7 +2149,7 @@ var staticProfiles = map[string]profile.Profile{
 		ID:          "kimi-k2.7-code",
 		Name:        "Kimi K2.7 Code",
 		Description: "Coding-focused Kimi model, stronger on long-horizon repo work with less overthinking",
-		Family:      "kimi-k2",
+		Family:      "kimi-code",
 		Knowledge:   "2025-01",
 		ReleaseDate: "2026-06-12",
 		LastUpdated: "2026-06-12",
@@ -2187,7 +2187,7 @@ var staticProfiles = map[string]profile.Profile{
 		ID:          "kimi-k3",
 		Name:        "Kimi K3",
 		Description: "Multimodal Kimi model with 1M context and toggleable max-effort thinking for long-horizon agent work",
-		Family:      "kimi-k3",
+		Family:      "kimi",
 		ReleaseDate: "2026-07-16",
 		LastUpdated: "2026-07-16",
 		Capabilities: profile.Capabilities{
@@ -2234,7 +2234,7 @@ var staticProfiles = map[string]profile.Profile{
 		ID:          "mai-code-1.1-flash",
 		Name:        "MAI-Code-1.1-Flash",
 		Description: "Microsoft coding model with native vision support, optimized for fast and efficient software development",
-		Family:      "mai",
+		Family:      "mai-code-flash",
 		ReleaseDate: "2026-08-11",
 		LastUpdated: "2026-08-11",
 		Capabilities: profile.Capabilities{
@@ -2282,7 +2282,7 @@ var staticProfiles = map[string]profile.Profile{
 		ID:          "mai-code-2",
 		Name:        "MAI Code 2",
 		Description: "Microsoft's larger agentic coding model for debugging, multi-file changes and repository-wide reasoning",
-		Family:      "mai",
+		Family:      "mai-code",
 		ReleaseDate: "2026-11-17",
 		LastUpdated: "2026-11-17",
 		Capabilities: profile.Capabilities{
@@ -2331,7 +2331,7 @@ var staticProfiles = map[string]profile.Profile{
 		ID:          "mai-code-2-flash",
 		Name:        "MAI Code 2 Flash",
 		Description: "Microsoft's lightweight coding model for explanations, targeted edits and routine fixes at high volume",
-		Family:      "mai",
+		Family:      "mai-code-flash",
 		ReleaseDate: "2026-11-17",
 		LastUpdated: "2026-11-17",
 		Capabilities: profile.Capabilities{

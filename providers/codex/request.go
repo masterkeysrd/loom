@@ -16,6 +16,9 @@ func adaptRequest(params responses.ResponseNewParams) responses.ResponseNewParam
 	var functions, hosted []responses.ToolUnionParam
 	for _, tool := range params.Tools {
 		if tool.OfFunction != nil {
+			if tool.OfFunction.DeferLoading.Value {
+				continue
+			}
 			functions = append(functions, tool)
 		} else {
 			hosted = append(hosted, tool)

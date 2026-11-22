@@ -339,16 +339,18 @@ func EncodeResponsesRequest(request *llm.Request, opts ResponsesOptions, systemR
 		if opts.ToolSearch {
 			return responses.ResponseNewParams{}, fmt.Errorf("model %q does not support tool_search; tool search requires gpt-5.4 or later", request.Model)
 		}
-		for _, t := range request.Tools {
-			if t.DeferLoading {
-				return responses.ResponseNewParams{}, fmt.Errorf("model %q does not support deferred tool loading (tool %q); deferred tools require gpt-5.4 or later", request.Model, t.Name)
+		if systemRole != responses.EasyInputMessageRoleDeveloper {
+			for _, t := range request.Tools {
+				if t.DeferLoading {
+					return responses.ResponseNewParams{}, fmt.Errorf("model %q does not support deferred tool loading (tool %q); deferred tools require gpt-5.4 or later", request.Model, t.Name)
+				}
 			}
-		}
-		if hasToolReferenceBlock(request) {
-			return responses.ResponseNewParams{}, fmt.Errorf("model %q does not support tool reference blocks; tool reference blocks require gpt-5.4 or later", request.Model)
-		}
-		if hasToolDefinitionBlock(request) {
-			return responses.ResponseNewParams{}, fmt.Errorf("model %q does not support inline tool definition blocks; inline tool definitions require gpt-5.4 or later", request.Model)
+			if hasToolReferenceBlock(request) {
+				return responses.ResponseNewParams{}, fmt.Errorf("model %q does not support tool reference blocks; tool reference blocks require gpt-5.4 or later", request.Model)
+			}
+			if hasToolDefinitionBlock(request) {
+				return responses.ResponseNewParams{}, fmt.Errorf("model %q does not support inline tool definition blocks; inline tool definitions require gpt-5.4 or later", request.Model)
+			}
 		}
 	}
 

@@ -239,6 +239,15 @@ func TestModelsAndUnsupportedTools(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "tool_search") {
 		t.Fatalf("expected unsupported tool error, got %v", err)
 	}
+	_, err = p.Stream(t.Context(), &llm.Request{
+		Model: "x",
+		Messages: []message.Message{
+			&message.Assistant{Content: message.Content{&message.ServerToolCall{ID: "srv_1", Name: "tool_search"}}},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "tool_search") {
+		t.Fatalf("expected unsupported server tool_search history error, got %v", err)
+	}
 }
 
 func writeEvent(w http.ResponseWriter, data string) {
@@ -293,5 +302,230 @@ func TestSessionHeader(t *testing.T) {
 	}
 	if got := invoke(resumed, thread); got != "thread-123" {
 		t.Fatalf("resumed override = %q", got)
+	}
+}
+
+func TestClientToolSearchAndDeferredTools(t *testing.T) {
+	var mu sync.Mutex
+	var requests []map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Errorf("decode request: %v", err)
+			return
+		}
+		mu.Lock()
+		requests = append(requests, payload)
+		turn := len(requests)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "text/event-stream")
+		writeEvent(w, `{"type":"response.created","response":{"id":"resp_turn"}}`)
+		switch turn {
+		case 1:
+			writeEvent(w, `{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_search","name":"tool_search_bm25","arguments":"{\"query\":\"weather\"}"}}`)
+		case 2:
+			writeEvent(w, `{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_2","call_id":"call_weather","name":"get_weather","arguments":"{\"city\":\"Tokyo\"}"}}`)
+		default:
+			writeEvent(w, `{"type":"response.output_text.delta","delta":"Tokyo is 20C."}`)
+		}
+		writeEvent(w, `{"type":"response.completed","response":{"id":"resp_turn","usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15}}}`)
+	}))
+	defer server.Close()
+
+	provider, err := NewProvider(auth.StaticTokenSource("access-token"), server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider.baseURL = server.URL + "/v1"
+
+	type weatherInput struct {
+		City string `json:"city"`
+	}
+	var weatherRuns int
+	weatherTool, err := tool.New("get_weather", "Weather", "Get weather for a city", func(_ context.Context, in weatherInput) (string, error) {
+		weatherRuns++
+		return in.City + ": 20C", nil
+	}, tool.WithDeferLoading())
+	if err != nil {
+		t.Fatal(err)
+	}
+	currencyTool, err := tool.New("convert_currency", "Currency", "Convert currency amounts", func(_ context.Context, _ struct{}) (string, error) {
+		return "100 USD", nil
+	}, tool.WithDeferLoading())
+	if err != nil {
+		t.Fatal(err)
+	}
+	searchTool, err := tool.NewBM25Search([]*tool.Tool{weatherTool, currencyTool}, tool.WithSearchTopK(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	model, err := llm.NewModel(provider, "gpt-5.3-codex", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model = model.
+		WithMiddleware(llm.DeferredToolsMiddleware(nil)).
+		WithMiddleware(llm.InlineToolsMiddleware(nil)).
+		BindTools(searchTool, weatherTool, currencyTool)
+	container := tool.NewContainer(searchTool, weatherTool, currencyTool)
+
+	history := message.MessageList{
+		message.NewSystemText("Search for tools before calling them."),
+		message.NewUserText("What is the weather in Tokyo?"),
+	}
+
+	turn1, err := model.Invoke(t.Context(), history)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := turn1.ToolCalls()
+	if len(calls) != 1 || calls[0].Name != "tool_search_bm25" {
+		t.Fatalf("unexpected turn 1 tool calls: %#v", calls)
+	}
+	searchRes, err := container.Call(t.Context(), calls[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	history = append(history, turn1, searchRes)
+
+	turn2, err := model.Invoke(t.Context(), history)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls = turn2.ToolCalls()
+	if len(calls) != 1 || calls[0].Name != "get_weather" {
+		t.Fatalf("unexpected turn 2 tool calls: %#v", calls)
+	}
+	weatherRes, err := container.Call(t.Context(), calls[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	history = append(history, turn2, weatherRes)
+
+	turn3, err := model.Invoke(t.Context(), history)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if turn3.Content.Text() != "Tokyo is 20C." || weatherRuns != 1 {
+		t.Fatalf("unexpected turn 3 result: %q (weatherRuns=%d)", turn3.Content.Text(), weatherRuns)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(requests) != 3 {
+		t.Fatalf("got %d requests, want 3", len(requests))
+	}
+	for i, req := range requests {
+		if _, ok := req["tools"]; ok {
+			t.Fatalf("request %d unexpectedly sent top-level tools: %#v", i, req["tools"])
+		}
+		items := req["input"].([]any)
+		prefix := items[0].(map[string]any)
+		if prefix["role"] != "developer" {
+			t.Fatalf("request %d item 0 = %#v, want developer", i, prefix)
+		}
+		initialToolsItem := items[1].(map[string]any)
+		if initialToolsItem["type"] != "additional_tools" {
+			t.Fatalf("request %d item 1 = %#v, want additional_tools", i, initialToolsItem)
+		}
+		initialTools := initialToolsItem["tools"].([]any)
+		if len(initialTools) != 1 || initialTools[0].(map[string]any)["name"] != "tool_search_bm25" {
+			t.Fatalf("request %d initial additional_tools = %#v, want only tool_search_bm25", i, initialTools)
+		}
+		if _, hasDefer := initialTools[0].(map[string]any)["defer_loading"]; hasDefer {
+			t.Fatalf("request %d unexpectedly set defer_loading: %#v", i, initialTools[0])
+		}
+	}
+
+	turn2Items := requests[1]["input"].([]any)
+	if len(turn2Items) != 6 {
+		t.Fatalf("turn 2 input len = %d, want 6: %#v", len(turn2Items), turn2Items)
+	}
+	if output := turn2Items[4].(map[string]any)["output"]; strings.Contains(fmt.Sprint(output), "<tools>") {
+		t.Fatalf("turn 2 fell back to text tool expansion instead of native additional_tools: %v", output)
+	}
+	discovered := turn2Items[5].(map[string]any)
+	if discovered["type"] != "additional_tools" {
+		t.Fatalf("turn 2 item 5 = %#v, want additional_tools", discovered)
+	}
+	discoveredTools := discovered["tools"].([]any)
+	if len(discoveredTools) != 1 {
+		t.Fatalf("turn 2 discovered tools = %#v, want 1 tool", discoveredTools)
+	}
+	weatherParam := discoveredTools[0].(map[string]any)
+	if weatherParam["name"] != "get_weather" {
+		t.Fatalf("turn 2 discovered tool = %#v, want get_weather", weatherParam)
+	}
+	if _, hasDefer := weatherParam["defer_loading"]; hasDefer {
+		t.Fatalf("turn 2 discovered tool unexpectedly set defer_loading: %#v", weatherParam)
+	}
+}
+
+func TestInlineToolDefinition(t *testing.T) {
+	var payload map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Errorf("decode request: %v", err)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		writeEvent(w, `{"type":"response.output_text.delta","delta":"done"}`)
+		writeEvent(w, `{"type":"response.completed","response":{"id":"resp_inline"}}`)
+	}))
+	defer server.Close()
+
+	provider, err := NewProvider(auth.StaticTokenSource("access-token"), server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider.baseURL = server.URL + "/v1"
+
+	inlineTool, err := tool.New("inline_calc", "Calculator", "Add numbers", func(_ context.Context, _ struct {
+		A int `json:"a"`
+	}) (string, error) {
+		return "2", nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	staticTool, err := tool.New("ping", "Ping", "Ping service", func(_ context.Context, _ struct{}) (string, error) {
+		return "pong", nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	model, err := llm.NewModel(provider, "gpt-5.3-codex", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model = model.
+		WithMiddleware(llm.InlineToolsMiddleware(nil)).
+		BindTools(staticTool, inlineTool)
+
+	_, err = model.Invoke(t.Context(), message.MessageList{
+		message.NewSystemText("System prompt"),
+		message.NewUser(&message.TextBlock{Text: "Calculate"}, inlineTool.ToBlock()),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	items := payload["input"].([]any)
+	if len(items) != 4 {
+		t.Fatalf("input len = %d, want 4: %#v", len(items), items)
+	}
+	initialTools := items[1].(map[string]any)["tools"].([]any)
+	if len(initialTools) != 1 || initialTools[0].(map[string]any)["name"] != "ping" {
+		t.Fatalf("initial additional_tools = %#v, want only ping", initialTools)
+	}
+	if items[2].(map[string]any)["content"] != "Calculate" {
+		t.Fatalf("user item unexpectedly expanded inline tool to text: %#v", items[2])
+	}
+	inlineItem := items[3].(map[string]any)
+	inlineTools := inlineItem["tools"].([]any)
+	if inlineItem["type"] != "additional_tools" || len(inlineTools) != 1 || inlineTools[0].(map[string]any)["name"] != "inline_calc" {
+		t.Fatalf("inline additional_tools = %#v, want inline_calc", inlineItem)
 	}
 }

@@ -23,8 +23,10 @@ import (
 const resource = "https://api.openai.com/v1"
 
 var (
-	_ llm.Provider    = (*Provider)(nil)
-	_ llm.ModelLister = (*Provider)(nil)
+	_ llm.Provider             = (*Provider)(nil)
+	_ llm.ModelLister          = (*Provider)(nil)
+	_ llm.DeferredToolsSupport = (*Provider)(nil)
+	_ llm.InlineToolsSupport   = (*Provider)(nil)
 )
 
 // Provider streams model responses using an OAuth grant for direct ChatGPT plan usage.
@@ -69,6 +71,14 @@ func NewProvider(source oauth2.TokenSource, client *http.Client, opts ...Option)
 // Name returns the Loom registry name "codex".
 func (*Provider) Name() string { return "codex" }
 
+// SupportsDeferredTools reports whether Codex natively handles client-side
+// deferred tools activated via mid-conversation additional_tools items.
+func (*Provider) SupportsDeferredTools(string) bool { return true }
+
+// SupportsInlineTools reports whether Codex natively handles mid-conversation
+// inline tool definitions via additional_tools items.
+func (*Provider) SupportsInlineTools(string) bool { return true }
+
 // Stream sends the supplied messages and function tools to the public Responses API.
 func (p *Provider) Stream(ctx context.Context, req *llm.Request) (llm.StreamResponse, error) {
 	if req == nil || req.Model == "" {
@@ -86,17 +96,12 @@ func (p *Provider) Stream(ctx context.Context, req *llm.Request) (llm.StreamResp
 	if opts.ToolSearch || opts.CodeInterpreter || opts.FileSearch != nil {
 		return nil, errors.New("codex: direct ChatGPT plan usage does not support tool_search, Code Interpreter, or file search")
 	}
-	for _, t := range req.Tools {
-		if t.DeferLoading {
-			return nil, fmt.Errorf("codex: tool %q requires unsupported deferred loading", t.Name)
-		}
-	}
 	for _, msg := range req.Messages {
 		for _, block := range msg.GetContent() {
 			switch block.(type) {
 			case *message.AudioBlock, *message.VideoBlock:
 				return nil, errors.New("codex: direct ChatGPT plan usage does not support audio or video input")
-			case *message.ToolReferenceBlock, *message.ServerToolCall, *message.ServerToolResult:
+			case *message.ServerToolCall, *message.ServerToolResult:
 				return nil, errors.New("codex: direct ChatGPT plan usage does not support tool_search history")
 			}
 		}

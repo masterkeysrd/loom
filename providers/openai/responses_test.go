@@ -651,6 +651,20 @@ func TestToResponseNewParams_UnsupportedModelValidation(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected error with ToolDefinitionBlock on gpt-4o, got nil")
 	}
+
+	// 5. Developer role allows client-side additional_tools on non-5.4 slugs, while still rejecting server tool_search
+	if _, err := EncodeResponsesRequest(reqToolSearch, WithToolSearch(), responses.EasyInputMessageRoleDeveloper); err == nil {
+		t.Errorf("expected error with WithToolSearch() under developer role on gpt-4o, got nil")
+	}
+	if _, err := EncodeResponsesRequest(reqDeferred, ResponsesOptions{}, responses.EasyInputMessageRoleDeveloper); err != nil {
+		t.Errorf("expected developer role to allow DeferLoading on gpt-5.2-pro, got %v", err)
+	}
+	if _, err := EncodeResponsesRequest(reqToolRef, ResponsesOptions{}, responses.EasyInputMessageRoleDeveloper); err != nil {
+		t.Errorf("expected developer role to allow ToolReferenceBlock on gpt-4o, got %v", err)
+	}
+	if _, err := EncodeResponsesRequest(reqToolDef, ResponsesOptions{}, responses.EasyInputMessageRoleDeveloper); err != nil {
+		t.Errorf("expected developer role to allow ToolDefinitionBlock on gpt-4o, got %v", err)
+	}
 }
 
 func TestToResponseNewParams_ToolSearchAndDeferredTools(t *testing.T) {

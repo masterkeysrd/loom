@@ -135,7 +135,12 @@ many input tokens were served from cache when usage metrics are available.
 ## Preview limits
 
 The provider omits `MaxTokens`, `Temperature`, and `TopP` on this route.
-Function tools are supplied as Responses `additional_tools`. Hosted file
-search, Code Interpreter, tool search, and audio or video inputs are unsupported.
-Web search availability depends on the model and account policy.
+Function tools are supplied as Responses `additional_tools`. Client-side tool
+search (`tool.NewBM25Search` / `tool.NewRegexSearch`) with deferred tools
+(`tool.WithDeferLoading()`) and inline tool definitions (`tool.ToBlock()`) are
+supported natively by omitting deferred tools from the initial `additional_tools`
+prefix and injecting discovered tools in mid-conversation `additional_tools`
+items. Hosted file search, Code Interpreter, Responses `tool_search`, and audio
+or video inputs are unsupported. Web search availability depends on the model
+and account policy.
 [Responses API preview limitations](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations)

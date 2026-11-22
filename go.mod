@@ -5,11 +5,11 @@ go 1.26.10
 require (
 	github.com/anthropics/anthropic-sdk-go v1.84.0
 	github.com/coreos/go-oidc/v3 v3.18.0
-	github.com/github/copilot-sdk/go v1.0.34
 	github.com/google/jsonschema-go v0.4.3
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/lib/pq v1.12.3
+	github.com/microsoft/copilot-sdk/go/v2 v2.0.1
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/ollama/ollama v0.40.16
 	github.com/openai/openai-go/v3 v3.99.0

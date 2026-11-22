@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	copilot "github.com/github/copilot-sdk/go"
-	"github.com/github/copilot-sdk/go/rpc"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
 	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/tool"
+	copilot "github.com/microsoft/copilot-sdk/go/v2"
+	"github.com/microsoft/copilot-sdk/go/v2/rpc"
 )
 
 func TestToTokenMetricsNormalization(t *testing.T) {
@@ -181,17 +181,17 @@ func TestPrefixDigestChangesOnMutations(t *testing.T) {
 }
 
 func TestMapModelInfoAndQuota(t *testing.T) {
-	maxWin := 200000
-	maxOut := 16384
-	prof := mapModelInfoToProfile(copilot.ModelInfo{
+	maxWin := int64(200000)
+	maxOut := int64(16384)
+	prof := mapModelInfoToProfile(copilot.Model{
 		ID:   "gpt-5",
 		Name: "GPT-5",
 		Capabilities: copilot.ModelCapabilities{
-			Supports: copilot.ModelSupports{Vision: true, ReasoningEffort: true},
-			Limits:   copilot.ModelLimits{MaxContextWindowTokens: &maxWin, MaxOutputTokens: &maxOut},
+			Supports: &copilot.ModelCapabilitiesSupports{Vision: copilot.Bool(true), ReasoningEffort: copilot.Bool(true)},
+			Limits:   &copilot.ModelCapabilitiesLimits{MaxContextWindowTokens: &maxWin, MaxOutputTokens: &maxOut},
 		},
 		SupportedReasoningEfforts: []string{"low", "medium", "high"},
-		DefaultReasoningEffort:    "medium",
+		DefaultReasoningEffort:    copilot.String("medium"),
 	})
 
 	if prof.Capabilities.Temperature {
@@ -228,17 +228,17 @@ func TestMapModelInfoAndQuota(t *testing.T) {
 
 func TestMapModelInfoStaticEnrichment(t *testing.T) {
 	t.Run("prefers live limits and forces temperature false", func(t *testing.T) {
-		maxWin := 500000
-		maxOut := 32000
-		prof := mapModelInfoToProfile(copilot.ModelInfo{
+		maxWin := int64(500000)
+		maxOut := int64(32000)
+		prof := mapModelInfoToProfile(copilot.Model{
 			ID:   "gpt-5.4",
 			Name: "GPT 5.4 Live",
 			Capabilities: copilot.ModelCapabilities{
-				Supports: copilot.ModelSupports{Vision: false, ReasoningEffort: true},
-				Limits:   copilot.ModelLimits{MaxContextWindowTokens: &maxWin, MaxOutputTokens: &maxOut},
+				Supports: &copilot.ModelCapabilitiesSupports{Vision: copilot.Bool(false), ReasoningEffort: copilot.Bool(true)},
+				Limits:   &copilot.ModelCapabilitiesLimits{MaxContextWindowTokens: &maxWin, MaxOutputTokens: &maxOut},
 			},
 			SupportedReasoningEfforts: []string{"low", "high"},
-			DefaultReasoningEffort:    "low",
+			DefaultReasoningEffort:    copilot.String("low"),
 		})
 
 		if prof.Name != "GPT 5.4 Live" {
@@ -268,7 +268,7 @@ func TestMapModelInfoStaticEnrichment(t *testing.T) {
 	})
 
 	t.Run("fills missing limits and reasoning from static profile", func(t *testing.T) {
-		prof := mapModelInfoToProfile(copilot.ModelInfo{
+		prof := mapModelInfoToProfile(copilot.Model{
 			ID: "gpt-5.4",
 		})
 		if prof.Name != "GPT-5.4" {

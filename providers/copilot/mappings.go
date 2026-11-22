@@ -11,12 +11,12 @@ import (
 	"strings"
 	"time"
 
-	copilot "github.com/github/copilot-sdk/go"
-	"github.com/github/copilot-sdk/go/rpc"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
 	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/tool"
+	copilot "github.com/microsoft/copilot-sdk/go/v2"
+	"github.com/microsoft/copilot-sdk/go/v2/rpc"
 )
 
 type sessionMeta struct {

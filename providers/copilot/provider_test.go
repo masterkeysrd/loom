@@ -17,7 +17,6 @@ import (
 	"testing"
 	"time"
 
-	copilot "github.com/github/copilot-sdk/go"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/google/uuid"
 	"github.com/masterkeysrd/loom/graph"
@@ -26,6 +25,7 @@ import (
 	"github.com/masterkeysrd/loom/profile"
 	"github.com/masterkeysrd/loom/stream"
 	"github.com/masterkeysrd/loom/tool"
+	copilot "github.com/microsoft/copilot-sdk/go/v2"
 )
 
 const mockCLIEnv = "LOOM_COPILOT_MOCK_CLI"
@@ -142,7 +142,7 @@ func runMockCopilotCLI() {
 				"jsonrpc": "2.0",
 				"id":      req.ID,
 				"result": map[string]any{
-					"protocolVersion": 3,
+					"protocolVersion": 4,
 				},
 			})
 
@@ -153,7 +153,7 @@ func runMockCopilotCLI() {
 				"result": map[string]any{
 					"message":         "pong",
 					"timestamp":       time.Now().UnixMilli(),
-					"protocolVersion": 3,
+					"protocolVersion": 4,
 				},
 			})
 
@@ -1237,13 +1237,13 @@ func TestCopilotModalityAndCapabilityValidation(t *testing.T) {
 	})
 
 	t.Run("discovered profile enforces vision modality", func(t *testing.T) {
-		p, _ := newTestProvider(t, "basic", WithOnListModels(func(context.Context) ([]copilot.ModelInfo, error) {
-			return []copilot.ModelInfo{
+		p, _ := newTestProvider(t, "basic", WithOnListModels(func(context.Context) ([]copilot.Model, error) {
+			return []copilot.Model{
 				{
 					ID:   "custom-no-vision",
 					Name: "Custom No Vision",
 					Capabilities: copilot.ModelCapabilities{
-						Supports: copilot.ModelSupports{Vision: false},
+						Supports: &copilot.ModelCapabilitiesSupports{Vision: copilot.Bool(false)},
 					},
 				},
 			}, nil

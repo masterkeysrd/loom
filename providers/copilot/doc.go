@@ -1,5 +1,5 @@
 // Package loomcopilot provides an [llm.Provider] implementation backed by the
-// official GitHub Copilot Go SDK (`github.com/github/copilot-sdk/go`).
+// official GitHub Copilot Go SDK (`github.com/microsoft/copilot-sdk/go/v2`).
 //
 // # Architecture
 //

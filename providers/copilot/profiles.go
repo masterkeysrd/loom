@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"slices"
 
-	copilot "github.com/github/copilot-sdk/go"
 	"github.com/masterkeysrd/loom/profile"
+	copilot "github.com/microsoft/copilot-sdk/go/v2"
 )
 
 // wireSupportedInputModalities lists the input modalities the Copilot SDK can
@@ -21,42 +21,65 @@ var wireSupportedInputModalities = map[profile.Modality]bool{
 	profile.ModalityPDF:   true,
 }
 
-func mapModelInfoToProfile(m copilot.ModelInfo) profile.Profile {
+func mapModelInfoToProfile(m copilot.Model) profile.Profile {
 	name := m.Name
 	if name == "" {
 		name = m.ID
 	}
 
+	var supportsVision, supportsReasoningEffort, supportsThinking bool
+	toolCall := true
+	if m.Capabilities.Supports != nil {
+		if m.Capabilities.Supports.Vision != nil {
+			supportsVision = *m.Capabilities.Supports.Vision
+		}
+		if m.Capabilities.Supports.ReasoningEffort != nil {
+			supportsReasoningEffort = *m.Capabilities.Supports.ReasoningEffort
+		}
+		if m.Capabilities.Supports.Thinking != nil {
+			supportsThinking = *m.Capabilities.Supports.Thinking
+		}
+		if m.Capabilities.Supports.ToolCalls != nil {
+			toolCall = *m.Capabilities.Supports.ToolCalls
+		}
+	}
+
 	inputs := []profile.Modality{profile.ModalityText}
-	if m.Capabilities.Supports.Vision {
+	if supportsVision {
 		inputs = append(inputs, profile.ModalityImage)
 	}
 
 	caps := profile.Capabilities{
 		Completion:  true,
 		Decision:    true,
-		ToolCall:    true,
+		ToolCall:    toolCall,
 		Temperature: false, // Copilot SDK sessions do not expose sampling temperature.
-		Reasoning:   m.Capabilities.Supports.ReasoningEffort || len(m.SupportedReasoningEfforts) > 0,
+		Reasoning:   supportsReasoningEffort || supportsThinking || len(m.SupportedReasoningEfforts) > 0,
 	}
 	if len(m.SupportedReasoningEfforts) > 0 {
+		var defaultEffort string
+		if m.DefaultReasoningEffort != nil {
+			defaultEffort = *m.DefaultReasoningEffort
+		}
 		caps.ReasoningOptions = []profile.ReasoningOption{
 			{
 				Type:    "effort",
 				Values:  slices.Clone(m.SupportedReasoningEfforts),
-				Default: m.DefaultReasoningEffort,
+				Default: defaultEffort,
 			},
 		}
 	}
 
 	var limits profile.Limits
-	if m.Capabilities.Limits.MaxContextWindowTokens != nil {
-		limits.Context = *m.Capabilities.Limits.MaxContextWindowTokens
-	} else if m.Capabilities.Limits.MaxPromptTokens != nil {
-		limits.Context = *m.Capabilities.Limits.MaxPromptTokens
-	}
-	if m.Capabilities.Limits.MaxOutputTokens != nil {
-		limits.Output = *m.Capabilities.Limits.MaxOutputTokens
+	if m.Capabilities.Limits != nil {
+		if m.Capabilities.Limits.MaxContextWindowTokens != nil {
+			limits.Context = int(*m.Capabilities.Limits.MaxContextWindowTokens)
+		} else if m.Capabilities.Limits.MaxPromptTokens != nil {
+			limits.Context = int(*m.Capabilities.Limits.MaxPromptTokens)
+		}
+		if m.Capabilities.Limits.MaxOutputTokens != nil {
+			limits.Output = int(*m.Capabilities.Limits.MaxOutputTokens)
+		}
 	}
 
 	prof := profile.Profile{

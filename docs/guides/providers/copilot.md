@@ -2,7 +2,7 @@
 title: "GitHub Copilot"
 ---
 
-The GitHub Copilot provider (`providers/copilot`) implements [`llm.Provider`](https://pkg.go.dev/github.com/masterkeysrd/loom/llm#Provider) on top of the official GitHub Copilot Go SDK (`github.com/github/copilot-sdk/go`), adding dynamic model discovery (`llm.ModelLister`), quota inspection (`llm.QuotaProvider`), and idle notifications / sync-on-write (`llm.IdleMessageNotifier`, `*llm.OutOfSyncError`).
+The GitHub Copilot provider (`providers/copilot`) implements [`llm.Provider`](https://pkg.go.dev/github.com/masterkeysrd/loom/llm#Provider) on top of the official GitHub Copilot Go SDK (`github.com/microsoft/copilot-sdk/go/v2`), adding dynamic model discovery (`llm.ModelLister`), quota inspection (`llm.QuotaProvider`), and idle notifications / sync-on-write (`llm.IdleMessageNotifier`, `*llm.OutOfSyncError`).
 
 It lets you run standard Loom graphs (`Agent -> Tools -> Agent` loops, `model.BindTools`, checkpoints, structured output, thinking effort, and compaction) backed by your GitHub Copilot subscription or a BYOK endpoint (OpenAI, Azure, Anthropic, or Ollama).
 
@@ -152,4 +152,4 @@ go run ./examples/copilot --debug --endpoint http://localhost:11434/v1 --model q
 - Sampling and context parameters not exposed by the Copilot SDK (`Temperature`, `TopP`, `TopK`, `PresencePenalty`, `FrequencyPenalty`, `Stop`, `MaxTokens`, `ContextWindow`) are ignored (except BYOK `ProviderConfig.MaxPromptTokens` / `MaxOutputTokens`).
 - Inline `ImageBlock` data (`len(Data) > 0`) is supported on the active `User` prompt (via `AttachmentBlob`) and `Tool` results (via `ToolBinaryResult`); URL-only/empty images, historical transcript media, and `AudioBlock`/`VideoBlock`/`DocumentBlock` inputs fail fast with `profile.ErrUnsupportedModality`.
 - `ResponseSchema` and `ThinkingConfig` (`ReasoningEffort`) are forwarded when supported.
-- Dynamic `ModelInfo` entries report billing multipliers and AI-credit prices rather than USD token pricing; `Profile.Pricing` and long-context tiers are filled from generated `models.dev` reference data (`profiles.gen.go`) when the model ID matches, and remain zero for custom/BYOK or uncatalogued IDs unless overridden via `OverrideProfile`.
+- Dynamic `Model` entries report billing multipliers and AI-credit prices rather than USD token pricing; `Profile.Pricing` and long-context tiers are filled from generated `models.dev` reference data (`profiles.gen.go`) when the model ID matches, and remain zero for custom/BYOK or uncatalogued IDs unless overridden via `OverrideProfile`.

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	copilot "github.com/github/copilot-sdk/go"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	copilot "github.com/microsoft/copilot-sdk/go/v2"
 )
 
 const (
@@ -170,8 +170,8 @@ type Config struct {
 	// embedded runtime (if bundled). Ignored when Connection is set.
 	CLIPath string
 
-	// Connection optionally overrides the Copilot SDK transport (StdioConnection,
-	// TCPConnection, URIConnection, or InProcessConnection).
+	// Connection optionally overrides the Copilot SDK transport (SpawnedStdioConnection,
+	// SpawnedTCPConnection, TCPConnection, or InProcessConnection).
 	Connection copilot.RuntimeConnection
 
 	// BaseDirectory sets COPILOT_HOME for spawned runtimes to isolate Copilot
@@ -190,8 +190,8 @@ type Config struct {
 	// When nil, the SDK defaults to true unless GitHubToken is set.
 	UseLoggedInUser *bool
 
-	// ClientMode controls the Copilot SDK client mode (ModeCopilotCli or
-	// ModeEmpty). Defaults to ModeCopilotCli.
+	// ClientMode controls the Copilot SDK client mode (ModeCodingAgent or
+	// ModeEmpty). Defaults to ModeCodingAgent.
 	ClientMode copilot.ClientMode
 
 	// ClientName identifies this application on Copilot API requests.
@@ -231,7 +231,7 @@ type Config struct {
 	BYOKProviders []copilot.NamedProviderConfig
 
 	// OnListModels overrides runtime `models.list` discovery (useful in BYOK mode).
-	OnListModels func(ctx context.Context) ([]copilot.ModelInfo, error)
+	OnListModels func(ctx context.Context) ([]copilot.Model, error)
 
 	// LogLevel sets the Copilot runtime log level ("none", "error", "warning",
 	// "info", "debug", "all").
@@ -293,7 +293,7 @@ func WithUseLoggedInUser(use bool) Option {
 	return func(c *Config) { c.UseLoggedInUser = &use }
 }
 
-// WithClientMode sets the Copilot SDK client mode (ModeCopilotCli or ModeEmpty).
+// WithClientMode sets the Copilot SDK client mode (ModeCodingAgent or ModeEmpty).
 func WithClientMode(mode copilot.ClientMode) Option {
 	return func(c *Config) { c.ClientMode = mode }
 }
@@ -332,7 +332,7 @@ func WithBYOKProvider(p *copilot.ProviderConfig) Option {
 }
 
 // WithOnListModels sets a custom model catalog handler for ListModels.
-func WithOnListModels(fn func(ctx context.Context) ([]copilot.ModelInfo, error)) Option {
+func WithOnListModels(fn func(ctx context.Context) ([]copilot.Model, error)) Option {
 	return func(c *Config) { c.OnListModels = fn }
 }
 

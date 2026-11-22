@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	copilot "github.com/github/copilot-sdk/go"
-	"github.com/github/copilot-sdk/go/rpc"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
+	copilot "github.com/microsoft/copilot-sdk/go/v2"
+	"github.com/microsoft/copilot-sdk/go/v2/rpc"
 )
 
 type sessionManager struct {
@@ -72,38 +72,60 @@ func (m *sessionManager) ensureClient(ctx context.Context) (*copilot.Client, err
 		return m.client, nil
 	}
 
-	conn := m.cfg.Connection
-	if conn == nil {
-		conn = copilot.StdioConnection{
-			Path: m.cfg.CLIPath,
-			Args: m.cfg.CLIArgs,
-		}
-	}
-
 	var env []string
 	if len(m.cfg.Env) > 0 {
 		env = append(os.Environ(), m.cfg.Env...)
 	}
 
+	baseDir := strings.TrimSpace(m.cfg.BaseDirectory)
+	conn := m.cfg.Connection
+	if conn == nil {
+		conn = copilot.SpawnedStdioConnection{
+			BaseDirectory:    baseDir,
+			Path:             m.cfg.CLIPath,
+			Args:             m.cfg.CLIArgs,
+			Env:              env,
+			WorkingDirectory: m.cfg.WorkingDir,
+		}
+	} else if baseDir != "" {
+		switch c := conn.(type) {
+		case copilot.SpawnedStdioConnection:
+			if c.BaseDirectory == "" {
+				c.BaseDirectory = baseDir
+				conn = c
+			}
+		case copilot.SpawnedTCPConnection:
+			if c.BaseDirectory == "" {
+				c.BaseDirectory = baseDir
+				conn = c
+			}
+		case copilot.InProcessConnection:
+			if c.BaseDirectory == "" {
+				c.BaseDirectory = baseDir
+				conn = c
+			}
+		}
+	}
+
+	mode := m.cfg.ClientMode
+	if mode == "" {
+		mode = copilot.ModeCodingAgent
+	}
+
 	clientOpts := &copilot.ClientOptions{
-		Connection:       conn,
-		WorkingDirectory: m.cfg.WorkingDir,
-		BaseDirectory:    strings.TrimSpace(m.cfg.BaseDirectory),
-		LogLevel:         m.cfg.LogLevel,
-		Env:              env,
-		GitHubToken:      m.cfg.GitHubToken,
-		UseLoggedInUser:  m.cfg.UseLoggedInUser,
-		OnListModels:     m.cfg.OnListModels,
-		ClientInfo:       m.cfg.ClientInfo,
-		Mode:             m.cfg.ClientMode,
-	}
-	if _, ok := conn.(copilot.URIConnection); ok {
-		clientOpts.BaseDirectory = ""
-	}
-	if _, ok := conn.(copilot.InProcessConnection); ok {
-		// InProcessConnection rejects WorkingDirectory and Env on ClientOptions.
-		clientOpts.WorkingDirectory = ""
-		clientOpts.Env = nil
+		Runtime:    conn,
+		Mode:       mode,
+		ClientInfo: m.cfg.ClientInfo,
+		Observability: copilot.ClientObservabilityOptions{
+			LogLevel: m.cfg.LogLevel,
+		},
+		GitHub: copilot.ClientGitHubOptions{
+			Token:           m.cfg.GitHubToken,
+			UseLoggedInUser: m.cfg.UseLoggedInUser,
+		},
+		Models: copilot.ClientModelOptions{
+			OnListModels: m.cfg.OnListModels,
+		},
 	}
 
 	client := copilot.NewClient(clientOpts)
@@ -115,7 +137,7 @@ func (m *sessionManager) ensureClient(ctx context.Context) (*copilot.Client, err
 	return client, nil
 }
 
-func (m *sessionManager) listModels(ctx context.Context) ([]copilot.ModelInfo, error) {
+func (m *sessionManager) listModels(ctx context.Context) ([]copilot.Model, error) {
 	client, err := m.ensureClient(ctx)
 	if err != nil {
 		return nil, err
@@ -426,21 +448,65 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 	}
 
 	availableTools, excludedTools := buildToolFilterLists(req.Tools, allowedNative)
-	sessionCfg := &copilot.SessionConfig{
-		Model:                 req.Model,
-		ClientName:            m.cfg.ClientName,
-		WorkingDirectory:      workingDir,
-		Streaming:             new(true),
-		ReasoningEffort:       mapThinkingToReasoningEffort(req.Thinking),
-		ReasoningSummary:      ext.ReasoningSummary,
-		Tools:                 tools,
-		AvailableTools:        availableTools,
-		ExcludedTools:         excludedTools,
-		IncludedBuiltInAgents: []string{},
-		OnPermissionRequest:   m.buildPermissionHandler(),
-		Provider:              m.cfg.BYOKProvider,
-		Providers:             m.cfg.BYOKProviders,
-		Models:                m.cfg.BYOKModels,
+	sessionCfg := &copilot.CreateSessionOptions{
+		Model:            req.Model,
+		ClientName:       m.cfg.ClientName,
+		WorkingDirectory: workingDir,
+		Inference: copilot.SessionInferenceOptions{
+			ReasoningEffort:  mapThinkingToReasoningEffort(req.Thinking),
+			ReasoningSummary: ext.ReasoningSummary,
+			Providers:        m.cfg.BYOKProviders,
+			Models:           m.cfg.BYOKModels,
+		},
+		Tools: copilot.SessionToolOptions{
+			Definitions:    tools,
+			AvailableTools: availableTools,
+			ExcludedTools:  excludedTools,
+		},
+		Agents: copilot.SessionAgentOptions{
+			IncludedBuiltinAgents: []string{},
+		},
+		Permissions: copilot.SessionPermissionOptions{
+			OnRequest: m.buildPermissionHandler(),
+		},
+		Events: copilot.SessionEventOptions{
+			Streaming: new(true),
+		},
+	}
+	if m.cfg.BYOKProvider != nil {
+		p := m.cfg.BYOKProvider
+		byokName := "byok"
+		defaultProvider := &byokName
+		sessionCfg.Inference.DefaultProvider = &defaultProvider
+		sessionCfg.Inference.Providers = []copilot.NamedProviderConfig{{
+			Name:                byokName,
+			Type:                p.Type,
+			WireAPI:             p.WireAPI,
+			Transport:           p.Transport,
+			ModelProvider:       p.ModelProvider,
+			BaseURL:             p.BaseURL,
+			APIKey:              p.APIKey,
+			APIKeyCommand:       p.APIKeyCommand,
+			BearerToken:         p.BearerToken,
+			BearerTokenProvider: p.BearerTokenProvider,
+			Azure:               p.Azure,
+			Headers:             p.Headers,
+		}}
+		modelID := p.ModelID
+		if modelID == "" {
+			modelID = req.Model
+		}
+		sessionCfg.Inference.Models = []copilot.ProviderModelConfig{{
+			ID:              modelID,
+			Provider:        byokName,
+			ModelID:         p.ModelID,
+			WireModel:       p.WireModel,
+			MaxPromptTokens: p.MaxPromptTokens,
+			MaxOutputTokens: p.MaxOutputTokens,
+		}}
+		sessionCfg.GitHub.Capi = &copilot.CapiSessionOptions{
+			Enabled: copilot.Bool(false),
+		}
 	}
 	if systemPrompt != "" {
 		sessionCfg.SystemMessage = &copilot.SystemMessageConfig{

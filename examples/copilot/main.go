@@ -11,12 +11,12 @@ import (
 	"strings"
 	"time"
 
-	copilot "github.com/github/copilot-sdk/go"
 	"github.com/masterkeysrd/loom/examples/internal/agentrepl"
 	"github.com/masterkeysrd/loom/llm"
 	"github.com/masterkeysrd/loom/message"
 	loomcopilot "github.com/masterkeysrd/loom/providers/copilot"
 	"github.com/masterkeysrd/loom/tool"
+	copilot "github.com/microsoft/copilot-sdk/go/v2"
 )
 
 func main() {

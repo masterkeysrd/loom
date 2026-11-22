@@ -116,8 +116,21 @@ func (s *Store) Search(ctx context.Context, query string, k int, opts ...vectors
 		vec embedding.Vector
 	}
 
+	var allowedIDs map[string]struct{}
+	if len(cfg.IDs) > 0 {
+		allowedIDs = make(map[string]struct{}, len(cfg.IDs))
+		for _, id := range cfg.IDs {
+			allowedIDs[id] = struct{}{}
+		}
+	}
+
 	var matched []matchItem
 	for _, item := range nsMap {
+		if allowedIDs != nil {
+			if _, ok := allowedIDs[item.doc.ID]; !ok {
+				continue
+			}
+		}
 		if !vectorstore.MatchesFilter(item.doc.Metadata, cfg.Filter) {
 			continue
 		}
@@ -173,6 +186,49 @@ func (s *Store) Search(ctx context.Context, query string, k int, opts ...vectors
 	results := make([]document.Document, len(matched))
 	for i, m := range matched {
 		results[i] = m.doc
+	}
+
+	return results, nil
+}
+
+// Get retrieves documents matching the provided IDs within the specified namespace.
+// Returned documents preserve the deduplicated order of ids and satisfy any configured Filter.
+func (s *Store) Get(ctx context.Context, ids []string, opts ...vectorstore.SearchOption) ([]document.Document, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	cfg := vectorstore.ApplySearchOptions(opts...)
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	nsMap := s.items[cfg.Namespace]
+	if len(nsMap) == 0 {
+		return nil, nil
+	}
+
+	seen := make(map[string]struct{}, len(ids))
+	results := make([]document.Document, 0, len(ids))
+	for _, id := range ids {
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+
+		item, ok := nsMap[id]
+		if !ok {
+			continue
+		}
+		if !vectorstore.MatchesFilter(item.doc.Metadata, cfg.Filter) {
+			continue
+		}
+		docCopy := item.doc
+		docCopy.Metadata = document.CloneMetadata(item.doc.Metadata)
+		results = append(results, docCopy)
 	}
 
 	return results, nil

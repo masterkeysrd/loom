@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="416" viewBox="0 0 520 416" role="img" aria-labelledby="title desc">
+  <title id="title">Hybrid GraphRAG ingestion and retrieval pipeline</title>
+  <desc id="desc">Documents are split, embedded, and extracted into a VectorStore and GraphStore. At query time, vector search, BM25, and N-hop knowledge graph CTE traversal are fused through RRF Merger and Decision Reranker into ranked passages and triples.</desc>
+  <style>
+    text { font-family: system-ui, -apple-system, sans-serif; }
+    .label, .ink { font-size: 15px; font-weight: 550; }
+    .label { fill: #edf9f6; }
+    .ink { fill: #103c35; }
+    .caption { fill: #b6d9d1; font-size: 14px; font-weight: 500; }
+    .step { fill: #22484a; stroke: #77aba2; stroke-width: 1.25; }
+    .focus { fill: #a7ecd4; }
+    .edge { fill: none; stroke: #94ddc9; stroke-width: 2; stroke-linejoin: round; }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="m1 1 5 3-5 3" fill="none" stroke="#94ddc9" stroke-width="2"/>
+    </marker>
+  </defs>
+
+  <rect width="520" height="416" rx="16" fill="#112e31"/>
+
+  <!-- Column headers -->
+  <text x="135" y="28" class="caption" text-anchor="middle">1. Index &amp; extract</text>
+  <text x="385" y="28" class="caption" text-anchor="middle">2. Query &amp; ground</text>
+
+  <!-- Row 1: Inputs -->
+  <rect x="30" y="40" width="210" height="38" rx="9" class="step"/>
+  <text x="135" y="64" class="label" text-anchor="middle">Documents &amp; Splitter</text>
+
+  <rect x="280" y="40" width="210" height="38" rx="9" class="step"/>
+  <text x="385" y="64" class="label" text-anchor="middle">User Query</text>
+
+  <path d="M135 78v18" class="edge" marker-end="url(#arrow)"/>
+  <path d="M385 78v18" class="edge" marker-end="url(#arrow)"/>
+
+  <!-- Row 2: Processing -->
+  <rect x="30" y="102" width="210" height="38" rx="9" class="step"/>
+  <text x="135" y="126" class="label" text-anchor="middle">Embed + LLM Extractor</text>
+
+  <rect x="280" y="102" width="210" height="38" rx="9" class="step"/>
+  <text x="385" y="126" class="label" text-anchor="middle">Embed + Ground Entities</text>
+
+  <!-- Clean routing from Row 2 to both shared stores -->
+  <path d="M100 140v28" class="edge" marker-end="url(#arrow)"/>
+  <path d="M170 140v12h180v16" class="edge" marker-end="url(#arrow)"/>
+  <path d="M420 140v28" class="edge" marker-end="url(#arrow)"/>
+  <path d="M350 140v20H170v8" class="edge" marker-end="url(#arrow)"/>
+
+  <!-- Row 3: Shared Stores -->
+  <rect x="30" y="174" width="210" height="42" rx="9" class="focus"/>
+  <text x="135" y="200" class="ink" text-anchor="middle">VectorStore</text>
+
+  <rect x="280" y="174" width="210" height="42" rx="9" class="focus"/>
+  <text x="385" y="200" class="ink" text-anchor="middle">GraphStore</text>
+
+  <path d="M135 216v18" class="edge" marker-end="url(#arrow)"/>
+  <path d="M385 216v18" class="edge" marker-end="url(#arrow)"/>
+
+  <!-- Row 4: Retrievers -->
+  <rect x="30" y="240" width="210" height="38" rx="9" class="step"/>
+  <text x="135" y="264" class="label" text-anchor="middle">Vector / BM25 / Edges</text>
+
+  <rect x="280" y="240" width="210" height="38" rx="9" class="step"/>
+  <text x="385" y="264" class="label" text-anchor="middle">N-Hop Recursive CTE</text>
+
+  <path d="M135 278v18" class="edge" marker-end="url(#arrow)"/>
+  <path d="M385 278v18" class="edge" marker-end="url(#arrow)"/>
+
+  <!-- Row 5: Fusion & Reranking -->
+  <rect x="85" y="302" width="350" height="38" rx="9" class="step"/>
+  <text x="260" y="326" class="label" text-anchor="middle">RRF Merger &amp; Decision Reranker</text>
+
+  <path d="M260 340v16" class="edge" marker-end="url(#arrow)"/>
+
+  <!-- Row 6: Output -->
+  <rect x="105" y="362" width="310" height="36" rx="9" class="step"/>
+  <text x="260" y="385" class="label" text-anchor="middle">Ranked Passages &amp; Triples</text>
+</svg>

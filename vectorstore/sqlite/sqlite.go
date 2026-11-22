@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -161,12 +162,23 @@ func (s *Store) Search(ctx context.Context, query string, k int, opts ...vectors
 		}
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
+	querySQL := `
 		SELECT id, content, metadata, embedding, loom_vec_cosine(embedding, ?) AS score
 		FROM vectorstore_documents
-		WHERE namespace = ?
-		ORDER BY score DESC, id ASC
-	`, queryVec.Bytes(), cfg.Namespace)
+		WHERE namespace = ?`
+	args := []any{queryVec.Bytes(), cfg.Namespace}
+
+	if len(cfg.IDs) > 0 {
+		placeholders := make([]string, len(cfg.IDs))
+		for i, id := range cfg.IDs {
+			placeholders[i] = "?"
+			args = append(args, id)
+		}
+		querySQL += ` AND id IN (` + strings.Join(placeholders, ",") + `)`
+	}
+	querySQL += ` ORDER BY score DESC, id ASC`
+
+	rows, err := s.db.QueryContext(ctx, querySQL, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -223,6 +235,81 @@ func (s *Store) Search(ctx context.Context, query string, k int, opts ...vectors
 	}
 
 	return candidateDocs, nil
+}
+
+// Get retrieves documents matching the provided IDs within the specified namespace.
+// Returned documents preserve the deduplicated order of ids and satisfy any configured Filter.
+func (s *Store) Get(ctx context.Context, ids []string, opts ...vectorstore.SearchOption) ([]document.Document, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	cfg := vectorstore.ApplySearchOptions(opts...)
+
+	seen := make(map[string]struct{}, len(ids))
+	uniqueIDs := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		uniqueIDs = append(uniqueIDs, id)
+	}
+
+	placeholders := make([]string, len(uniqueIDs))
+	args := make([]any, 0, 1+len(uniqueIDs))
+	args = append(args, cfg.Namespace)
+	for i, id := range uniqueIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, content, metadata
+		FROM vectorstore_documents
+		WHERE namespace = ? AND id IN (`+strings.Join(placeholders, ",")+`)
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	byID := make(map[string]document.Document, len(uniqueIDs))
+	for rows.Next() {
+		var id, content string
+		var metaBlob []byte
+		if err := rows.Scan(&id, &content, &metaBlob); err != nil {
+			return nil, err
+		}
+
+		var meta map[string]any
+		if len(metaBlob) > 0 {
+			if err := json.Unmarshal(metaBlob, &meta); err != nil {
+				return nil, fmt.Errorf("unmarshal metadata: %w", err)
+			}
+		}
+
+		if !vectorstore.MatchesFilter(meta, cfg.Filter) {
+			continue
+		}
+
+		byID[id] = document.Document{
+			ID:       id,
+			Content:  content,
+			Metadata: meta,
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	results := make([]document.Document, 0, len(byID))
+	for _, id := range uniqueIDs {
+		if doc, ok := byID[id]; ok {
+			results = append(results, doc)
+		}
+	}
+	return results, nil
 }
 
 // Delete removes documents matching the provided IDs in the specified namespace.

@@ -13,6 +13,8 @@ The `retriever` package provides a composable **Retriever** abstraction for fetc
 | `Middleware` / `Chain` | Composable middleware wrapper around any `Retriever`. |
 | `TelemetryMiddleware` | Records OpenTelemetry client spans (`retrieve {name}`) and emits `"on_retrieve"` events to `stream.Writer`. |
 | `FromVectorStore` | Adapts any [`vectorstore.VectorStore`](../vectorstore/README.md) into a `Retriever` (supporting `WithMMR`, `WithFilter`, `WithMinScore`, `WithNamespace`). |
+| `NewGraphRetriever` | Multi-hop metadata-edge graph traversal over any `vectorstore.VectorStore` (`TraversalEager` hop decay or `TraversalMMR`). |
+| `FromGraphStore` | Adapts any [`graphstore.GraphStore`](../graphstore/README.md) into a `Retriever` with lexical/semantic/LLM entity grounding and `RenderTriples`/`RenderProvenance`/`RenderHybrid` modes. |
 | `NewBM25` | In-memory **Okapi BM25** lexical keyword retriever (`WithBM25K1`, `WithBM25B`, `WithBM25Tokenizer`, dynamic `Add`). |
 | `NewMerger` | Combines multiple retrievers using **Reciprocal Rank Fusion (RRF)**. |
 | `NewDecisionReranker` | Uses a [`decision.Model`](../decision/README.md) (System One) to score, filter, and rerank candidate documents. |

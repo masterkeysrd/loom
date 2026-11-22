@@ -26,7 +26,7 @@ export default defineConfig({
         'guides/tools', 'guides/mcp', 'guides/mcp/configuration',
       ] },
       { label: 'Memory and storage', items: ['guides/memory', 'guides/persistent-store'] },
-      { label: 'Retrieval and embeddings', items: ['guides/rag', 'guides/embedding'] },
+      { label: 'Retrieval and embeddings', items: ['guides/rag', 'guides/graph-rag', 'guides/embedding'] },
       { label: 'Providers', items: [
         'providers', 'guides/providers/openai', 'guides/providers/anthropic',
         'guides/providers/google', 'guides/providers/ollama', 'guides/providers/codex',

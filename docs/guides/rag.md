@@ -2,7 +2,7 @@
 title: "Retrieval-augmented generation"
 ---
 
-Build a retrieval-augmented generation (RAG) workflow that searches documents and gives the matching passages to a model. [Run the end-to-end example](#5-end-to-end-example-examplesrag) with Ollama or OpenAI, or explore each stage below.
+Build a retrieval-augmented generation (RAG) workflow that searches documents and gives the matching passages to a model. [Run the end-to-end example](#6-end-to-end-example-examplesrag) with Ollama or OpenAI, or explore each stage below.
 
 1. **`document`** (`github.com/masterkeysrd/loom/document`) — `Document`, lazy iterator `Loader` implementations, and text `Splitter` chunkers (`RecursiveCharacterSplitter`, `MarkdownSplitter`).
 2. **`vectorstore`** (`github.com/masterkeysrd/loom/vectorstore`) — `VectorStore` interface and backends (`memory`, `sqlite`, `pg`) for batch embedding, similarity search, and metadata filtering.
@@ -224,7 +224,15 @@ chatModel = chatModel.BindToolDefs(container.Definitions()...)
 
 ---
 
-## 5. End-to-End Example (`examples/rag`)
+## 5. Graph Retrieval & Knowledge Graph RAG (`graphstore`)
+
+For multi-hop questions across linked documents or typed entity relationships, Loom provides metadata-edge traversal (`retriever.NewGraphRetriever`), schema-guided LLM graph extraction (`graphstore.Extractor`), SQL/in-memory graph backends (`graphstore/memory`, `graphstore/sqlite`, `graphstore/pg`), and `retriever.FromGraphStore` hybrid GraphRAG.
+
+See the dedicated [Graph retrieval and Knowledge Graph RAG guide](./graph-rag.md) and [`examples/graph_rag/main.go`](https://github.com/masterkeysrd/loom/blob/main/examples/graph_rag/main.go) for full architecture details, backend setup, and option references.
+
+---
+
+## 6. End-to-End Example (`examples/rag`)
 
 Loom includes a complete, runnable end-to-end RAG example in [`examples/rag/main.go`](https://github.com/masterkeysrd/loom/blob/main/examples/rag/main.go). It demonstrates:
 - Streaming documents lazily with `document.NewFSLoader`.

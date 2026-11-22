@@ -67,6 +67,9 @@ const (
 	KeyLoomRetrieverName        = attribute.Key("loom.retriever.name")
 	KeyLoomRetrieverTopK        = attribute.Key("loom.retriever.top_k")
 	KeyLoomRetrieverResultCount = attribute.Key("loom.retriever.result_count")
+	KeyLoomRetrieverMaxDepth    = attribute.Key("loom.retriever.max_depth")
+	KeyLoomRetrieverStrategy    = attribute.Key("loom.retriever.strategy")
+	KeyLoomRetrieverHops        = attribute.Key("loom.retriever.hops")
 
 	// Sensitive content Keys
 	KeyContentInputMessages  = attribute.Key("gen_ai.input.messages")

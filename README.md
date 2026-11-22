@@ -142,6 +142,7 @@ Explore runnable end-to-end examples in the [`examples/`](./examples/) directory
 | Example | Path | Description |
 |---|---|---|
 | **RAG Agent** | [`examples/rag`](./examples/rag) | Lazy Markdown ingestion, hybrid BM25 + cosine vector retrieval, and RAG graph workflow (`go run ./examples/rag -provider ollama`). |
+| **GraphRAG Agent** | [`examples/graph_rag`](./examples/graph_rag) | Schema-guided knowledge graph extraction into SQLite (`graphstore/sqlite`), 2-hop traversal (`retriever.FromGraphStore`), and hybrid RRF retrieval. |
 | **Graph Agent** | [`examples/graph_agent`](./examples/graph_agent) | Directed agent loop with tool invocation, conditional routing, and state checkpointing. |
 | **Decision Models** | [`examples/decision`](./examples/decision) | Ultra-fast System One probabilistic classification and graph routing without LLM token overhead. |
 | **Tool Streaming** | [`examples/tool-streaming`](./examples/tool-streaming) | Real-time token streaming and interactive tool calling. |

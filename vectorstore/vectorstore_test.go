@@ -149,6 +149,36 @@ func TestMatchesFilter(t *testing.T) {
 			filter:   map[string]any{"published": true},
 			want:     false,
 		},
+		{
+			name:     "slice in metadata matches scalar in filter",
+			metadata: map[string]any{"entities": []string{"OAuth", "MCP"}},
+			filter:   map[string]any{"entities": "MCP"},
+			want:     true,
+		},
+		{
+			name:     "json-decoded []any in metadata matches scalar in filter",
+			metadata: map[string]any{"entities": []any{"OAuth", "MCP"}},
+			filter:   map[string]any{"entities": "OAuth"},
+			want:     true,
+		},
+		{
+			name:     "scalar in metadata matches slice in filter (IN semantics)",
+			metadata: map[string]any{"section": "auth"},
+			filter:   map[string]any{"section": []string{"billing", "auth"}},
+			want:     true,
+		},
+		{
+			name:     "slice overlap between metadata and filter",
+			metadata: map[string]any{"entities": []string{"OAuth", "SQLite"}},
+			filter:   map[string]any{"entities": []string{"Postgres", "SQLite"}},
+			want:     true,
+		},
+		{
+			name:     "slice disjoint mismatch",
+			metadata: map[string]any{"entities": []string{"OAuth", "SQLite"}},
+			filter:   map[string]any{"entities": []string{"Postgres", "Redis"}},
+			want:     false,
+		},
 	}
 
 	for _, tc := range tests {

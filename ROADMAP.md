@@ -16,6 +16,7 @@ This document outlines the planned evolution of the `loom` framework. Our goal i
 
 ## 🧠 LLM, Decision & Memory Enhancements
 - [x] **Semantic Memory & RAG**: Native `embedding`, `document`, `vectorstore`, `retriever` (BM25, MMR, RRF, System One reranking), and semantic `store` backends (`memorydb`, `sqlite`, `pgvector`).
+- [x] **Graph Retrieval & Knowledge Graph RAG**: Metadata-edge `GraphRetriever` (`TraversalEager`/`TraversalMMR`), schema-guided `graphstore.Extractor`, `graphstore` backends (`memory`, `sqlite` FTS5/recursive CTE, `pg` `pg_trgm`/PG 14+ `SEARCH`/`CYCLE` CTE), and `retriever.FromGraphStore` hybrid GraphRAG.
 - [x] **Probabilistic Decision Models (System One)**: Fast, calibrated probabilistic classification and routing (`decision` package).
 - [x] **Structured Output Enforcement**: Native support for schema-constrained LLM responses (`WithJSON` and `WithStructuredOutput` via `jsonschema.Schema`).
 - [x] **Cost & Usage Tracking**: Model profile catalog (`profile`), tiered token cost estimation, and thread-level telemetry aggregation.

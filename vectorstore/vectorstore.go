@@ -16,6 +16,7 @@ const DefaultNamespace = "default"
 type VectorStore interface {
 	Add(ctx context.Context, docs []document.Document, opts ...AddOption) ([]string, error)
 	Search(ctx context.Context, query string, k int, opts ...SearchOption) ([]document.Document, error)
+	Get(ctx context.Context, ids []string, opts ...SearchOption) ([]document.Document, error)
 	Delete(ctx context.Context, ids []string, opts ...DeleteOption) error
 }
 
@@ -54,6 +55,7 @@ type SearchConfig struct {
 	MinScore    float32
 	HasMinScore bool
 	Filter      map[string]any
+	IDs         []string
 	UseMMR      bool
 	MMRLambda   float32
 	MMRFetchK   int
@@ -81,6 +83,13 @@ func WithMinScore(score float32) SearchOption {
 func WithFilter(filter map[string]any) SearchOption {
 	return func(c *SearchConfig) {
 		c.Filter = filter
+	}
+}
+
+// WithIDs restricts Search to documents whose ID is in the provided set.
+func WithIDs(ids ...string) SearchOption {
+	return func(c *SearchConfig) {
+		c.IDs = append([]string(nil), ids...)
 	}
 }
 
@@ -166,12 +175,76 @@ func MatchesFilter(metadata, filter map[string]any) bool {
 }
 
 func valuesMatch(got, want any) bool {
+	gotSlice, gotIsSlice := toAnySlice(got)
+	wantSlice, wantIsSlice := toAnySlice(want)
+
+	switch {
+	case gotIsSlice && wantIsSlice:
+		if len(wantSlice) == 0 {
+			return len(gotSlice) == 0
+		}
+		for _, g := range gotSlice {
+			for _, w := range wantSlice {
+				if scalarMatch(g, w) {
+					return true
+				}
+			}
+		}
+		return false
+	case gotIsSlice:
+		for _, g := range gotSlice {
+			if scalarMatch(g, want) {
+				return true
+			}
+		}
+		return false
+	case wantIsSlice:
+		for _, w := range wantSlice {
+			if scalarMatch(got, w) {
+				return true
+			}
+		}
+		return false
+	default:
+		return scalarMatch(got, want)
+	}
+}
+
+func scalarMatch(got, want any) bool {
 	gotF, gotOk := toFloat64(got)
 	wantF, wantOk := toFloat64(want)
 	if gotOk && wantOk {
 		return gotF == wantF
 	}
 	return reflect.DeepEqual(got, want)
+}
+
+func toAnySlice(v any) ([]any, bool) {
+	if v == nil {
+		return nil, false
+	}
+	switch s := v.(type) {
+	case []byte:
+		return nil, false
+	case []any:
+		return s, true
+	case []string:
+		out := make([]any, len(s))
+		for i, item := range s {
+			out[i] = item
+		}
+		return out, true
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Slice {
+		return nil, false
+	}
+	n := rv.Len()
+	out := make([]any, n)
+	for i := range n {
+		out[i] = rv.Index(i).Interface()
+	}
+	return out, true
 }
 
 func toFloat64(v any) (float64, bool) {

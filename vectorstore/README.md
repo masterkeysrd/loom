@@ -16,6 +16,9 @@ type VectorStore interface {
     // Search returns the top-k most similar documents with Score populated.
     Search(ctx context.Context, query string, k int, opts ...SearchOption) ([]document.Document, error)
 
+    // Get retrieves documents directly by ID within a namespace.
+    Get(ctx context.Context, ids []string, opts ...SearchOption) ([]document.Document, error)
+
     // Delete removes documents by ID.
     Delete(ctx context.Context, ids []string, opts ...DeleteOption) error
 }
@@ -26,9 +29,10 @@ type VectorStore interface {
 | Option | Target | Description |
 |---|---|---|
 | `WithAddNamespace(ns)` | `Add` | Namespace to store documents under (default: `"default"`). |
-| `WithNamespace(ns)` | `Search` | Namespace to search within (default: `"default"`). |
+| `WithNamespace(ns)` | `Search`, `Get` | Namespace to query within (default: `"default"`). |
 | `WithMinScore(score)` | `Search` | Minimum cosine similarity score threshold in $[-1, 1]$. |
-| `WithFilter(map[string]any)` | `Search` | Exact key-value metadata filter (with numeric type normalization). |
+| `WithFilter(map[string]any)` | `Search`, `Get` | Metadata filter supporting exact equality, numeric normalization, slice membership, and set overlap. |
+| `WithIDs(ids...)` | `Search` | Restrict similarity/MMR search to an explicit set of candidate document IDs. |
 | `WithMMR(lambda, fetchK)` | `Search` | Diversifies results using Maximal Marginal Relevance (`embedding.MMR`). |
 | `WithDeleteNamespace(ns)` | `Delete` | Namespace to delete document IDs from (default: `"default"`). |
 

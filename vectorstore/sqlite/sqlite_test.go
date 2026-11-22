@@ -350,3 +350,49 @@ func TestSQLiteStore_MMR(t *testing.T) {
 		t.Fatalf("expected doc-3 in MMR diversified results, got %v", resMMR)
 	}
 }
+
+func TestSQLiteStore_GetAndWithIDs(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open sqlite db: %v", err)
+	}
+	defer db.Close()
+
+	model, err := embedding.NewModel(mmrTestProvider{}, "test-mmr", nil)
+	if err != nil {
+		t.Fatalf("failed to create model: %v", err)
+	}
+	store, err := sqlite.New(db, model)
+	if err != nil {
+		t.Fatalf("failed to create sqlite store: %v", err)
+	}
+
+	docs := []document.Document{
+		document.New("doc1").WithID("doc-1").WithMetadata("tags", []string{"alpha", "beta"}),
+		document.New("doc2").WithID("doc-2").WithMetadata("tags", []string{"beta", "gamma"}),
+		document.New("doc3").WithID("doc-3").WithMetadata("tags", []string{"delta"}),
+	}
+	if _, err := store.Add(ctx, docs); err != nil {
+		t.Fatalf("Add failed: %v", err)
+	}
+
+	got, err := store.Get(ctx, []string{"doc-3", "missing", "doc-1", "doc-3"})
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if len(got) != 2 || got[0].ID != "doc-3" || got[1].ID != "doc-1" {
+		t.Fatalf("unexpected Get results: %#v", got)
+	}
+
+	filtered, err := store.Search(ctx, "query", 5,
+		vectorstore.WithIDs("doc-2", "doc-3"),
+		vectorstore.WithFilter(map[string]any{"tags": []string{"gamma", "omega"}}),
+	)
+	if err != nil {
+		t.Fatalf("Search with WithIDs and slice filter failed: %v", err)
+	}
+	if len(filtered) != 1 || filtered[0].ID != "doc-2" {
+		t.Fatalf("expected only doc-2, got %#v", filtered)
+	}
+}

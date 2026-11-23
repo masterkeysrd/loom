@@ -31,6 +31,7 @@ type sessionSnapshot struct {
 // snapshots for cache-preserving retries/forks, and idle TTL reaping.
 type sessionManager struct {
 	cfg           Config
+	runtime       SpawnedStdio
 	configDir     string
 	ownsConfigDir bool
 
@@ -51,7 +52,13 @@ type sessionManager struct {
 }
 
 func newSessionManager(cfg Config) (*sessionManager, error) {
-	configDir := strings.TrimSpace(cfg.ConfigDir)
+	rt := cfg.spawnedStdio()
+	configDir := strings.TrimSpace(rt.ConfigDir)
+	if configDir == "" && rt.Env != nil {
+		if envDir, ok := envLookup(rt.Env, "CLAUDE_CONFIG_DIR"); ok {
+			configDir = strings.TrimSpace(envDir)
+		}
+	}
 	ownsDir := false
 	if configDir == "" {
 		dir, err := os.MkdirTemp("", "loom-claudecode-*")
@@ -66,10 +73,9 @@ func newSessionManager(cfg Config) (*sessionManager, error) {
 		}
 	}
 
-	syncAuthCredentials(cfg.SourceAuthDir, configDir)
-
 	m := &sessionManager{
 		cfg:           cfg,
+		runtime:       rt,
 		configDir:     configDir,
 		ownsConfigDir: ownsDir,
 		byToken:       make(map[string]*cliSession),
@@ -80,12 +86,14 @@ func newSessionManager(cfg Config) (*sessionManager, error) {
 		reapDone:      make(chan struct{}),
 	}
 
-	if cfg.OnIdleMessage != nil {
-		m.addIdleListener(cfg.OnIdleMessage)
+	syncAuthCredentials(rt.SourceAuthDir, configDir, m.buildEnv())
+
+	if cfg.Observability.OnIdleMessage != nil {
+		m.addIdleListener(cfg.Observability.OnIdleMessage)
 	}
 
-	if cfg.IdleTTL > 0 {
-		go m.reapLoop(cfg.IdleTTL)
+	if cfg.Proxy.IdleTTL > 0 {
+		go m.reapLoop(cfg.Proxy.IdleTTL)
 	} else {
 		close(m.reapDone)
 	}
@@ -94,13 +102,16 @@ func newSessionManager(cfg Config) (*sessionManager, error) {
 }
 
 // syncAuthCredentials copies local Claude CLI auth files (when present and not
-// overridden by env tokens) into the isolated CLAUDE_CONFIG_DIR so subscription
-// auth works without writing Loom transcripts to ~/.claude.
-func syncAuthCredentials(srcDir, dstDir string) {
+// overridden by env tokens in effectiveEnv) into the isolated CLAUDE_CONFIG_DIR
+// so subscription auth works without writing Loom transcripts to ~/.claude.
+func syncAuthCredentials(srcDir, dstDir string, effectiveEnv []string) {
 	if srcDir == "" || dstDir == "" || srcDir == dstDir {
 		return
 	}
-	if os.Getenv("CLAUDE_CODE_OAUTH_TOKEN") != "" || os.Getenv("ANTHROPIC_API_KEY") != "" {
+	if tok, _ := envLookup(effectiveEnv, "CLAUDE_CODE_OAUTH_TOKEN"); tok != "" {
+		return
+	}
+	if key, _ := envLookup(effectiveEnv, "ANTHROPIC_API_KEY"); key != "" {
 		return
 	}
 	for _, name := range []string{".credentials.json", "credentials.json"} {
@@ -283,7 +294,7 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 	}
 
 	ext, _ := extractSessionExt(req)
-	syncOnWrite := m.cfg.SyncOnWrite
+	syncOnWrite := m.cfg.Session.SyncOnWrite
 	if ext.SyncOnWrite != nil {
 		syncOnWrite = *ext.SyncOnWrite
 	}
@@ -293,7 +304,7 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 		return nil, err
 	}
 	allowedNative := resolveAllowedNativeTools(m.cfg, ext)
-	workingDir := m.cfg.WorkingDir
+	workingDir := m.runtime.WorkingDirectory
 	if ext.WorkingDir != "" {
 		workingDir = ext.WorkingDir
 	}
@@ -329,7 +340,7 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 					}, nil
 				}
 				if _, isTools := areAllToolResults(deltaMsgs); !isTools && !sess.hasParkedCalls() && (len(deltaMsgs) > 0 || ext.Compact) {
-					desiredMode := m.cfg.PermissionMode
+					desiredMode := m.cfg.Session.PermissionMode
 					if ext.PermissionMode != "" {
 						desiredMode = ext.PermissionMode
 					}
@@ -377,13 +388,13 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 							if argErr != nil {
 								return nil, argErr
 							}
-							permMode := m.cfg.PermissionMode
+							permMode := m.cfg.Session.PermissionMode
 							if ext.PermissionMode != "" {
 								permMode = ext.PermissionMode
 							}
 							sess, startErr := startCLISession(
 								ctx,
-								m.cfg.CLIPath,
+								m.runtime.Path,
 								args,
 								workingDir,
 								m.buildEnv(),
@@ -392,9 +403,9 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 								permMode,
 								req.Tools,
 								allowedNative,
-								m.cfg.ShutdownTimeout,
+								m.cfg.Proxy.ShutdownTimeout,
 								m.handleSessionIdle,
-								m.cfg.TraceWriter,
+								m.cfg.Observability.TraceWriter,
 							)
 							if startErr != nil {
 								return nil, startErr
@@ -439,13 +450,13 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 	if err != nil {
 		return nil, err
 	}
-	permMode := m.cfg.PermissionMode
+	permMode := m.cfg.Session.PermissionMode
 	if ext.PermissionMode != "" {
 		permMode = ext.PermissionMode
 	}
 	sess, err := startCLISession(
 		ctx,
-		m.cfg.CLIPath,
+		m.runtime.Path,
 		args,
 		workingDir,
 		m.buildEnv(),
@@ -454,9 +465,9 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 		permMode,
 		req.Tools,
 		allowedNative,
-		m.cfg.ShutdownTimeout,
+		m.cfg.Proxy.ShutdownTimeout,
 		m.handleSessionIdle,
-		m.cfg.TraceWriter,
+		m.cfg.Observability.TraceWriter,
 	)
 	if err != nil {
 		return nil, err
@@ -489,19 +500,33 @@ func (m *sessionManager) prepareAndDispatch(ctx context.Context, req *llm.Reques
 }
 
 func (m *sessionManager) buildEnv() []string {
-	env := os.Environ()
-	filtered := make([]string, 0, len(env)+len(m.cfg.Env)+2)
-	for _, entry := range env {
-		if strings.HasPrefix(entry, "CLAUDE_CONFIG_DIR=") || strings.HasPrefix(entry, "CLAUDE_CODE_ENTRYPOINT=") {
+	var base []string
+	inherited := m.runtime.Env == nil
+	if inherited {
+		base = os.Environ()
+	} else {
+		base = m.runtime.Env
+	}
+
+	filtered := make([]string, 0, len(base)+2)
+	hasEntrypoint := false
+	for _, entry := range base {
+		if strings.HasPrefix(entry, "CLAUDE_CONFIG_DIR=") {
 			continue
+		}
+		if strings.HasPrefix(entry, "CLAUDE_CODE_ENTRYPOINT=") {
+			if inherited {
+				continue
+			}
+			hasEntrypoint = true
 		}
 		filtered = append(filtered, entry)
 	}
-	filtered = append(filtered,
-		"CLAUDE_CONFIG_DIR="+m.configDir,
-		"CLAUDE_CODE_ENTRYPOINT=loom-claudecode",
-	)
-	filtered = append(filtered, m.cfg.Env...)
+
+	filtered = append(filtered, "CLAUDE_CONFIG_DIR="+m.configDir)
+	if !hasEntrypoint {
+		filtered = append(filtered, "CLAUDE_CODE_ENTRYPOINT=loom-claudecode")
+	}
 	return filtered
 }
 
@@ -534,23 +559,23 @@ func (m *sessionManager) fetchLiveModels(ctx context.Context) error {
 		"--verbose",
 		"--tools", "",
 	}
-	if len(m.cfg.ExtraArgs) > 0 {
-		args = append(args, m.cfg.ExtraArgs...)
+	if len(m.runtime.Args) > 0 {
+		args = append(args, m.runtime.Args...)
 	}
 	sess, err := startCLISession(
 		ctx,
-		m.cfg.CLIPath,
+		m.runtime.Path,
 		args,
-		m.cfg.WorkingDir,
+		m.runtime.WorkingDirectory,
 		m.buildEnv(),
 		m.configDir,
 		"",
-		m.cfg.PermissionMode,
+		m.cfg.Session.PermissionMode,
 		nil,
 		nil,
-		m.cfg.ShutdownTimeout,
+		m.cfg.Proxy.ShutdownTimeout,
 		nil,
-		m.cfg.TraceWriter,
+		m.cfg.Observability.TraceWriter,
 	)
 	if err != nil {
 		return err
@@ -735,7 +760,7 @@ func (m *sessionManager) captureSnapshot(sessionID, turnToken, prefixDigest stri
 		createdAt:    time.Now(),
 	}
 	m.snapOrder = append(m.snapOrder, turnToken)
-	for len(m.snapOrder) > m.cfg.MaxSnapshots {
+	for len(m.snapOrder) > m.cfg.Proxy.MaxSnapshots {
 		oldest := m.snapOrder[0]
 		m.snapOrder = m.snapOrder[1:]
 		delete(m.snapshots, oldest)

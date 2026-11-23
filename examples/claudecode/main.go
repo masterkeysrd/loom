@@ -41,16 +41,15 @@ func main() {
 	debug := flag.Bool("debug", false, "Print raw Claude CLI stdin/stdout/stderr protocol frames to stderr")
 	flag.Parse()
 
-	var opts []loomclaudecode.Option
-	if *configDir != "" {
-		opts = append(opts, loomclaudecode.WithConfigDir(*configDir))
+	rt := loomclaudecode.SpawnedStdio{
+		ConfigDir: *configDir,
 	}
 	if *endpoint != "" {
 		tok := *authToken
 		if tok == "" {
 			tok = "loom-custom-endpoint"
 		}
-		opts = append(opts, loomclaudecode.WithEnv(
+		rt.Env = append(os.Environ(),
 			"ANTHROPIC_BASE_URL="+*endpoint,
 			"ANTHROPIC_AUTH_TOKEN="+tok,
 			"ANTHROPIC_API_KEY=",
@@ -58,19 +57,24 @@ func main() {
 			"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
 			"ANTHROPIC_DEFAULT_HAIKU_MODEL="+*modelName,
 			"ANTHROPIC_SMALL_FAST_MODEL="+*modelName,
-		))
+		)
 	}
-	if *syncOnWrite {
-		opts = append(opts, loomclaudecode.WithSyncOnWrite(true))
+	obs := loomclaudecode.ObservabilityOptions{
+		OnIdleMessage: func(msg message.Message) {
+			fmt.Printf("\n[Idle (%s)] %s\n", msg.Role(), msg.GetContent().Text())
+		},
 	}
 	if *debug {
-		opts = append(opts, loomclaudecode.WithTraceWriter(os.Stderr))
+		obs.TraceWriter = os.Stderr
 	}
-	opts = append(opts, loomclaudecode.WithOnIdleMessage(func(msg message.Message) {
-		fmt.Printf("\n[Idle (%s)] %s\n", msg.Role(), msg.GetContent().Text())
-	}))
 
-	provider, err := loomclaudecode.NewDefaultProvider(opts...)
+	provider, err := loomclaudecode.NewProvider(&loomclaudecode.Config{
+		Runtime: rt,
+		Session: loomclaudecode.SessionOptions{
+			SyncOnWrite: *syncOnWrite,
+		},
+		Observability: obs,
+	})
 	if err != nil {
 		log.Fatalf("failed to create claudecode provider: %v", err)
 	}

@@ -3,6 +3,7 @@ package loomclaudecode
 import (
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -113,15 +114,15 @@ func (e *SyncCheckpointExtension) ExtensionID() string { return SyncCheckpointEx
 // behavior such as explicit session affinity, working directory, or opt-in
 // native Claude Code tools.
 type Session struct {
-	// WorkingDir overrides Config.WorkingDir for this request when starting a
-	// new CLI subprocess.
+	// WorkingDir overrides SpawnedStdio.WorkingDirectory for this request when
+	// starting a new CLI subprocess.
 	WorkingDir string
 
 	// NativeTools opts in specific built-in Claude Code tools (e.g. "Read", "Bash")
 	// in addition to Loom's bound tools. Empty keeps built-in tools disabled (`--tools ""`).
 	NativeTools []string
 
-	// PermissionMode overrides Config.PermissionMode for this request.
+	// PermissionMode overrides Config.Session.PermissionMode for this request.
 	PermissionMode string
 
 	// ForceFresh forces a fresh CLI session instead of reusing or forking an
@@ -138,7 +139,7 @@ type Session struct {
 	// `/compact` when Compact is true.
 	CompactInstructions string
 
-	// SyncOnWrite overrides Config.SyncOnWrite for this request when non-nil.
+	// SyncOnWrite overrides Config.Session.SyncOnWrite for this request when non-nil.
 	SyncOnWrite *bool
 }
 
@@ -166,28 +167,57 @@ func extractSessionExt(req *llm.Request) (Session, bool) {
 	}
 }
 
-// Config configures a Claude Code [Provider] and its in-process mini-proxy.
-type Config struct {
-	// CLIPath is the path or binary name of the `claude` CLI.
-	// Defaults to CLAUDE_CODE_CLI_PATH env var or "claude".
-	CLIPath string
+// Runtime describes how Claude Code CLI subprocesses are launched.
+//
+// Construct a [SpawnedStdio] literal and pass it via [Config.Runtime] or
+// [WithRuntime]. When nil, a default [SpawnedStdio] is used.
+type Runtime interface {
+	claudeCodeRuntime()
+}
+
+// SpawnedStdio spawns `claude` CLI subprocesses and communicates over their
+// stdin/stdout pipes.
+type SpawnedStdio struct {
+	// Path is the path or binary name of the `claude` CLI executable.
+	// When empty, checks CLAUDE_CODE_CLI_PATH (from host env when Env == nil,
+	// or from Env when Env != nil) and falls back to [DefaultCLIPath] ("claude").
+	Path string
+
+	// Args appends additional raw flags when launching CLI subprocesses.
+	Args []string
+
+	// Env specifies environment variables for spawned CLI processes, each in the
+	// form "KEY=VALUE", following os/exec.Cmd.Env and copilot.SpawnedStdioConnection:
+	//   - nil inherits the current process environment (os.Environ()).
+	//   - non-nil (including an empty []string{}) replaces inherited variables.
+	// The provider still ensures CLAUDE_CONFIG_DIR and CLAUDE_CODE_ENTRYPOINT
+	// are set on spawned subprocesses. Duplicate keys use the last value.
+	Env []string
+
+	// WorkingDirectory sets the default working directory for spawned CLI processes.
+	WorkingDirectory string
 
 	// ConfigDir sets an isolated CLAUDE_CONFIG_DIR for managed subprocesses so
-	// Loom runs do not pollute ~/.claude. When empty, a temporary directory is
-	// created and removed on Provider.Close().
+	// Loom runs do not pollute ~/.claude. When empty:
+	//   - if Env != nil and defines a non-empty CLAUDE_CONFIG_DIR, that directory is used;
+	//   - otherwise a temporary directory is created and removed on Provider.Close().
 	ConfigDir string
 
 	// SourceAuthDir is the directory from which existing Claude CLI auth files
 	// (such as .credentials.json) are synced into an isolated ConfigDir when
-	// CLAUDE_CODE_OAUTH_TOKEN and ANTHROPIC_API_KEY are not set.
-	// Defaults to ~/.claude when available.
+	// CLAUDE_CODE_OAUTH_TOKEN and ANTHROPIC_API_KEY are not set in the effective
+	// child environment.
+	// When empty and Env == nil, defaults to ~/.claude when available.
+	// When empty and Env != nil, no host auth files are synced.
 	SourceAuthDir string
+}
 
-	// WorkingDir sets the default working directory for spawned CLI processes.
-	WorkingDir string
+func (SpawnedStdio) claudeCodeRuntime() {}
 
+// SessionOptions configures default per-session Claude Code CLI behavior.
+type SessionOptions struct {
 	// PermissionMode configures `--permission-mode` passed to the CLI.
-	// Defaults to DefaultPermissionMode ("bypassPermissions").
+	// Defaults to [DefaultPermissionMode] ("bypassPermissions").
 	PermissionMode string
 
 	// AllowedNativeTools lists built-in Claude Code tools to leave enabled
@@ -195,35 +225,35 @@ type Config struct {
 	// Loom's bound tools own all tool execution.
 	AllowedNativeTools []string
 
-	// IdleTTL controls how long idle or parked CLI subprocesses stay warm in the
-	// in-process proxy before being closed. Negative disables TTL reaping.
-	IdleTTL time.Duration
-
-	// ShutdownTimeout controls how long graceful shutdown waits after closing
-	// stdin before sending SIGTERM. Defaults to DefaultShutdownTimeout.
-	ShutdownTimeout time.Duration
-
-	// MaxSnapshots bounds how many pre-turn .jsonl snapshots are cached for
-	// cache-preserving retries and graph forks. Defaults to DefaultMaxSnapshots.
-	MaxSnapshots int
-
-	// QuotaCacheTTL controls how long `/usage` quota snapshots are cached.
-	// Defaults to DefaultQuotaCacheTTL (30s). Negative disables caching and
-	// queries the CLI live on every call.
-	QuotaCacheTTL time.Duration
-
-	// Env appends additional KEY=VALUE environment variables to spawned CLI processes.
-	Env []string
-
-	// ExtraArgs appends additional raw flags when launching the CLI subprocess.
-	ExtraArgs []string
-
 	// SyncOnWrite enables optimistic sync-on-write checks: if the active CLI
 	// session has compacted/drifted while idle or history diverges from the
 	// session checkpoint, Stream returns *llm.OutOfSyncError instead of writing
 	// or silently falling back to a fresh session.
 	SyncOnWrite bool
+}
 
+// ProxyOptions configures the in-process mini-proxy lifecycle and caching.
+type ProxyOptions struct {
+	// IdleTTL controls how long idle or parked CLI subprocesses stay warm in the
+	// in-process proxy before being closed. Negative disables TTL reaping.
+	IdleTTL time.Duration
+
+	// ShutdownTimeout controls how long graceful shutdown waits after closing
+	// stdin before sending SIGTERM. Defaults to [DefaultShutdownTimeout].
+	ShutdownTimeout time.Duration
+
+	// MaxSnapshots bounds how many pre-turn .jsonl snapshots are cached for
+	// cache-preserving retries and graph forks. Defaults to [DefaultMaxSnapshots].
+	MaxSnapshots int
+
+	// QuotaCacheTTL controls how long `/usage` quota snapshots are cached.
+	// Defaults to [DefaultQuotaCacheTTL] (30s). Negative disables caching and
+	// queries the CLI live on every call.
+	QuotaCacheTTL time.Duration
+}
+
+// ObservabilityOptions configures idle notifications and protocol tracing.
+type ObservabilityOptions struct {
 	// OnIdleMessage registers an initial idle notification listener.
 	OnIdleMessage llm.IdleMessageHandler
 
@@ -232,123 +262,130 @@ type Config struct {
 	TraceWriter io.Writer
 }
 
+// Config configures a Claude Code [Provider] and its in-process mini-proxy.
+type Config struct {
+	// Runtime configures how `claude` CLI subprocesses are spawned and isolated.
+	// Defaults to [SpawnedStdio]{} when nil.
+	Runtime Runtime
+
+	// Session configures default per-session CLI behavior (permission mode,
+	// native tools, and sync-on-write checks).
+	Session SessionOptions
+
+	// Proxy configures the in-process mini-proxy lifecycle and caching.
+	Proxy ProxyOptions
+
+	// Observability configures idle notifications and raw protocol tracing.
+	Observability ObservabilityOptions
+}
+
 // Option customizes [Config] in [NewDefaultProvider].
 type Option func(*Config)
 
-// WithCLIPath sets the path to the `claude` binary.
-func WithCLIPath(path string) Option {
-	return func(c *Config) { c.CLIPath = path }
+// WithRuntime sets the [Runtime] used to launch Claude Code CLI subprocesses.
+func WithRuntime(r Runtime) Option {
+	return func(c *Config) { c.Runtime = r }
 }
 
-// WithConfigDir sets an explicit isolated CLAUDE_CONFIG_DIR.
-func WithConfigDir(dir string) Option {
-	return func(c *Config) { c.ConfigDir = dir }
+// WithSession sets default per-session Claude Code CLI options.
+func WithSession(opts SessionOptions) Option {
+	return func(c *Config) { c.Session = opts }
 }
 
-// WithSourceAuthDir overrides the source directory used to sync local CLI
-// authentication files into an isolated CLAUDE_CONFIG_DIR.
-func WithSourceAuthDir(dir string) Option {
-	return func(c *Config) { c.SourceAuthDir = dir }
+// WithProxy sets in-process mini-proxy lifecycle and caching options.
+func WithProxy(opts ProxyOptions) Option {
+	return func(c *Config) { c.Proxy = opts }
 }
 
-// WithWorkingDir sets the default working directory for spawned CLI processes.
-func WithWorkingDir(dir string) Option {
-	return func(c *Config) { c.WorkingDir = dir }
+// WithObservability sets idle notification and tracing options.
+func WithObservability(opts ObservabilityOptions) Option {
+	return func(c *Config) { c.Observability = opts }
 }
 
-// WithPermissionMode sets the CLI `--permission-mode` flag.
-func WithPermissionMode(mode string) Option {
-	return func(c *Config) { c.PermissionMode = mode }
-}
-
-// WithAllowedNativeTools enables specific built-in Claude Code tools.
-func WithAllowedNativeTools(tools ...string) Option {
-	return func(c *Config) {
-		c.AllowedNativeTools = append([]string(nil), tools...)
+func resolveSpawnedStdio(rt Runtime) SpawnedStdio {
+	switch v := rt.(type) {
+	case SpawnedStdio:
+		return v
+	case *SpawnedStdio:
+		if v != nil {
+			return *v
+		}
 	}
+	return SpawnedStdio{}
 }
 
-// WithIdleTTL sets the idle/parked subprocess expiration duration.
-func WithIdleTTL(ttl time.Duration) Option {
-	return func(c *Config) { c.IdleTTL = ttl }
+func (c Config) spawnedStdio() SpawnedStdio {
+	return resolveSpawnedStdio(c.Runtime)
 }
 
-// WithShutdownTimeout sets the graceful shutdown wait duration before SIGTERM.
-func WithShutdownTimeout(d time.Duration) Option {
-	return func(c *Config) { c.ShutdownTimeout = d }
+func cloneEnv(env []string) []string {
+	if env == nil {
+		return nil
+	}
+	out := make([]string, len(env))
+	copy(out, env)
+	return out
 }
 
-// WithMaxSnapshots sets the maximum number of retained pre-turn .jsonl snapshots.
-func WithMaxSnapshots(n int) Option {
-	return func(c *Config) { c.MaxSnapshots = n }
-}
-
-// WithQuotaCacheTTL sets how long `/usage` quota snapshots are cached.
-// Negative values bypass caching.
-func WithQuotaCacheTTL(d time.Duration) Option {
-	return func(c *Config) { c.QuotaCacheTTL = d }
-}
-
-// WithEnv appends extra KEY=VALUE entries to the CLI environment.
-func WithEnv(env ...string) Option {
-	return func(c *Config) { c.Env = append(c.Env, env...) }
-}
-
-// WithExtraArgs appends extra CLI flags.
-func WithExtraArgs(args ...string) Option {
-	return func(c *Config) { c.ExtraArgs = append(c.ExtraArgs, args...) }
-}
-
-// WithSyncOnWrite enables or disables strict sync-on-write checks.
-func WithSyncOnWrite(enabled bool) Option {
-	return func(c *Config) { c.SyncOnWrite = enabled }
-}
-
-// WithOnIdleMessage registers a handler for idle [message.Message] notifications.
-func WithOnIdleMessage(fn llm.IdleMessageHandler) Option {
-	return func(c *Config) { c.OnIdleMessage = fn }
-}
-
-// WithTraceWriter sets an io.Writer that receives raw CLI stdin/stdout/stderr
-// trace lines for debugging.
-func WithTraceWriter(w io.Writer) Option {
-	return func(c *Config) { c.TraceWriter = w }
+func envLookup(env []string, key string) (string, bool) {
+	prefix := key + "="
+	for i := len(env) - 1; i >= 0; i-- {
+		if val, ok := strings.CutPrefix(env[i], prefix); ok {
+			return val, true
+		}
+	}
+	return "", false
 }
 
 func normalizeConfig(cfg *Config) Config {
 	var out Config
 	if cfg != nil {
 		out = *cfg
-		out.AllowedNativeTools = append([]string(nil), cfg.AllowedNativeTools...)
-		out.Env = append([]string(nil), cfg.Env...)
-		out.ExtraArgs = append([]string(nil), cfg.ExtraArgs...)
+		out.Session.AllowedNativeTools = append([]string(nil), cfg.Session.AllowedNativeTools...)
 	}
-	if strings.TrimSpace(out.CLIPath) == "" {
-		if envPath := strings.TrimSpace(os.Getenv("CLAUDE_CODE_CLI_PATH")); envPath != "" {
-			out.CLIPath = envPath
+
+	rt := resolveSpawnedStdio(out.Runtime)
+	rt.Args = append([]string(nil), rt.Args...)
+	rt.Env = cloneEnv(rt.Env)
+
+	if strings.TrimSpace(rt.Path) == "" {
+		if rt.Env == nil {
+			if envPath := strings.TrimSpace(os.Getenv("CLAUDE_CODE_CLI_PATH")); envPath != "" {
+				rt.Path = envPath
+			} else {
+				rt.Path = DefaultCLIPath
+			}
 		} else {
-			out.CLIPath = DefaultCLIPath
+			if envPath, ok := envLookup(rt.Env, "CLAUDE_CODE_CLI_PATH"); ok && strings.TrimSpace(envPath) != "" {
+				rt.Path = strings.TrimSpace(envPath)
+			} else {
+				rt.Path = DefaultCLIPath
+			}
 		}
 	}
-	if strings.TrimSpace(out.PermissionMode) == "" {
-		out.PermissionMode = DefaultPermissionMode
-	}
-	if out.IdleTTL == 0 {
-		out.IdleTTL = DefaultIdleTTL
-	}
-	if out.ShutdownTimeout <= 0 {
-		out.ShutdownTimeout = DefaultShutdownTimeout
-	}
-	if out.MaxSnapshots <= 0 {
-		out.MaxSnapshots = DefaultMaxSnapshots
-	}
-	if out.QuotaCacheTTL == 0 {
-		out.QuotaCacheTTL = DefaultQuotaCacheTTL
-	}
-	if out.SourceAuthDir == "" {
+
+	if rt.SourceAuthDir == "" && rt.Env == nil {
 		if home, err := os.UserHomeDir(); err == nil && home != "" {
-			out.SourceAuthDir = home + string(os.PathSeparator) + ".claude"
+			rt.SourceAuthDir = filepath.Join(home, ".claude")
 		}
+	}
+
+	out.Runtime = rt
+
+	if strings.TrimSpace(out.Session.PermissionMode) == "" {
+		out.Session.PermissionMode = DefaultPermissionMode
+	}
+	if out.Proxy.IdleTTL == 0 {
+		out.Proxy.IdleTTL = DefaultIdleTTL
+	}
+	if out.Proxy.ShutdownTimeout <= 0 {
+		out.Proxy.ShutdownTimeout = DefaultShutdownTimeout
+	}
+	if out.Proxy.MaxSnapshots <= 0 {
+		out.Proxy.MaxSnapshots = DefaultMaxSnapshots
+	}
+	if out.Proxy.QuotaCacheTTL == 0 {
+		out.Proxy.QuotaCacheTTL = DefaultQuotaCacheTTL
 	}
 	return out
 }

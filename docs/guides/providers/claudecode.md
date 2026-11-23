@@ -19,15 +19,19 @@ export ANTHROPIC_API_KEY='...'
 
 ### `CLAUDE_CONFIG_DIR` & Multi-Account Support
 
-- **Ephemeral isolated mode (default when `ConfigDir` is empty):** Creates a temporary `CLAUDE_CONFIG_DIR` (removed on `Provider.Close()`) and syncs file-based `.credentials.json` from `~/.claude` when present. Ideal on Linux/CI or when using `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY`.
-- **macOS Keychain & Multi-account directories:** On macOS, `claude auth login` stores OAuth credentials in the macOS Keychain keyed by `CLAUDE_CONFIG_DIR`. To use an existing login or run multiple accounts concurrently (e.g., personal + work), pass `WithConfigDir` explicitly per `Provider`:
+- **Ephemeral isolated mode (default when `SpawnedStdio.ConfigDir` is empty):** Creates a temporary `CLAUDE_CONFIG_DIR` (removed on `Provider.Close()`). When `SpawnedStdio.Env` is `nil` (inheriting host env), file-based `.credentials.json` is synced from `~/.claude` when no token env var (`CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY`) is present. When `SpawnedStdio.Env` is non-nil (explicit scrubbed env), host `~/.claude` is **not** read unless `SourceAuthDir` is set explicitly.
+- **macOS Keychain & Multi-account directories:** On macOS, `claude auth login` stores OAuth credentials in the macOS Keychain keyed by `CLAUDE_CONFIG_DIR`. To use an existing login or run multiple accounts concurrently (e.g., personal + work), set `SpawnedStdio.ConfigDir` explicitly per `Provider`:
 
 ```go
 personal, _ := loomclaudecode.NewDefaultProvider(
-    loomclaudecode.WithConfigDir(filepath.Join(home, ".claude")),
+    loomclaudecode.WithRuntime(loomclaudecode.SpawnedStdio{
+        ConfigDir: filepath.Join(home, ".claude"),
+    }),
 )
 work, _ := loomclaudecode.NewDefaultProvider(
-    loomclaudecode.WithConfigDir(filepath.Join(home, ".claude-work")),
+    loomclaudecode.WithRuntime(loomclaudecode.SpawnedStdio{
+        ConfigDir: filepath.Join(home, ".claude-work"),
+    }),
 )
 ```
 
@@ -73,21 +77,39 @@ The in-process mini-proxy tags `Assistant` responses with `claudecode.session_id
 Permissions depend on which tools are enabled:
 
 - **Loom-bound tools (`model.BindTools(...)`, default):** Built-in Claude Code tools are disabled (`--tools ""`). The CLI's `can_use_tool` control checks auto-allow `mcp__loom__*` only so the CLI forwards `tools/call` up to Loom as `*message.ToolCall`. All actual execution, allowlists, HITL interrupts, and sandboxing happen inside your Loom `Tools` node—identically to other providers.
-- **Native Claude Code tools (`WithAllowedNativeTools` / `Session.NativeTools`):** Built-in tools enabled via `WithAllowedNativeTools("Read", "Grep")` run inside the CLI subprocess and are gated by `WithPermissionMode(...)` (defaults to `"bypassPermissions"` for headless loops).
+- **Native Claude Code tools (`SessionOptions.AllowedNativeTools` / `Session.NativeTools`):** Built-in tools enabled via `SessionOptions{AllowedNativeTools: []string{"Read", "Grep"}}` run inside the CLI subprocess and are gated by `SessionOptions.PermissionMode` (defaults to `"bypassPermissions"` for headless loops).
 
 ## 5. Configuration, Compaction & Sync-on-Write
 
-### Provider Options
+### Provider Configuration (`Config` & `SpawnedStdio`)
+
+`Config` groups settings into four structs (`Runtime`, `Session`, `Proxy`, `Observability`), usable directly via `NewProvider(&Config{...})` or via `NewDefaultProvider(WithRuntime(...), WithSession(...), WithProxy(...), WithObservability(...))`:
 
 ```go
-provider, err := loomclaudecode.NewDefaultProvider(
-    loomclaudecode.WithCLIPath("/usr/local/bin/claude"),
-    loomclaudecode.WithConfigDir("/path/to/claude-config"),
-    loomclaudecode.WithWorkingDir("/path/to/repo"),
-    loomclaudecode.WithIdleTTL(10 * time.Minute),
-    loomclaudecode.WithAllowedNativeTools("Read", "Grep"),
-    loomclaudecode.WithTraceWriter(os.Stderr), // debug raw stdin/stdout/stderr frames
-)
+provider, err := loomclaudecode.NewProvider(&loomclaudecode.Config{
+    Runtime: loomclaudecode.SpawnedStdio{
+        Path:             "/usr/local/bin/claude",
+        ConfigDir:        "/path/to/claude-config",
+        WorkingDirectory: "/path/to/repo",
+        // Env follows os/exec.Cmd.Env & copilot.SpawnedStdioConnection semantics:
+        //   - nil inherits os.Environ()
+        //   - non-nil (including []string{}) replaces the inherited environment
+        //     without needing an `env -i` shell wrapper.
+        Env: []string{
+            "PATH=/usr/local/bin:/usr/bin:/bin",
+            "HOME=/path/to/sandbox-home",
+        },
+    },
+    Session: loomclaudecode.SessionOptions{
+        AllowedNativeTools: []string{"Read", "Grep"},
+    },
+    Proxy: loomclaudecode.ProxyOptions{
+        IdleTTL: 10 * time.Minute,
+    },
+    Observability: loomclaudecode.ObservabilityOptions{
+        TraceWriter: os.Stderr, // debug raw stdin/stdout/stderr frames
+    },
+})
 ```
 
 ### Per-Request Extension (`claudecode.Session`)
@@ -121,11 +143,13 @@ if notifier, ok := provider.(llm.IdleMessageNotifier); ok {
 }
 ```
 
-Enable `WithSyncOnWrite(true)` if you want `Stream()` to reject writes with `*llm.OutOfSyncError` (carrying `Messages message.MessageList`) whenever an idle compaction or out-of-band history edit diverges from the live CLI session, letting your graph rearrange `state.Messages` and resubmit on the same warm session:
+Enable `SessionOptions{SyncOnWrite: true}` if you want `Stream()` to reject writes with `*llm.OutOfSyncError` (carrying `Messages message.MessageList`) whenever an idle compaction or out-of-band history edit diverges from the live CLI session, letting your graph rearrange `state.Messages` and resubmit on the same warm session:
 
 ```go
 provider, err := loomclaudecode.NewDefaultProvider(
-    loomclaudecode.WithSyncOnWrite(true),
+    loomclaudecode.WithSession(loomclaudecode.SessionOptions{
+        SyncOnWrite: true,
+    }),
 )
 
 resp, err := model.Invoke(ctx, state.Messages)
@@ -142,7 +166,7 @@ When running with a `claude.ai` subscription credential, `Provider` implements [
 
 ```go
 if qp, ok := provider.(llm.QuotaProvider); ok {
-    snap, err := qp.GetQuotaSnapshot(ctx) // cached 30s by default (WithQuotaCacheTTL)
+    snap, err := qp.GetQuotaSnapshot(ctx) // cached 30s by default (ProxyOptions.QuotaCacheTTL)
     _ = snap
     _ = err
 }

@@ -175,7 +175,7 @@ func TestBuildCLIArgsAndNormalizeToolName(t *testing.T) {
 		t.Fatalf("normalizeToolName = %q, want plain_tool", got)
 	}
 
-	cfg := normalizeConfig(&Config{PermissionMode: "bypassPermissions"})
+	cfg := normalizeConfig(&Config{Session: SessionOptions{PermissionMode: "bypassPermissions"}})
 	req := &llm.Request{
 		Model:          "sonnet",
 		ResponseFormat: "json_object",

@@ -129,6 +129,9 @@ func runMockClaudeCLI() {
 	}
 
 	appendLog(fmt.Sprintf("SPAWN session=%s resumed=%v history=%d sys=%q effort=%q mode=%q", sessionID, isResumed, historyCnt, sysPrompt, effort, permMode))
+	if envDump := os.Getenv("MOCK_CLAUDE_ENV_DUMP"); envDump != "" {
+		_ = os.WriteFile(envDump, []byte(strings.Join(os.Environ(), "\n")+"\n"), 0o600)
+	}
 
 	if scenario == "fail_exit" {
 		_, _ = fmt.Fprintln(os.Stderr, "mock stderr: authentication expired")
@@ -733,16 +736,21 @@ func newMockProvider(t *testing.T, extraEnv ...string) (*Provider, string) {
 		t.Fatalf("os.Executable: %v", err)
 	}
 	logFile := filepath.Join(t.TempDir(), "mock_cli.log")
-	env := append([]string{
-		mockCLIEnv + "=1",
-		"MOCK_CLAUDE_LOG=" + logFile,
-	}, extraEnv...)
+	env := append(os.Environ(),
+		mockCLIEnv+"=1",
+		"MOCK_CLAUDE_LOG="+logFile,
+	)
+	env = append(env, extraEnv...)
 
 	p, err := NewDefaultProvider(
-		WithCLIPath(exe),
-		WithEnv(env...),
-		WithIdleTTL(30*time.Second),
-		WithShutdownTimeout(time.Second),
+		WithRuntime(SpawnedStdio{
+			Path: exe,
+			Env:  env,
+		}),
+		WithProxy(ProxyOptions{
+			IdleTTL:         30 * time.Second,
+			ShutdownTimeout: time.Second,
+		}),
 	)
 	if err != nil {
 		t.Fatalf("NewDefaultProvider: %v", err)
@@ -1043,9 +1051,11 @@ func TestProviderIsolatedConfigDirAuthSyncAndClose(t *testing.T) {
 	}
 
 	p, err := NewDefaultProvider(
-		WithCLIPath(exe),
-		WithSourceAuthDir(srcAuth),
-		WithEnv(mockCLIEnv+"=1"),
+		WithRuntime(SpawnedStdio{
+			Path:          exe,
+			SourceAuthDir: srcAuth,
+			Env:           append(os.Environ(), mockCLIEnv+"=1"),
+		}),
 	)
 	if err != nil {
 		t.Fatalf("NewDefaultProvider: %v", err)
@@ -1210,23 +1220,33 @@ func TestProviderNativeCompactionAndStreamEvents(t *testing.T) {
 	}
 }
 
-func newMockProviderWithOpts(t *testing.T, opts ...Option) (*Provider, string) {
+func newMockProviderWithConfig(t *testing.T, customize func(*Config, *SpawnedStdio)) (*Provider, string) {
 	t.Helper()
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatalf("os.Executable: %v", err)
 	}
 	logFile := filepath.Join(t.TempDir(), "mock_cli.log")
-	baseOpts := []Option{
-		WithCLIPath(exe),
-		WithEnv(mockCLIEnv+"=1", "MOCK_CLAUDE_LOG="+logFile),
-		WithIdleTTL(30 * time.Second),
-		WithShutdownTimeout(time.Second),
+	rt := SpawnedStdio{
+		Path: exe,
+		Env: append(os.Environ(),
+			mockCLIEnv+"=1",
+			"MOCK_CLAUDE_LOG="+logFile,
+		),
 	}
-	baseOpts = append(baseOpts, opts...)
-	p, err := NewDefaultProvider(baseOpts...)
+	cfg := Config{
+		Proxy: ProxyOptions{
+			IdleTTL:         30 * time.Second,
+			ShutdownTimeout: time.Second,
+		},
+	}
+	if customize != nil {
+		customize(&cfg, &rt)
+	}
+	cfg.Runtime = rt
+	p, err := NewProvider(&cfg)
 	if err != nil {
-		t.Fatalf("NewDefaultProvider: %v", err)
+		t.Fatalf("NewProvider: %v", err)
 	}
 	t.Cleanup(func() { _ = p.Close() })
 	return p, logFile
@@ -1234,7 +1254,9 @@ func newMockProviderWithOpts(t *testing.T, opts ...Option) (*Provider, string) {
 
 func TestProviderIdleNotificationsAndOutOfSyncReconcile(t *testing.T) {
 	idleCh := make(chan message.Message, 8)
-	p, logFile := newMockProviderWithOpts(t, WithSyncOnWrite(true))
+	p, logFile := newMockProviderWithConfig(t, func(cfg *Config, _ *SpawnedStdio) {
+		cfg.Session.SyncOnWrite = true
+	})
 	unsub := p.OnIdleMessage(func(msg message.Message) {
 		idleCh <- msg
 	})
@@ -1331,13 +1353,12 @@ func TestProviderIdleNotificationsAndOutOfSyncReconcile(t *testing.T) {
 
 func TestProviderIdlePreAppliedBeforeWrite(t *testing.T) {
 	idleCh := make(chan message.Message, 8)
-	p, logFile := newMockProviderWithOpts(
-		t,
-		WithSyncOnWrite(true),
-		WithOnIdleMessage(func(msg message.Message) {
+	p, logFile := newMockProviderWithConfig(t, func(cfg *Config, _ *SpawnedStdio) {
+		cfg.Session.SyncOnWrite = true
+		cfg.Observability.OnIdleMessage = func(msg message.Message) {
 			idleCh <- msg
-		}),
-	)
+		}
+	})
 	model, err := llm.NewModel(p, "sonnet", nil)
 	if err != nil {
 		t.Fatalf("NewModel: %v", err)
@@ -1379,7 +1400,9 @@ func TestProviderIdlePreAppliedBeforeWrite(t *testing.T) {
 }
 
 func TestProviderSyncOnWritePrefixMismatch(t *testing.T) {
-	p, _ := newMockProviderWithOpts(t, WithSyncOnWrite(true))
+	p, _ := newMockProviderWithConfig(t, func(cfg *Config, _ *SpawnedStdio) {
+		cfg.Session.SyncOnWrite = true
+	})
 	model, err := llm.NewModel(p, "sonnet", nil)
 	if err != nil {
 		t.Fatalf("NewModel: %v", err)
@@ -1418,7 +1441,10 @@ func TestProviderQuotaProvider(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("limits and extra_usage", func(t *testing.T) {
-		p, logFile := newMockProviderWithOpts(t, WithEnv("MOCK_CLAUDE_SCENARIO=usage_limits"), WithQuotaCacheTTL(time.Minute))
+		p, logFile := newMockProviderWithConfig(t, func(cfg *Config, rt *SpawnedStdio) {
+			rt.Env = append(rt.Env, "MOCK_CLAUDE_SCENARIO=usage_limits")
+			cfg.Proxy.QuotaCacheTTL = time.Minute
+		})
 
 		snap, err := p.GetQuotaSnapshot(ctx)
 		if err != nil {
@@ -1470,7 +1496,10 @@ func TestProviderQuotaProvider(t *testing.T) {
 	})
 
 	t.Run("extra_usage only binds to models", func(t *testing.T) {
-		p, logFile := newMockProviderWithOpts(t, WithEnv("MOCK_CLAUDE_SCENARIO=usage_extra_only"), WithQuotaCacheTTL(-1))
+		p, logFile := newMockProviderWithConfig(t, func(cfg *Config, rt *SpawnedStdio) {
+			rt.Env = append(rt.Env, "MOCK_CLAUDE_SCENARIO=usage_extra_only")
+			cfg.Proxy.QuotaCacheTTL = -1
+		})
 
 		buckets, ok, err := p.GetQuota(ctx, "sonnet")
 		if err != nil || !ok || len(buckets) != 1 || buckets[0].ID != "extra_usage" {
@@ -1485,7 +1514,7 @@ func TestProviderQuotaProvider(t *testing.T) {
 	})
 
 	t.Run("api key or unauthenticated empty report", func(t *testing.T) {
-		p, _ := newMockProviderWithOpts(t)
+		p, _ := newMockProviderWithConfig(t, nil)
 		snap, err := p.GetQuotaSnapshot(ctx)
 		if err != nil {
 			t.Fatalf("expected no error when usage_report is absent, got %v", err)
@@ -1500,7 +1529,9 @@ func TestProviderQuotaProvider(t *testing.T) {
 }
 
 func TestProviderThinkingEffortAndLiveModels(t *testing.T) {
-	p, logFile := newMockProviderWithOpts(t, WithEnv("MOCK_CLAUDE_SCENARIO=live_models"))
+	p, logFile := newMockProviderWithConfig(t, func(_ *Config, rt *SpawnedStdio) {
+		rt.Env = append(rt.Env, "MOCK_CLAUDE_SCENARIO=live_models")
+	})
 	ctx := context.Background()
 
 	models, err := p.ListModels(ctx)
@@ -1556,7 +1587,9 @@ func TestProviderThinkingEffortAndLiveModels(t *testing.T) {
 }
 
 func TestProviderWarmModelAndPermissionSwitch(t *testing.T) {
-	p, logFile := newMockProviderWithOpts(t, WithSyncOnWrite(true))
+	p, logFile := newMockProviderWithConfig(t, func(cfg *Config, _ *SpawnedStdio) {
+		cfg.Session.SyncOnWrite = true
+	})
 	ctx := context.Background()
 
 	mSonnet, _ := llm.NewModel(p, "sonnet", nil)
@@ -1877,4 +1910,318 @@ func TestProviderModalityAndCapabilityValidation(t *testing.T) {
 			t.Fatalf("unexpected response text: %q", resp.Content.Text())
 		}
 	})
+}
+
+func TestSpawnedStdioEnvIsolationAndNormalization(t *testing.T) {
+	t.Run("nil Env inherits host env and strips managed vars", func(t *testing.T) {
+		t.Setenv("LOOM_TEST_HOST_VAR", "from-host")
+		t.Setenv("CLAUDE_CONFIG_DIR", "/host/claude-dir")
+		t.Setenv("CLAUDE_CODE_ENTRYPOINT", "host-entry")
+		t.Setenv("CLAUDE_CODE_CLI_PATH", "/custom/host/claude")
+
+		p, err := NewDefaultProvider()
+		if err != nil {
+			t.Fatalf("NewDefaultProvider: %v", err)
+		}
+		defer p.Close()
+
+		if p.proxy.runtime.Path != "/custom/host/claude" {
+			t.Fatalf("runtime.Path = %q, want /custom/host/claude", p.proxy.runtime.Path)
+		}
+		if p.proxy.runtime.Env != nil {
+			t.Fatalf("expected runtime.Env == nil when inherited, got %v", p.proxy.runtime.Env)
+		}
+		if p.proxy.runtime.SourceAuthDir == "" {
+			t.Fatal("expected SourceAuthDir to default when Env == nil")
+		}
+
+		env := p.proxy.buildEnv()
+		if val, ok := envLookup(env, "LOOM_TEST_HOST_VAR"); !ok || val != "from-host" {
+			t.Fatalf("expected inherited LOOM_TEST_HOST_VAR=from-host, got %q (ok=%v)", val, ok)
+		}
+		if val, ok := envLookup(env, "CLAUDE_CONFIG_DIR"); !ok || val != p.proxy.configDir || val == "/host/claude-dir" {
+			t.Fatalf("expected isolated CLAUDE_CONFIG_DIR=%q, got %q (ok=%v)", p.proxy.configDir, val, ok)
+		}
+		if val, ok := envLookup(env, "CLAUDE_CODE_ENTRYPOINT"); !ok || val != "loom-claudecode" {
+			t.Fatalf("expected CLAUDE_CODE_ENTRYPOINT=loom-claudecode, got %q (ok=%v)", val, ok)
+		}
+	})
+
+	t.Run("non-nil empty Env scrubs all host vars and preserves non-nil slice", func(t *testing.T) {
+		t.Setenv("ANTHROPIC_API_KEY", "host-secret")
+		t.Setenv("GH_TOKEN", "host-gh-token")
+		t.Setenv("CLAUDE_CODE_CLI_PATH", "/host/should-not-use")
+
+		p, err := NewProvider(&Config{
+			Runtime: SpawnedStdio{
+				Env: []string{},
+			},
+		})
+		if err != nil {
+			t.Fatalf("NewProvider: %v", err)
+		}
+		defer p.Close()
+
+		if p.proxy.runtime.Env == nil {
+			t.Fatal("expected empty non-nil Env to remain non-nil after normalizeConfig")
+		}
+		if p.proxy.runtime.Path != DefaultCLIPath {
+			t.Fatalf("runtime.Path = %q, want %q (must ignore host CLAUDE_CODE_CLI_PATH)", p.proxy.runtime.Path, DefaultCLIPath)
+		}
+		if p.proxy.runtime.SourceAuthDir != "" {
+			t.Fatalf("expected empty SourceAuthDir when Env != nil, got %q", p.proxy.runtime.SourceAuthDir)
+		}
+
+		env := p.proxy.buildEnv()
+		if len(env) != 2 {
+			t.Fatalf("expected exactly 2 managed env entries, got %v", env)
+		}
+		for _, forbidden := range []string{"ANTHROPIC_API_KEY", "GH_TOKEN", "HOME"} {
+			if _, ok := envLookup(env, forbidden); ok {
+				t.Fatalf("expected %s to be scrubbed from env: %v", forbidden, env)
+			}
+		}
+		if val, _ := envLookup(env, "CLAUDE_CONFIG_DIR"); val != p.proxy.configDir {
+			t.Fatalf("CLAUDE_CONFIG_DIR = %q, want %q", val, p.proxy.configDir)
+		}
+		if val, _ := envLookup(env, "CLAUDE_CODE_ENTRYPOINT"); val != "loom-claudecode" {
+			t.Fatalf("CLAUDE_CODE_ENTRYPOINT = %q, want loom-claudecode", val)
+		}
+	})
+
+	t.Run("explicit Env adopts CLAUDE_CONFIG_DIR and respects ConfigDir precedence and custom entrypoint", func(t *testing.T) {
+		envCfgDir := filepath.Join(t.TempDir(), "from-env")
+		p1, err := NewProvider(&Config{
+			Runtime: &SpawnedStdio{
+				Env: []string{
+					"CLAUDE_CONFIG_DIR=" + envCfgDir,
+					"CLAUDE_CODE_ENTRYPOINT=custom-entry",
+					"CLAUDE_CODE_CLI_PATH=/from/child/env/claude",
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("NewProvider p1: %v", err)
+		}
+		if p1.proxy.configDir != envCfgDir || p1.proxy.ownsConfigDir {
+			t.Fatalf("expected adopted configDir=%q owns=false, got %q owns=%v", envCfgDir, p1.proxy.configDir, p1.proxy.ownsConfigDir)
+		}
+		if p1.proxy.runtime.Path != "/from/child/env/claude" {
+			t.Fatalf("runtime.Path = %q, want /from/child/env/claude", p1.proxy.runtime.Path)
+		}
+		env1 := p1.proxy.buildEnv()
+		if val, _ := envLookup(env1, "CLAUDE_CODE_ENTRYPOINT"); val != "custom-entry" {
+			t.Fatalf("CLAUDE_CODE_ENTRYPOINT = %q, want custom-entry", val)
+		}
+		_ = p1.Close()
+		if _, err := os.Stat(envCfgDir); err != nil {
+			t.Fatalf("expected non-owned envCfgDir to remain after Close: %v", err)
+		}
+
+		explicitCfgDir := filepath.Join(t.TempDir(), "explicit")
+		p2, err := NewProvider(&Config{
+			Runtime: SpawnedStdio{
+				ConfigDir: explicitCfgDir,
+				Env: []string{
+					"CLAUDE_CONFIG_DIR=" + envCfgDir,
+					"FOO=bar",
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("NewProvider p2: %v", err)
+		}
+		defer p2.Close()
+
+		env2 := p2.proxy.buildEnv()
+		cfgDirCount := 0
+		for _, e := range env2 {
+			if strings.HasPrefix(e, "CLAUDE_CONFIG_DIR=") {
+				cfgDirCount++
+			}
+		}
+		if cfgDirCount != 1 {
+			t.Fatalf("expected exactly 1 CLAUDE_CONFIG_DIR entry, got %d in %v", cfgDirCount, env2)
+		}
+		if val, _ := envLookup(env2, "CLAUDE_CONFIG_DIR"); val != explicitCfgDir {
+			t.Fatalf("CLAUDE_CONFIG_DIR = %q, want %q", val, explicitCfgDir)
+		}
+	})
+
+	t.Run("typed nil *SpawnedStdio defaults safely", func(t *testing.T) {
+		var nilRT *SpawnedStdio
+		p, err := NewProvider(&Config{Runtime: nilRT})
+		if err != nil {
+			t.Fatalf("NewProvider: %v", err)
+		}
+		defer p.Close()
+		if p.proxy.runtime.Path == "" {
+			t.Fatal("expected default runtime path for typed nil *SpawnedStdio")
+		}
+	})
+}
+
+func TestSpawnedStdioAuthSyncDecoupling(t *testing.T) {
+	t.Run("non-nil Env does not auto-sync host HOME ~/.claude credentials", func(t *testing.T) {
+		fakeHome := t.TempDir()
+		hostClaudeDir := filepath.Join(fakeHome, ".claude")
+		if err := os.MkdirAll(hostClaudeDir, 0o700); err != nil {
+			t.Fatalf("mkdir host .claude: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(hostClaudeDir, ".credentials.json"), []byte(`{"token":"host-secret"}`), 0o600); err != nil {
+			t.Fatalf("write host creds: %v", err)
+		}
+		t.Setenv("HOME", fakeHome)
+		t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
+		t.Setenv("ANTHROPIC_API_KEY", "")
+
+		p, err := NewProvider(&Config{
+			Runtime: SpawnedStdio{
+				Env: []string{"HOME=/sandbox"},
+			},
+		})
+		if err != nil {
+			t.Fatalf("NewProvider: %v", err)
+		}
+		defer p.Close()
+
+		if _, err := os.Stat(filepath.Join(p.proxy.configDir, ".credentials.json")); !os.IsNotExist(err) {
+			t.Fatalf("expected host ~/.claude/.credentials.json NOT to be synced when Env != nil, err=%v", err)
+		}
+	})
+
+	t.Run("syncAuthCredentials checks effective Env rather than host os.Getenv", func(t *testing.T) {
+		srcAuth := t.TempDir()
+		if err := os.WriteFile(filepath.Join(srcAuth, ".credentials.json"), []byte(`{"token":"explicit"}`), 0o600); err != nil {
+			t.Fatalf("write creds: %v", err)
+		}
+
+		// Host has ANTHROPIC_API_KEY set, but child Env scrubs it -> explicit SourceAuthDir MUST still sync.
+		t.Setenv("ANTHROPIC_API_KEY", "host-api-key")
+		t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "host-oauth-token")
+
+		p1, err := NewProvider(&Config{
+			Runtime: SpawnedStdio{
+				SourceAuthDir: srcAuth,
+				Env:           []string{"HOME=/sandbox"},
+			},
+		})
+		if err != nil {
+			t.Fatalf("NewProvider p1: %v", err)
+		}
+		defer p1.Close()
+
+		if _, err := os.Stat(filepath.Join(p1.proxy.configDir, ".credentials.json")); err != nil {
+			t.Fatalf("expected .credentials.json to sync despite host env tokens: %v", err)
+		}
+
+		// Host has no tokens, but child Env provides ANTHROPIC_API_KEY -> SourceAuthDir MUST NOT sync.
+		t.Setenv("ANTHROPIC_API_KEY", "")
+		t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
+
+		p2, err := NewProvider(&Config{
+			Runtime: SpawnedStdio{
+				SourceAuthDir: srcAuth,
+				Env:           []string{"ANTHROPIC_API_KEY=child-key"},
+			},
+		})
+		if err != nil {
+			t.Fatalf("NewProvider p2: %v", err)
+		}
+		defer p2.Close()
+
+		if _, err := os.Stat(filepath.Join(p2.proxy.configDir, ".credentials.json")); !os.IsNotExist(err) {
+			t.Fatalf("expected .credentials.json NOT to sync when child Env sets ANTHROPIC_API_KEY, err=%v", err)
+		}
+	})
+}
+
+func TestProviderScrubbedEnvEndToEnd(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "host-anthropic-secret")
+	t.Setenv("GH_TOKEN", "host-gh-secret")
+	t.Setenv("LOOM_HOST_SENTINEL", "must-not-leak")
+
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable: %v", err)
+	}
+	tmp := t.TempDir()
+	logFile := filepath.Join(tmp, "mock.log")
+	envDump := filepath.Join(tmp, "child.env")
+
+	p, err := NewDefaultProvider(
+		WithRuntime(SpawnedStdio{
+			Path: exe,
+			Env: []string{
+				mockCLIEnv + "=1",
+				"MOCK_CLAUDE_LOG=" + logFile,
+				"MOCK_CLAUDE_ENV_DUMP=" + envDump,
+				"MOCK_CLAUDE_SCENARIO=usage_limits",
+				"ALLOWED_VAR=ok",
+			},
+		}),
+		WithProxy(ProxyOptions{
+			IdleTTL:         30 * time.Second,
+			ShutdownTimeout: time.Second,
+		}),
+	)
+	if err != nil {
+		t.Fatalf("NewDefaultProvider: %v", err)
+	}
+	defer p.Close()
+
+	assertScrubbedChildEnv := func(t *testing.T, phase string) {
+		t.Helper()
+		raw, err := os.ReadFile(envDump)
+		if err != nil {
+			t.Fatalf("%s: read env dump: %v", phase, err)
+		}
+		lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+		for _, forbidden := range []string{"ANTHROPIC_API_KEY", "GH_TOKEN", "LOOM_HOST_SENTINEL"} {
+			if val, ok := envLookup(lines, forbidden); ok {
+				t.Fatalf("%s: leaked host env %s=%q into child process", phase, forbidden, val)
+			}
+		}
+		if val, _ := envLookup(lines, "ALLOWED_VAR"); val != "ok" {
+			t.Fatalf("%s: ALLOWED_VAR = %q, want ok", phase, val)
+		}
+		if val, _ := envLookup(lines, "CLAUDE_CONFIG_DIR"); val != p.proxy.configDir {
+			t.Fatalf("%s: CLAUDE_CONFIG_DIR = %q, want %q", phase, val, p.proxy.configDir)
+		}
+		if val, _ := envLookup(lines, "CLAUDE_CODE_ENTRYPOINT"); val != "loom-claudecode" {
+			t.Fatalf("%s: CLAUDE_CODE_ENTRYPOINT = %q, want loom-claudecode", phase, val)
+		}
+	}
+
+	ctx := context.Background()
+
+	// 1. Invoke (Path C session spawn)
+	model, err := llm.NewModel(p, "sonnet", nil)
+	if err != nil {
+		t.Fatalf("NewModel: %v", err)
+	}
+	if _, err := model.Invoke(ctx, message.MessageList{
+		&message.User{Content: message.Content{&message.TextBlock{Text: "hello"}}},
+	}); err != nil {
+		t.Fatalf("Invoke: %v", err)
+	}
+	assertScrubbedChildEnv(t, "Invoke")
+
+	// 2. GetQuotaSnapshot (/usage spawn)
+	_ = os.Remove(envDump)
+	snap, err := p.GetQuotaSnapshot(ctx)
+	if err != nil {
+		t.Fatalf("GetQuotaSnapshot: %v", err)
+	}
+	if len(snap.Buckets) == 0 {
+		t.Fatalf("expected usage_limits buckets, got empty snapshot")
+	}
+	assertScrubbedChildEnv(t, "GetQuotaSnapshot")
+
+	// 3. ListModels (live model discovery spawn)
+	_ = os.Remove(envDump)
+	if _, err := p.ListModels(ctx); err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+	assertScrubbedChildEnv(t, "ListModels")
 }

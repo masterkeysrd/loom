@@ -426,7 +426,7 @@ func buildCLIArgs(
 		args = append(args, "--system-prompt", systemPrompt)
 	}
 
-	permMode := cfg.PermissionMode
+	permMode := cfg.Session.PermissionMode
 	if ext.PermissionMode != "" {
 		permMode = ext.PermissionMode
 	}
@@ -434,7 +434,7 @@ func buildCLIArgs(
 		args = append(args, "--permission-mode", permMode)
 	}
 
-	nativeTools := cfg.AllowedNativeTools
+	nativeTools := cfg.Session.AllowedNativeTools
 	if len(ext.NativeTools) > 0 {
 		nativeTools = ext.NativeTools
 	}
@@ -458,8 +458,8 @@ func buildCLIArgs(
 		args = append(args, "--resume", resumeSessionID)
 	}
 
-	if len(cfg.ExtraArgs) > 0 {
-		args = append(args, cfg.ExtraArgs...)
+	if rt := cfg.spawnedStdio(); len(rt.Args) > 0 {
+		args = append(args, rt.Args...)
 	}
 
 	return args, nil
@@ -469,7 +469,7 @@ func resolveAllowedNativeTools(cfg Config, ext Session) []string {
 	if len(ext.NativeTools) > 0 {
 		return ext.NativeTools
 	}
-	return cfg.AllowedNativeTools
+	return cfg.Session.AllowedNativeTools
 }
 
 func resolveEffortLevel(tc *llm.ThinkingConfig) string {

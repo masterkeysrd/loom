@@ -36,7 +36,7 @@ func (p *Provider) GetQuotaSnapshot(ctx context.Context) (llm.QuotaSnapshot, err
 	}
 
 	p.cachedQuotasMu.RLock()
-	if p.cfg.QuotaCacheTTL > 0 && time.Since(p.lastQuotaFetched) <= p.cfg.QuotaCacheTTL && hasCache(p.cachedQuotas) {
+	if p.cfg.Proxy.QuotaCacheTTL > 0 && time.Since(p.lastQuotaFetched) <= p.cfg.Proxy.QuotaCacheTTL && hasCache(p.cachedQuotas) {
 		res := cloneQuotaSnapshot(p.cachedQuotas)
 		p.cachedQuotasMu.RUnlock()
 		return res, nil
@@ -46,7 +46,7 @@ func (p *Provider) GetQuotaSnapshot(ctx context.Context) (llm.QuotaSnapshot, err
 	p.cachedQuotasMu.Lock()
 	defer p.cachedQuotasMu.Unlock()
 
-	if p.cfg.QuotaCacheTTL > 0 && time.Since(p.lastQuotaFetched) <= p.cfg.QuotaCacheTTL && hasCache(p.cachedQuotas) {
+	if p.cfg.Proxy.QuotaCacheTTL > 0 && time.Since(p.lastQuotaFetched) <= p.cfg.Proxy.QuotaCacheTTL && hasCache(p.cachedQuotas) {
 		return cloneQuotaSnapshot(p.cachedQuotas), nil
 	}
 
@@ -117,19 +117,20 @@ func (p *Provider) GetQuota(ctx context.Context, model string) (llm.QuotaBuckets
 }
 
 func (p *Provider) fetchUsageReport(ctx context.Context) (*protocol.UsageReport, error) {
+	rt := p.proxy.runtime
 	args := []string{
 		"-p", "/usage",
 		"--output-format", "stream-json",
 		"--verbose",
 		"--tools", "",
 	}
-	if len(p.cfg.ExtraArgs) > 0 {
-		args = append(args, p.cfg.ExtraArgs...)
+	if len(rt.Args) > 0 {
+		args = append(args, rt.Args...)
 	}
 
-	cmd := exec.CommandContext(ctx, p.cfg.CLIPath, args...)
-	if p.cfg.WorkingDir != "" {
-		cmd.Dir = p.cfg.WorkingDir
+	cmd := exec.CommandContext(ctx, rt.Path, args...)
+	if rt.WorkingDirectory != "" {
+		cmd.Dir = rt.WorkingDirectory
 	}
 	cmd.Env = p.proxy.buildEnv()
 
@@ -138,15 +139,16 @@ func (p *Provider) fetchUsageReport(ctx context.Context) (*protocol.UsageReport,
 		return nil, fmt.Errorf("claudecode: usage stdout pipe: %w", err)
 	}
 	stderrBuf := newBoundedBuffer(8 * 1024)
-	if p.cfg.TraceWriter != nil {
-		cmd.Stderr = io.MultiWriter(stderrBuf, &lineTraceWriter{w: p.cfg.TraceWriter, prefix: "[stderr] "})
-		_, _ = fmt.Fprintf(p.cfg.TraceWriter, "[spawn] %s %s\n", p.cfg.CLIPath, strings.Join(args, " "))
+	traceWriter := p.cfg.Observability.TraceWriter
+	if traceWriter != nil {
+		cmd.Stderr = io.MultiWriter(stderrBuf, &lineTraceWriter{w: traceWriter, prefix: "[stderr] "})
+		_, _ = fmt.Fprintf(traceWriter, "[spawn] %s %s\n", rt.Path, strings.Join(args, " "))
 	} else {
 		cmd.Stderr = stderrBuf
 	}
 
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("claudecode: start %q for /usage: %w", p.cfg.CLIPath, err)
+		return nil, fmt.Errorf("claudecode: start %q for /usage: %w", rt.Path, err)
 	}
 
 	var (
@@ -160,8 +162,8 @@ func (p *Provider) fetchUsageReport(ctx context.Context) (*protocol.UsageReport,
 		if len(trimmed) == 0 {
 			continue
 		}
-		if p.cfg.TraceWriter != nil {
-			_, _ = fmt.Fprintf(p.cfg.TraceWriter, "[stdout] %s\n", trimmed)
+		if traceWriter != nil {
+			_, _ = fmt.Fprintf(traceWriter, "[stdout] %s\n", trimmed)
 		}
 		var frame protocol.Frame
 		if err := json.Unmarshal(trimmed, &frame); err != nil {

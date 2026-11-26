@@ -112,7 +112,8 @@ func modelPrefersResponsesAPI(modelName string, hasTools bool) bool {
 		strings.Contains(lower, "deep-research") ||
 		strings.HasPrefix(lower, "computer-use") ||
 		strings.Contains(lower, "cyber") ||
-		strings.Contains(lower, "rosalind") {
+		strings.Contains(lower, "rosalind") ||
+		strings.Contains(lower, "healthcare") {
 		return true
 	}
 	if strings.HasPrefix(lower, "gpt-6") && hasTools {

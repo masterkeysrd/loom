@@ -81,7 +81,7 @@ func TestShouldUseResponsesAPI(t *testing.T) {
 		t.Errorf("expected responses API when explicitly enabled")
 	}
 
-	// 7. Model-based auto-routing: gpt-5-pro, gpt-5.6-sol, codex, deep-research, computer-use
+	// 7. Model-based auto-routing: gpt-5-pro, gpt-5.6-sol, codex, deep-research, computer-use, specialized domain models
 	for _, m := range []string{
 		"gpt-5-pro-preview",
 		"gpt-5.4-pro",
@@ -92,6 +92,10 @@ func TestShouldUseResponsesAPI(t *testing.T) {
 		"computer-use-preview",
 		"gpt-5.6-cyber",
 		"gpt-rosalind-research",
+		"gpt-6-astra-healthcare",
+		"gpt-6.1-sol-healthcare",
+		"gpt-6.2-astra-healthcare",
+		"gpt-6.2-sol-healthcare",
 	} {
 		reqModel := &llm.Request{Model: m}
 		use, _ := defaultProv.shouldUseResponsesAPI(reqModel)
@@ -544,6 +548,10 @@ func TestModelSupportsToolSearch(t *testing.T) {
 		"gpt-6.1-terra",
 		"gpt-6.2-astra",
 		"gpt-6.2-sol",
+		"gpt-6-astra-healthcare",
+		"gpt-6.1-sol-healthcare",
+		"gpt-6.2-astra-healthcare",
+		"gpt-6.2-sol-healthcare",
 	}
 	for _, m := range supported {
 		if !modelSupportsToolSearch(m) {

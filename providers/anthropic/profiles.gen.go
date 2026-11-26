@@ -12,6 +12,7 @@ var staticProfiles = map[string]profile.Profile{
 		Name:        "Claude Fable 5",
 		Description: "Claude model for creative writing, analysis, and controlled agent workflows",
 		Family:      "claude-fable",
+		Knowledge:   "2026-01-31",
 		ReleaseDate: "2026-06-07",
 		LastUpdated: "2026-06-09",
 		Capabilities: profile.Capabilities{
@@ -177,6 +178,9 @@ var staticProfiles = map[string]profile.Profile{
 			Temperature: true,
 			ReasoningOptions: []profile.ReasoningOption{
 				{
+					Type: "toggle",
+				},
+				{
 					Type: "budget_tokens",
 					Min:  1024,
 				},
@@ -221,6 +225,9 @@ var staticProfiles = map[string]profile.Profile{
 			ToolCall:    true,
 			Temperature: true,
 			ReasoningOptions: []profile.ReasoningOption{
+				{
+					Type: "toggle",
+				},
 				{
 					Type: "budget_tokens",
 					Min:  1024,
@@ -331,6 +338,9 @@ var staticProfiles = map[string]profile.Profile{
 			Temperature: true,
 			ReasoningOptions: []profile.ReasoningOption{
 				{
+					Type: "toggle",
+				},
+				{
 					Type: "effort",
 					Values: []string{
 						"low",
@@ -373,7 +383,7 @@ var staticProfiles = map[string]profile.Profile{
 		Family:      "claude-opus",
 		Knowledge:   "2025-05",
 		ReleaseDate: "2025-11-24",
-		LastUpdated: "2025-11-01",
+		LastUpdated: "2025-11-24",
 		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
@@ -383,6 +393,9 @@ var staticProfiles = map[string]profile.Profile{
 			ToolCall:    true,
 			Temperature: true,
 			ReasoningOptions: []profile.ReasoningOption{
+				{
+					Type: "toggle",
+				},
 				{
 					Type: "effort",
 					Values: []string{
@@ -436,6 +449,9 @@ var staticProfiles = map[string]profile.Profile{
 			ToolCall:    true,
 			Temperature: true,
 			ReasoningOptions: []profile.ReasoningOption{
+				{
+					Type: "toggle",
+				},
 				{
 					Type: "effort",
 					Values: []string{
@@ -491,6 +507,9 @@ var staticProfiles = map[string]profile.Profile{
 			Temperature: false,
 			ReasoningOptions: []profile.ReasoningOption{
 				{
+					Type: "toggle",
+				},
+				{
 					Type: "effort",
 					Values: []string{
 						"low",
@@ -542,6 +561,9 @@ var staticProfiles = map[string]profile.Profile{
 			Temperature: false,
 			ReasoningOptions: []profile.ReasoningOption{
 				{
+					Type: "toggle",
+				},
+				{
 					Type: "effort",
 					Values: []string{
 						"low",
@@ -592,6 +614,9 @@ var staticProfiles = map[string]profile.Profile{
 			ToolCall:    true,
 			Temperature: false,
 			ReasoningOptions: []profile.ReasoningOption{
+				{
+					Type: "toggle",
+				},
 				{
 					Type: "effort",
 					Values: []string{
@@ -682,7 +707,7 @@ var staticProfiles = map[string]profile.Profile{
 		Name:        "Claude Sonnet 4.5 (latest)",
 		Description: "Balanced Claude model for coding, analysis, agent workflows, and cost control",
 		Family:      "claude-sonnet",
-		Knowledge:   "2025-07-31",
+		Knowledge:   "2025-01-31",
 		ReleaseDate: "2025-09-29",
 		LastUpdated: "2025-09-29",
 		Capabilities: profile.Capabilities{
@@ -694,6 +719,9 @@ var staticProfiles = map[string]profile.Profile{
 			ToolCall:    true,
 			Temperature: true,
 			ReasoningOptions: []profile.ReasoningOption{
+				{
+					Type: "toggle",
+				},
 				{
 					Type: "budget_tokens",
 					Min:  1024,
@@ -727,7 +755,7 @@ var staticProfiles = map[string]profile.Profile{
 		Name:        "Claude Sonnet 4.5",
 		Description: "Balanced Claude model for coding, analysis, agent workflows, and cost control",
 		Family:      "claude-sonnet",
-		Knowledge:   "2025-07-31",
+		Knowledge:   "2025-01-31",
 		ReleaseDate: "2025-09-29",
 		LastUpdated: "2025-09-29",
 		Capabilities: profile.Capabilities{
@@ -739,6 +767,9 @@ var staticProfiles = map[string]profile.Profile{
 			ToolCall:    true,
 			Temperature: true,
 			ReasoningOptions: []profile.ReasoningOption{
+				{
+					Type: "toggle",
+				},
 				{
 					Type: "budget_tokens",
 					Min:  1024,
@@ -784,6 +815,9 @@ var staticProfiles = map[string]profile.Profile{
 			ToolCall:    true,
 			Temperature: true,
 			ReasoningOptions: []profile.ReasoningOption{
+				{
+					Type: "toggle",
+				},
 				{
 					Type: "effort",
 					Values: []string{

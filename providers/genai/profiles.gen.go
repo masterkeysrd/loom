@@ -111,44 +111,6 @@ var staticProfiles = map[string]profile.Profile{
 			},
 		},
 	},
-	"gemini-2.5-computer-use-preview-10-2025": {
-		ID:          "gemini-2.5-computer-use-preview-10-2025",
-		Name:        "Gemini 2.5 Computer Use Preview 10-2025",
-		Description: "Specialized Gemini 2.5 model for browser-control agents that automate UI tasks",
-		Family:      "gemini-computer-use",
-		Knowledge:   "2025-01",
-		ReleaseDate: "2025-10-07",
-		LastUpdated: "2025-10-07",
-		Capabilities: profile.Capabilities{
-			Completion:  true,
-			Decision:    false,
-			Embedding:   false,
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: true,
-		},
-		Limits: profile.Limits{
-			Context: 128000,
-			Output:  64000,
-		},
-		Modalities: profile.Modalities{
-			Inputs: []profile.Modality{
-				profile.ModalityText,
-				profile.ModalityImage,
-			},
-			Outputs: []profile.Modality{
-				profile.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: profile.Pricing{
-			Input:      1.25,
-			Output:     10,
-			CacheRead:  0,
-			CacheWrite: 0,
-		},
-	},
 	"gemini-2.5-flash": {
 		ID:          "gemini-2.5-flash",
 		Name:        "Gemini 2.5 Flash",
@@ -204,9 +166,9 @@ var staticProfiles = map[string]profile.Profile{
 		Name:        "Nano Banana",
 		Description: "Nano Banana image model for fast generation, edits, and character-consistent assets",
 		Family:      "nano-banana",
-		Knowledge:   "2024-06",
-		ReleaseDate: "2025-08-26",
-		LastUpdated: "2025-08-26",
+		Knowledge:   "2025-06",
+		ReleaseDate: "2025-10-02",
+		LastUpdated: "2025-10-02",
 		Capabilities: profile.Capabilities{
 			Completion:  false,
 			Decision:    false,
@@ -217,7 +179,7 @@ var staticProfiles = map[string]profile.Profile{
 			Temperature: true,
 		},
 		Limits: profile.Limits{
-			Context: 32768,
+			Context: 65536,
 			Output:  32768,
 		},
 		Modalities: profile.Modalities{
@@ -234,7 +196,7 @@ var staticProfiles = map[string]profile.Profile{
 		Pricing: profile.Pricing{
 			Input:      0.3,
 			Output:     2.5,
-			CacheRead:  0.075,
+			CacheRead:  0,
 			CacheWrite: 0,
 		},
 	},
@@ -244,8 +206,8 @@ var staticProfiles = map[string]profile.Profile{
 		Description: "Lean Gemini 2.5 lane for cheap multimodal traffic and quick agents",
 		Family:      "gemini-flash-lite",
 		Knowledge:   "2025-01",
-		ReleaseDate: "2025-06-17",
-		LastUpdated: "2025-06-17",
+		ReleaseDate: "2025-07-22",
+		LastUpdated: "2025-07-22",
 		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
@@ -657,6 +619,8 @@ var staticProfiles = map[string]profile.Profile{
 			Inputs: []profile.Modality{
 				profile.ModalityText,
 				profile.ModalityImage,
+				profile.ModalityVideo,
+				profile.ModalityPDF,
 			},
 			Outputs: []profile.Modality{
 				profile.ModalityText,
@@ -668,58 +632,6 @@ var staticProfiles = map[string]profile.Profile{
 			Input:      0.25,
 			Output:     1.5,
 			CacheRead:  0,
-			CacheWrite: 0,
-		},
-	},
-	"gemini-3.1-flash-lite-preview": {
-		ID:          "gemini-3.1-flash-lite-preview",
-		Name:        "Gemini 3.1 Flash Lite Preview",
-		Description: "Legacy model retained for compatibility with older integrations",
-		Family:      "gemini-flash-lite",
-		Knowledge:   "2025-01",
-		ReleaseDate: "2026-03-03",
-		LastUpdated: "2026-03-03",
-		Capabilities: profile.Capabilities{
-			Completion:  true,
-			Decision:    false,
-			Embedding:   false,
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: true,
-			ReasoningOptions: []profile.ReasoningOption{
-				{
-					Type: "effort",
-					Values: []string{
-						"minimal",
-						"low",
-						"medium",
-						"high",
-					},
-				},
-			},
-		},
-		Limits: profile.Limits{
-			Context: 1048576,
-			Output:  65536,
-		},
-		Modalities: profile.Modalities{
-			Inputs: []profile.Modality{
-				profile.ModalityText,
-				profile.ModalityImage,
-				profile.ModalityVideo,
-				profile.ModalityAudio,
-				profile.ModalityPDF,
-			},
-			Outputs: []profile.Modality{
-				profile.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: profile.Pricing{
-			Input:      0.25,
-			Output:     1.5,
-			CacheRead:  0.025,
 			CacheWrite: 0,
 		},
 	},
@@ -1441,8 +1353,8 @@ var staticProfiles = map[string]profile.Profile{
 		Description: "Embedding model for semantic search, retrieval, clustering, and ranking pipelines",
 		Family:      "gemini-embedding",
 		Knowledge:   "2025-05",
-		ReleaseDate: "2025-05-20",
-		LastUpdated: "2025-05-20",
+		ReleaseDate: "2025-07-14",
+		LastUpdated: "2025-07-14",
 		Capabilities: profile.Capabilities{
 			Completion:  false,
 			Decision:    false,
@@ -1516,11 +1428,10 @@ var staticProfiles = map[string]profile.Profile{
 	"gemini-flash-latest": {
 		ID:          "gemini-flash-latest",
 		Name:        "Gemini Flash Latest",
-		Description: "High-efficiency Gemini model for agentic workflows, coding, and multimodal reasoning",
+		Description: "Google's most intelligent Flash model, engineered for long-horizon software engineering, autonomous agents, and complex enterprise workflows",
 		Family:      "gemini-flash",
-		Knowledge:   "2026-03",
-		ReleaseDate: "2026-08-13",
-		LastUpdated: "2026-08-13",
+		ReleaseDate: "2026-09-02",
+		LastUpdated: "2026-09-02",
 		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
@@ -1613,44 +1524,6 @@ var staticProfiles = map[string]profile.Profile{
 			Input:      0.3,
 			Output:     2.5,
 			CacheRead:  0.03,
-			CacheWrite: 0,
-		},
-	},
-	"gemini-omni-flash-preview": {
-		ID:          "gemini-omni-flash-preview",
-		Name:        "Gemini Omni Flash Preview",
-		Description: "Video generation and editing model for fast, conversational text- and image-to-video workflows",
-		Family:      "gemini-omni-flash",
-		ReleaseDate: "2026-06-30",
-		LastUpdated: "2026-06-30",
-		Capabilities: profile.Capabilities{
-			Completion:  false,
-			Decision:    false,
-			Embedding:   false,
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    false,
-			Temperature: true,
-		},
-		Limits: profile.Limits{
-			Context: 131072,
-			Output:  65536,
-		},
-		Modalities: profile.Modalities{
-			Inputs: []profile.Modality{
-				profile.ModalityText,
-				profile.ModalityImage,
-				profile.ModalityVideo,
-			},
-			Outputs: []profile.Modality{
-				profile.ModalityVideo,
-			},
-		},
-		OpenWeights: false,
-		Pricing: profile.Pricing{
-			Input:      1.5,
-			Output:     17.5,
-			CacheRead:  0,
 			CacheWrite: 0,
 		},
 	},
@@ -1816,7 +1689,7 @@ var staticProfiles = map[string]profile.Profile{
 			Temperature: true,
 		},
 		Limits: profile.Limits{
-			Context: 1048576,
+			Context: 131072,
 			Output:  65536,
 		},
 		Modalities: profile.Modalities{
@@ -1854,7 +1727,7 @@ var staticProfiles = map[string]profile.Profile{
 			Temperature: true,
 		},
 		Limits: profile.Limits{
-			Context: 1048576,
+			Context: 131072,
 			Output:  65536,
 		},
 		Modalities: profile.Modalities{

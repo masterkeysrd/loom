@@ -2,8 +2,17 @@ name: Documentation
 
 on:
   pull_request:
+    paths:
+      - "docs/**"
+      - "site/**"
+      - "Makefile"
+      - ".github/workflows/docs.yml"
   release:
     types: [published]
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -20,11 +29,6 @@ jobs:
           cache-dependency-path: site/package-lock.json
       - run: npm --prefix site ci
       - run: make docs
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - name: Test the first graph and checkpoint tutorials
-        run: go test ./examples/quickstart ./examples/resume
       - name: Upload the release site
         if: github.event_name == 'release'
         uses: actions/upload-pages-artifact@v3

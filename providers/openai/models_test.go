@@ -37,6 +37,30 @@ func newTestOpenAIProvider(t *testing.T, handler http.HandlerFunc) *Provider {
 }
 
 func TestListModels_EnrichesStaticAndPreservesCatalog(t *testing.T) {
+	const staticTestModelID = "test-static-pro"
+	staticWant := profile.Profile{
+		ID:   staticTestModelID,
+		Name: "Test Static Pro",
+		Capabilities: profile.Capabilities{
+			Completion:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+		},
+		Limits: profile.Limits{
+			Context: 400000,
+			Output:  128000,
+		},
+		Pricing: profile.Pricing{
+			Input:  15,
+			Output: 60,
+		},
+	}
+	staticProfiles[staticTestModelID] = staticWant
+	t.Cleanup(func() {
+		delete(staticProfiles, staticTestModelID)
+	})
+
 	p := newTestOpenAIProvider(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/models" {
 			http.NotFound(w, r)
@@ -47,7 +71,7 @@ func TestListModels_EnrichesStaticAndPreservesCatalog(t *testing.T) {
 			"object": "list",
 			"data": []map[string]any{
 				{
-					"id":       "gpt-5.4-pro",
+					"id":       staticTestModelID,
 					"object":   "model",
 					"created":  1740787200,
 					"owned_by": "openai",
@@ -94,10 +118,6 @@ func TestListModels_EnrichesStaticAndPreservesCatalog(t *testing.T) {
 	}
 
 	// 1. Static model keeps pricing, limits, and capabilities from staticProfiles
-	staticWant, ok := staticProfiles["gpt-5.4-pro"]
-	if !ok {
-		t.Fatal("expected gpt-5.4-pro in staticProfiles")
-	}
 	gotPro := models[0]
 	if gotPro.Pricing.Input != staticWant.Pricing.Input || gotPro.Pricing.Output != staticWant.Pricing.Output {
 		t.Errorf("expected static pricing preserved (%+v), got %+v", staticWant.Pricing, gotPro.Pricing)

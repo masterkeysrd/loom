@@ -227,12 +227,66 @@ func TestMapModelInfoAndQuota(t *testing.T) {
 }
 
 func TestMapModelInfoStaticEnrichment(t *testing.T) {
+	const testModelID = "test-static-enrichment-model"
+	staticProfiles[testModelID] = profile.Profile{
+		ID:          testModelID,
+		Name:        "Test Static Model",
+		Description: "Synthetic static profile for enrichment tests",
+		Family:      "gpt",
+		Knowledge:   "2025-08-31",
+		ReleaseDate: "2026-03-05",
+		LastUpdated: "2026-03-05",
+		Capabilities: profile.Capabilities{
+			Completion:  true,
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: true,
+			ReasoningOptions: []profile.ReasoningOption{
+				{
+					Type:   "effort",
+					Values: []string{"none", "low", "medium", "high", "xhigh"},
+				},
+			},
+		},
+		Limits: profile.Limits{
+			Context: 1050000,
+			Output:  128000,
+		},
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityPDF,
+			},
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+			},
+		},
+		Pricing: profile.Pricing{
+			Input:     2.5,
+			Output:    15,
+			CacheRead: 0.25,
+			TieredLimits: []profile.TierPricing{
+				{
+					Label:     "context>272000",
+					Condition: profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
+					Input:     5,
+					Output:    22.5,
+				},
+			},
+		},
+	}
+	t.Cleanup(func() {
+		delete(staticProfiles, testModelID)
+	})
+
 	t.Run("prefers live limits and forces temperature false", func(t *testing.T) {
 		maxWin := int64(500000)
 		maxOut := int64(32000)
 		prof := mapModelInfoToProfile(copilot.Model{
-			ID:   "gpt-5.4",
-			Name: "GPT 5.4 Live",
+			ID:   testModelID,
+			Name: "Test Model Live",
 			Capabilities: copilot.ModelCapabilities{
 				Supports: &copilot.ModelCapabilitiesSupports{Vision: copilot.Bool(false), ReasoningEffort: copilot.Bool(true)},
 				Limits:   &copilot.ModelCapabilitiesLimits{MaxContextWindowTokens: &maxWin, MaxOutputTokens: &maxOut},
@@ -241,7 +295,7 @@ func TestMapModelInfoStaticEnrichment(t *testing.T) {
 			DefaultReasoningEffort:    copilot.String("low"),
 		})
 
-		if prof.Name != "GPT 5.4 Live" {
+		if prof.Name != "Test Model Live" {
 			t.Fatalf("expected live Name preserved, got %q", prof.Name)
 		}
 		if prof.Capabilities.Temperature {
@@ -269,9 +323,9 @@ func TestMapModelInfoStaticEnrichment(t *testing.T) {
 
 	t.Run("fills missing limits and reasoning from static profile", func(t *testing.T) {
 		prof := mapModelInfoToProfile(copilot.Model{
-			ID: "gpt-5.4",
+			ID: testModelID,
 		})
-		if prof.Name != "GPT-5.4" {
+		if prof.Name != "Test Static Model" {
 			t.Fatalf("expected static friendly Name, got %q", prof.Name)
 		}
 		if prof.Limits.Context != 1050000 || prof.Limits.Output != 128000 {

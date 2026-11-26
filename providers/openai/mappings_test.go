@@ -324,9 +324,54 @@ func TestValidateChatProfileAndCapabilities(t *testing.T) {
 	p := &Provider{}
 	ctx := context.Background()
 
+	p.OverrideProfile("test-text-only", profile.Profile{
+		ID: "test-text-only",
+		Capabilities: profile.Capabilities{
+			Completion: true,
+			ToolCall:   true,
+		},
+		Modalities: profile.Modalities{
+			Inputs:  []profile.Modality{profile.ModalityText},
+			Outputs: []profile.Modality{profile.ModalityText},
+		},
+	})
+	p.OverrideProfile("test-vision-no-audio", profile.Profile{
+		ID: "test-vision-no-audio",
+		Capabilities: profile.Capabilities{
+			Completion: true,
+			ToolCall:   true,
+		},
+		Modalities: profile.Modalities{
+			Inputs:  []profile.Modality{profile.ModalityText, profile.ModalityImage},
+			Outputs: []profile.Modality{profile.ModalityText},
+		},
+	})
+	p.OverrideProfile("test-no-toolcall", profile.Profile{
+		ID: "test-no-toolcall",
+		Capabilities: profile.Capabilities{
+			Completion: true,
+			ToolCall:   false,
+		},
+		Modalities: profile.Modalities{
+			Inputs:  []profile.Modality{profile.ModalityText},
+			Outputs: []profile.Modality{profile.ModalityText},
+		},
+	})
+	p.OverrideProfile("test-embedding-only", profile.Profile{
+		ID: "test-embedding-only",
+		Capabilities: profile.Capabilities{
+			Completion: false,
+			Embedding:  true,
+		},
+		Modalities: profile.Modalities{
+			Inputs:  []profile.Modality{profile.ModalityText},
+			Outputs: []profile.Modality{profile.ModalityEmbedding},
+		},
+	})
+
 	t.Run("known_text_only_rejects_image", func(t *testing.T) {
 		_, err := p.Stream(ctx, &llm.Request{
-			Model: "gpt-4",
+			Model: "test-text-only",
 			Messages: []message.Message{
 				message.NewUser(&message.ImageBlock{URL: "https://example.com/a.png"}),
 			},
@@ -336,9 +381,9 @@ func TestValidateChatProfileAndCapabilities(t *testing.T) {
 		}
 	})
 
-	t.Run("known_gpt4o_rejects_audio", func(t *testing.T) {
+	t.Run("known_vision_model_rejects_audio", func(t *testing.T) {
 		_, err := p.Stream(ctx, &llm.Request{
-			Model: "gpt-4o",
+			Model: "test-vision-no-audio",
 			Messages: []message.Message{
 				message.NewUser(&message.AudioBlock{Data: []byte("aud"), MIMEType: "audio/wav"}),
 			},
@@ -350,7 +395,7 @@ func TestValidateChatProfileAndCapabilities(t *testing.T) {
 
 	t.Run("known_no_toolcall_rejects_tools", func(t *testing.T) {
 		_, err := p.Stream(ctx, &llm.Request{
-			Model:    "gpt-3.5-turbo",
+			Model:    "test-no-toolcall",
 			Messages: []message.Message{message.NewUserText("hi")},
 			Tools:    []tool.Definition{{Name: "ping"}},
 		})
@@ -361,7 +406,7 @@ func TestValidateChatProfileAndCapabilities(t *testing.T) {
 
 	t.Run("known_embedding_only_rejects_completion", func(t *testing.T) {
 		_, err := p.Stream(ctx, &llm.Request{
-			Model:    "text-embedding-3-small",
+			Model:    "test-embedding-only",
 			Messages: []message.Message{message.NewUserText("hi")},
 		})
 		if !errors.Is(err, profile.ErrUnsupportedCapability) {

@@ -519,9 +519,20 @@ func TestValidateDecisionModalities(t *testing.T) {
 		}
 	})
 
+	p.OverrideProfile("test-decision-text-only", profile.Profile{
+		ID: "test-decision-text-only",
+		Capabilities: profile.Capabilities{
+			Completion: true,
+		},
+		Modalities: profile.Modalities{
+			Inputs:  []profile.Modality{profile.ModalityText},
+			Outputs: []profile.Modality{profile.ModalityText},
+		},
+	})
+
 	t.Run("known_text_only_profile_rejects_images", func(t *testing.T) {
 		_, err := p.Evaluate(ctx, &decision.Request{
-			Model:     "gpt-3.5-turbo",
+			Model:     "test-decision-text-only",
 			Input:     decision.Text("check").WithImages(message.ImageBlock{URL: "https://example.com/a.png"}),
 			Questions: []decision.Question{decision.Predicate("q", "q")},
 		})

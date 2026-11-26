@@ -45,118 +45,6 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0,
 		},
 	},
-	"gpt-3.5-turbo": {
-		ID:          "gpt-3.5-turbo",
-		Name:        "GPT-3.5-turbo",
-		Description: "Compact GPT model for low-latency assistance and high-volume workloads",
-		Family:      "gpt",
-		Knowledge:   "2021-09-01",
-		ReleaseDate: "2023-03-01",
-		LastUpdated: "2023-11-06",
-		Capabilities: profile.Capabilities{
-			Completion:  true,
-			Decision:    false,
-			Embedding:   false,
-			Attachment:  false,
-			Reasoning:   false,
-			ToolCall:    false,
-			Temperature: true,
-		},
-		Limits: profile.Limits{
-			Context: 16385,
-			Output:  4096,
-		},
-		Modalities: profile.Modalities{
-			Inputs: []profile.Modality{
-				profile.ModalityText,
-			},
-			Outputs: []profile.Modality{
-				profile.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: profile.Pricing{
-			Input:      0.5,
-			Output:     1.5,
-			CacheRead:  0,
-			CacheWrite: 0,
-		},
-	},
-	"gpt-4": {
-		ID:          "gpt-4",
-		Name:        "GPT-4",
-		Description: "GPT model for general reasoning, writing, coding, and tool-assisted tasks",
-		Family:      "gpt",
-		Knowledge:   "2023-11",
-		ReleaseDate: "2023-11-06",
-		LastUpdated: "2024-04-09",
-		Capabilities: profile.Capabilities{
-			Completion:  true,
-			Decision:    false,
-			Embedding:   false,
-			Attachment:  false,
-			Reasoning:   false,
-			ToolCall:    true,
-			Temperature: true,
-		},
-		Limits: profile.Limits{
-			Context: 8192,
-			Output:  8192,
-		},
-		Modalities: profile.Modalities{
-			Inputs: []profile.Modality{
-				profile.ModalityText,
-			},
-			Outputs: []profile.Modality{
-				profile.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: profile.Pricing{
-			Input:      30,
-			Output:     60,
-			CacheRead:  0,
-			CacheWrite: 0,
-		},
-	},
-	"gpt-4-turbo": {
-		ID:          "gpt-4-turbo",
-		Name:        "GPT-4 Turbo",
-		Description: "Compact GPT model for low-latency assistance and high-volume workloads",
-		Family:      "gpt",
-		Knowledge:   "2023-12",
-		ReleaseDate: "2023-11-06",
-		LastUpdated: "2024-04-09",
-		Capabilities: profile.Capabilities{
-			Completion:  true,
-			Decision:    false,
-			Embedding:   false,
-			Attachment:  true,
-			Reasoning:   false,
-			ToolCall:    true,
-			Temperature: true,
-		},
-		Limits: profile.Limits{
-			Context: 128000,
-			Output:  4096,
-		},
-		Modalities: profile.Modalities{
-			Inputs: []profile.Modality{
-				profile.ModalityText,
-				profile.ModalityImage,
-			},
-			Outputs: []profile.Modality{
-				profile.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: profile.Pricing{
-			Input:      10,
-			Output:     30,
-			CacheRead:  0,
-			CacheWrite: 0,
-		},
-	},
 	"gpt-4.1": {
 		ID:          "gpt-4.1",
 		Name:        "GPT-4.1",
@@ -235,44 +123,6 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0,
 		},
 	},
-	"gpt-4.1-nano": {
-		ID:          "gpt-4.1-nano",
-		Name:        "GPT-4.1 nano",
-		Description: "Tiny GPT-4.1 option for classification, routing, and very high-volume tasks",
-		Family:      "gpt-nano",
-		Knowledge:   "2024-04",
-		ReleaseDate: "2025-04-14",
-		LastUpdated: "2025-04-14",
-		Capabilities: profile.Capabilities{
-			Completion:  true,
-			Decision:    false,
-			Embedding:   false,
-			Attachment:  true,
-			Reasoning:   false,
-			ToolCall:    true,
-			Temperature: true,
-		},
-		Limits: profile.Limits{
-			Context: 1047576,
-			Output:  32768,
-		},
-		Modalities: profile.Modalities{
-			Inputs: []profile.Modality{
-				profile.ModalityText,
-				profile.ModalityImage,
-			},
-			Outputs: []profile.Modality{
-				profile.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: profile.Pricing{
-			Input:      0.1,
-			Output:     0.4,
-			CacheRead:  0.025,
-			CacheWrite: 0,
-		},
-	},
 	"gpt-4o": {
 		ID:          "gpt-4o",
 		Name:        "GPT-4o",
@@ -309,44 +159,6 @@ var staticProfiles = map[string]profile.Profile{
 			Input:      2.5,
 			Output:     10,
 			CacheRead:  1.25,
-			CacheWrite: 0,
-		},
-	},
-	"gpt-4o-2024-05-13": {
-		ID:          "gpt-4o-2024-05-13",
-		Name:        "GPT-4o (2024-05-13)",
-		Description: "GPT model for general reasoning, writing, coding, and tool-assisted tasks",
-		Family:      "gpt",
-		Knowledge:   "2023-09",
-		ReleaseDate: "2024-05-13",
-		LastUpdated: "2024-05-13",
-		Capabilities: profile.Capabilities{
-			Completion:  true,
-			Decision:    false,
-			Embedding:   false,
-			Attachment:  true,
-			Reasoning:   false,
-			ToolCall:    true,
-			Temperature: true,
-		},
-		Limits: profile.Limits{
-			Context: 128000,
-			Output:  4096,
-		},
-		Modalities: profile.Modalities{
-			Inputs: []profile.Modality{
-				profile.ModalityText,
-				profile.ModalityImage,
-			},
-			Outputs: []profile.Modality{
-				profile.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: profile.Pricing{
-			Input:      5,
-			Output:     15,
-			CacheRead:  0,
 			CacheWrite: 0,
 		},
 	},
@@ -837,57 +649,6 @@ var staticProfiles = map[string]profile.Profile{
 		Limits: profile.Limits{
 			Context: 400000,
 			Output:  128000,
-		},
-		Modalities: profile.Modalities{
-			Inputs: []profile.Modality{
-				profile.ModalityText,
-				profile.ModalityImage,
-				profile.ModalityPDF,
-			},
-			Outputs: []profile.Modality{
-				profile.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: profile.Pricing{
-			Input:      1.75,
-			Output:     14,
-			CacheRead:  0.175,
-			CacheWrite: 0,
-		},
-	},
-	"gpt-5.3-codex-spark": {
-		ID:          "gpt-5.3-codex-spark",
-		Name:        "GPT-5.3 Codex Spark",
-		Description: "Coding-optimized GPT model for repository edits, reviews, and agentic software work",
-		Family:      "gpt-codex-spark",
-		Knowledge:   "2025-08-31",
-		ReleaseDate: "2026-02-05",
-		LastUpdated: "2026-02-05",
-		Capabilities: profile.Capabilities{
-			Completion:  true,
-			Decision:    false,
-			Embedding:   false,
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: false,
-			ReasoningOptions: []profile.ReasoningOption{
-				{
-					Type: "effort",
-					Values: []string{
-						"none",
-						"low",
-						"medium",
-						"high",
-						"xhigh",
-					},
-				},
-			},
-		},
-		Limits: profile.Limits{
-			Context: 128000,
-			Output:  32000,
 		},
 		Modalities: profile.Modalities{
 			Inputs: []profile.Modality{
@@ -1555,6 +1316,67 @@ var staticProfiles = map[string]profile.Profile{
 			},
 		},
 	},
+	"gpt-6-astra-healthcare": {
+		ID:          "gpt-6-astra-healthcare",
+		Name:        "GPT-6 Astra Healthcare",
+		Description: "GPT-6 Astra paired with a harness tailored to clinical questions; its web search uses a dedicated index of medical sources.",
+		Family:      "gpt-astra",
+		Knowledge:   "2026-04-30",
+		ReleaseDate: "2026-11-24",
+		LastUpdated: "2026-11-24",
+		Capabilities: profile.Capabilities{
+			Completion:  true,
+			Decision:    false,
+			Embedding:   false,
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []profile.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: profile.Limits{
+			Context: 1050000,
+			Output:  128000,
+		},
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityPDF,
+			},
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: profile.Pricing{
+			Input:      10,
+			Output:     50,
+			CacheRead:  1,
+			CacheWrite: 0,
+			TieredLimits: []profile.TierPricing{
+				{
+					Label:      "context>272000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
+					Input:      20,
+					Output:     75,
+					CacheRead:  2,
+					CacheWrite: 0,
+				},
+			},
+		},
+	},
 	"gpt-6-luna": {
 		ID:          "gpt-6-luna",
 		Name:        "GPT-6 Luna",
@@ -1740,6 +1562,67 @@ var staticProfiles = map[string]profile.Profile{
 			},
 		},
 	},
+	"gpt-6.1-sol-healthcare": {
+		ID:          "gpt-6.1-sol-healthcare",
+		Name:        "GPT-6.1 Sol Healthcare",
+		Description: "GPT-6.1 Sol paired with a harness tailored to clinical questions; its web search uses a dedicated index of medical sources.",
+		Family:      "gpt-sol",
+		Knowledge:   "2026-04-30",
+		ReleaseDate: "2026-11-24",
+		LastUpdated: "2026-11-24",
+		Capabilities: profile.Capabilities{
+			Completion:  true,
+			Decision:    false,
+			Embedding:   false,
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []profile.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: profile.Limits{
+			Context: 1050000,
+			Output:  128000,
+		},
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityPDF,
+			},
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: profile.Pricing{
+			Input:      2,
+			Output:     10,
+			CacheRead:  0.1,
+			CacheWrite: 0,
+			TieredLimits: []profile.TierPricing{
+				{
+					Label:      "context>272000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
+					Input:      4,
+					Output:     15,
+					CacheRead:  0.2,
+					CacheWrite: 0,
+				},
+			},
+		},
+	},
 	"gpt-6.1-terra": {
 		ID:          "gpt-6.1-terra",
 		Name:        "GPT-6.1 Terra",
@@ -1863,6 +1746,67 @@ var staticProfiles = map[string]profile.Profile{
 			},
 		},
 	},
+	"gpt-6.2-astra-healthcare": {
+		ID:          "gpt-6.2-astra-healthcare",
+		Name:        "GPT-6.2 Astra Healthcare",
+		Description: "GPT-6.2 Astra paired with a harness tailored to clinical questions; its web search uses a dedicated index of medical sources.",
+		Family:      "gpt-astra",
+		Knowledge:   "2026-05-18",
+		ReleaseDate: "2026-11-24",
+		LastUpdated: "2026-11-24",
+		Capabilities: profile.Capabilities{
+			Completion:  true,
+			Decision:    false,
+			Embedding:   false,
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []profile.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: profile.Limits{
+			Context: 1050000,
+			Output:  128000,
+		},
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityPDF,
+			},
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: profile.Pricing{
+			Input:      8,
+			Output:     40,
+			CacheRead:  0.4,
+			CacheWrite: 10,
+			TieredLimits: []profile.TierPricing{
+				{
+					Label:      "context>272000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
+					Input:      16,
+					Output:     60,
+					CacheRead:  0.8,
+					CacheWrite: 20,
+				},
+			},
+		},
+	},
 	"gpt-6.2-sol": {
 		ID:          "gpt-6.2-sol",
 		Name:        "GPT-6.2 Sol",
@@ -1871,6 +1815,67 @@ var staticProfiles = map[string]profile.Profile{
 		Knowledge:   "2026-06-01",
 		ReleaseDate: "2026-11-17",
 		LastUpdated: "2026-11-17",
+		Capabilities: profile.Capabilities{
+			Completion:  true,
+			Decision:    false,
+			Embedding:   false,
+			Attachment:  true,
+			Reasoning:   true,
+			ToolCall:    true,
+			Temperature: false,
+			ReasoningOptions: []profile.ReasoningOption{
+				{
+					Type: "effort",
+					Values: []string{
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max",
+					},
+				},
+			},
+		},
+		Limits: profile.Limits{
+			Context: 1050000,
+			Output:  128000,
+		},
+		Modalities: profile.Modalities{
+			Inputs: []profile.Modality{
+				profile.ModalityText,
+				profile.ModalityImage,
+				profile.ModalityPDF,
+			},
+			Outputs: []profile.Modality{
+				profile.ModalityText,
+			},
+		},
+		OpenWeights: false,
+		Pricing: profile.Pricing{
+			Input:      2,
+			Output:     10,
+			CacheRead:  0.1,
+			CacheWrite: 2.5,
+			TieredLimits: []profile.TierPricing{
+				{
+					Label:      "context>272000",
+					Condition:  profile.TierCondition{Type: profile.TierConditionContext, Size: 272000},
+					Input:      4,
+					Output:     15,
+					CacheRead:  0.2,
+					CacheWrite: 5,
+				},
+			},
+		},
+	},
+	"gpt-6.2-sol-healthcare": {
+		ID:          "gpt-6.2-sol-healthcare",
+		Name:        "GPT-6.2 Sol Healthcare",
+		Description: "GPT-6.2 Sol paired with a harness tailored to clinical questions; its web search uses a dedicated index of medical sources.",
+		Family:      "gpt-sol",
+		Knowledge:   "2026-06-01",
+		ReleaseDate: "2026-11-24",
+		LastUpdated: "2026-11-24",
 		Capabilities: profile.Capabilities{
 			Completion:  true,
 			Decision:    false,
@@ -2150,155 +2155,6 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0,
 		},
 	},
-	"gpt-realtime-2.1": {
-		ID:          "gpt-realtime-2.1",
-		Name:        "GPT-Realtime-2.1",
-		Description: "Realtime speech-to-speech model with configurable reasoning, tool use, and robust voice-agent behavior",
-		Family:      "gpt-realtime",
-		Knowledge:   "2024-09-30",
-		ReleaseDate: "2026-07-06",
-		LastUpdated: "2026-07-06",
-		Capabilities: profile.Capabilities{
-			Completion:  false,
-			Decision:    false,
-			Embedding:   false,
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: false,
-			ReasoningOptions: []profile.ReasoningOption{
-				{
-					Type: "effort",
-					Values: []string{
-						"minimal",
-						"low",
-						"medium",
-						"high",
-						"xhigh",
-					},
-				},
-			},
-		},
-		Limits: profile.Limits{
-			Context: 128000,
-			Output:  32000,
-		},
-		Modalities: profile.Modalities{
-			Inputs: []profile.Modality{
-				profile.ModalityText,
-				profile.ModalityAudio,
-				profile.ModalityImage,
-			},
-			Outputs: []profile.Modality{
-				profile.ModalityText,
-				profile.ModalityAudio,
-			},
-		},
-		OpenWeights: false,
-		Pricing: profile.Pricing{
-			Input:      4,
-			Output:     24,
-			CacheRead:  0.4,
-			CacheWrite: 0,
-		},
-	},
-	"o1": {
-		ID:          "o1",
-		Name:        "o1",
-		Description: "O-series reasoning model for hard analysis, math, coding, and planning",
-		Family:      "o",
-		Knowledge:   "2023-09",
-		ReleaseDate: "2024-12-05",
-		LastUpdated: "2024-12-05",
-		Capabilities: profile.Capabilities{
-			Completion:  true,
-			Decision:    false,
-			Embedding:   false,
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: false,
-			ReasoningOptions: []profile.ReasoningOption{
-				{
-					Type: "effort",
-					Values: []string{
-						"low",
-						"medium",
-						"high",
-					},
-				},
-			},
-		},
-		Limits: profile.Limits{
-			Context: 200000,
-			Output:  100000,
-		},
-		Modalities: profile.Modalities{
-			Inputs: []profile.Modality{
-				profile.ModalityText,
-				profile.ModalityImage,
-				profile.ModalityPDF,
-			},
-			Outputs: []profile.Modality{
-				profile.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: profile.Pricing{
-			Input:      15,
-			Output:     60,
-			CacheRead:  7.5,
-			CacheWrite: 0,
-		},
-	},
-	"o1-pro": {
-		ID:          "o1-pro",
-		Name:        "o1-pro",
-		Description: "O-series reasoning model for hard analysis, math, coding, and planning",
-		Family:      "o-pro",
-		Knowledge:   "2023-09",
-		ReleaseDate: "2025-03-19",
-		LastUpdated: "2025-03-19",
-		Capabilities: profile.Capabilities{
-			Completion:  true,
-			Decision:    false,
-			Embedding:   false,
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: false,
-			ReasoningOptions: []profile.ReasoningOption{
-				{
-					Type: "effort",
-					Values: []string{
-						"low",
-						"medium",
-						"high",
-					},
-				},
-			},
-		},
-		Limits: profile.Limits{
-			Context: 200000,
-			Output:  100000,
-		},
-		Modalities: profile.Modalities{
-			Inputs: []profile.Modality{
-				profile.ModalityText,
-				profile.ModalityImage,
-			},
-			Outputs: []profile.Modality{
-				profile.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: profile.Pricing{
-			Input:      150,
-			Output:     600,
-			CacheRead:  0,
-			CacheWrite: 0,
-		},
-	},
 	"o3": {
 		ID:          "o3",
 		Name:        "o3",
@@ -2348,53 +2204,6 @@ var staticProfiles = map[string]profile.Profile{
 			CacheWrite: 0,
 		},
 	},
-	"o3-mini": {
-		ID:          "o3-mini",
-		Name:        "o3-mini",
-		Description: "Smaller o-series reasoner for economical coding, math, and planning tasks",
-		Family:      "o-mini",
-		Knowledge:   "2024-05",
-		ReleaseDate: "2024-12-20",
-		LastUpdated: "2025-01-29",
-		Capabilities: profile.Capabilities{
-			Completion:  true,
-			Decision:    false,
-			Embedding:   false,
-			Attachment:  false,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: false,
-			ReasoningOptions: []profile.ReasoningOption{
-				{
-					Type: "effort",
-					Values: []string{
-						"low",
-						"medium",
-						"high",
-					},
-				},
-			},
-		},
-		Limits: profile.Limits{
-			Context: 200000,
-			Output:  100000,
-		},
-		Modalities: profile.Modalities{
-			Inputs: []profile.Modality{
-				profile.ModalityText,
-			},
-			Outputs: []profile.Modality{
-				profile.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: profile.Pricing{
-			Input:      1.1,
-			Output:     4.4,
-			CacheRead:  0.55,
-			CacheWrite: 0,
-		},
-	},
 	"o3-pro": {
 		ID:          "o3-pro",
 		Name:        "o3-pro",
@@ -2440,54 +2249,6 @@ var staticProfiles = map[string]profile.Profile{
 			Input:      20,
 			Output:     80,
 			CacheRead:  0,
-			CacheWrite: 0,
-		},
-	},
-	"o4-mini": {
-		ID:          "o4-mini",
-		Name:        "o4-mini",
-		Description: "Fast o-series model for compact reasoning, coding, and tool use",
-		Family:      "o-mini",
-		Knowledge:   "2024-05",
-		ReleaseDate: "2025-04-16",
-		LastUpdated: "2025-04-16",
-		Capabilities: profile.Capabilities{
-			Completion:  true,
-			Decision:    false,
-			Embedding:   false,
-			Attachment:  true,
-			Reasoning:   true,
-			ToolCall:    true,
-			Temperature: false,
-			ReasoningOptions: []profile.ReasoningOption{
-				{
-					Type: "effort",
-					Values: []string{
-						"low",
-						"medium",
-						"high",
-					},
-				},
-			},
-		},
-		Limits: profile.Limits{
-			Context: 200000,
-			Output:  100000,
-		},
-		Modalities: profile.Modalities{
-			Inputs: []profile.Modality{
-				profile.ModalityText,
-				profile.ModalityImage,
-			},
-			Outputs: []profile.Modality{
-				profile.ModalityText,
-			},
-		},
-		OpenWeights: false,
-		Pricing: profile.Pricing{
-			Input:      1.1,
-			Output:     4.4,
-			CacheRead:  0.275,
 			CacheWrite: 0,
 		},
 	},

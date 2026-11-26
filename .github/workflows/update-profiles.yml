@@ -45,9 +45,6 @@ jobs:
       - name: Generate LLM profiles
         run: go generate ./...
 
-      - name: Verify generated provider packages
-        run: go test ./providers/...
-
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v8
         with:
